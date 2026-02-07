@@ -1,0 +1,57 @@
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 18
+VisualStudioVersion = 18.3.11415.281
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "PokerAnalyzer.Domain", "src\PokerAnalyzer.Domain\PokerAnalyzer.Domain.csproj", "{6846BAD2-D536-4E62-B98F-1228523DBEEC}"
+EndProject
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "PokerAnalyzer.Application", "src\PokerAnalyzer.Application\PokerAnalyzer.Application.csproj", "{EE5BCE6E-4423-4DE9-BE24-94EFB8A3F89D}"
+EndProject
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "PokerAnalyzer.Infrastructure", "src\PokerAnalyzer.Infrastructure\PokerAnalyzer.Infrastructure.csproj", "{87C58261-ABC3-4822-8C77-E113B043DD44}"
+EndProject
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "PokerAnalyzer.Api", "src\PokerAnalyzer.Api\PokerAnalyzer.Api.csproj", "{35255B39-6F48-4FD8-A122-789AE12000E4}"
+EndProject
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "PokerAnalyzer.Domain.Tests", "tests\PokerAnalyzer.Domain.Tests\PokerAnalyzer.Domain.Tests.csproj", "{1DBDA406-2549-4C6A-BF59-797D59222679}"
+EndProject
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "PokerAnalyzer.Application.Tests", "tests\PokerAnalyzer.Application.Tests\PokerAnalyzer.Application.Tests.csproj", "{534F78F4-4535-4B43-8B6E-E8004F1D4984}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "PokerAnalyzer.Web", "src\PokerAnalyzer.Web\PokerAnalyzer.Web.csproj", "{D6C89221-DC2E-33E9-5F59-F5F9684CA78D}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{6846BAD2-D536-4E62-B98F-1228523DBEEC}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{6846BAD2-D536-4E62-B98F-1228523DBEEC}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{6846BAD2-D536-4E62-B98F-1228523DBEEC}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{6846BAD2-D536-4E62-B98F-1228523DBEEC}.Release|Any CPU.Build.0 = Release|Any CPU
+		{EE5BCE6E-4423-4DE9-BE24-94EFB8A3F89D}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{EE5BCE6E-4423-4DE9-BE24-94EFB8A3F89D}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{EE5BCE6E-4423-4DE9-BE24-94EFB8A3F89D}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{EE5BCE6E-4423-4DE9-BE24-94EFB8A3F89D}.Release|Any CPU.Build.0 = Release|Any CPU
+		{87C58261-ABC3-4822-8C77-E113B043DD44}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{87C58261-ABC3-4822-8C77-E113B043DD44}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{87C58261-ABC3-4822-8C77-E113B043DD44}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{87C58261-ABC3-4822-8C77-E113B043DD44}.Release|Any CPU.Build.0 = Release|Any CPU
+		{35255B39-6F48-4FD8-A122-789AE12000E4}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{35255B39-6F48-4FD8-A122-789AE12000E4}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{35255B39-6F48-4FD8-A122-789AE12000E4}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{35255B39-6F48-4FD8-A122-789AE12000E4}.Release|Any CPU.Build.0 = Release|Any CPU
+		{1DBDA406-2549-4C6A-BF59-797D59222679}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{1DBDA406-2549-4C6A-BF59-797D59222679}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{1DBDA406-2549-4C6A-BF59-797D59222679}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{1DBDA406-2549-4C6A-BF59-797D59222679}.Release|Any CPU.Build.0 = Release|Any CPU
+		{534F78F4-4535-4B43-8B6E-E8004F1D4984}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{534F78F4-4535-4B43-8B6E-E8004F1D4984}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{534F78F4-4535-4B43-8B6E-E8004F1D4984}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{534F78F4-4535-4B43-8B6E-E8004F1D4984}.Release|Any CPU.Build.0 = Release|Any CPU
+		{D6C89221-DC2E-33E9-5F59-F5F9684CA78D}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{D6C89221-DC2E-33E9-5F59-F5F9684CA78D}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{D6C89221-DC2E-33E9-5F59-F5F9684CA78D}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{D6C89221-DC2E-33E9-5F59-F5F9684CA78D}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+EndGlobal

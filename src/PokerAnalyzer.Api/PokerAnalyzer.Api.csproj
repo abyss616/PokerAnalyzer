@@ -1,0 +1,19 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+  <PropertyGroup>
+    <AssemblyName>PokerAnalyzer.Api</AssemblyName>
+    <RootNamespace>PokerAnalyzer.Api</RootNamespace>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <TargetFramework>net10.0</TargetFramework>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Swashbuckle.AspNetCore.Swagger" Version="10.1.0" />
+    <PackageReference Include="Swashbuckle.AspNetCore.SwaggerGen" Version="10.1.0" />
+    <PackageReference Include="Swashbuckle.AspNetCore.SwaggerUI" Version="10.1.0" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\PokerAnalyzer.Domain\PokerAnalyzer.Domain.csproj" />
+    <ProjectReference Include="..\PokerAnalyzer.Application\PokerAnalyzer.Application.csproj" />
+    <ProjectReference Include="..\PokerAnalyzer.Infrastructure\PokerAnalyzer.Infrastructure.csproj" />
+  </ItemGroup>
+</Project>

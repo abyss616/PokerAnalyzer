@@ -1,0 +1,7 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <AssemblyName>PokerAnalyzer.Domain</AssemblyName>
+    <RootNamespace>PokerAnalyzer.Domain</RootNamespace>
+    <TargetFramework>net10.0</TargetFramework>
+  </PropertyGroup>
+</Project>

@@ -1,0 +1,56 @@
+﻿@page "/handhistories/upload"
+@rendermode InteractiveServer
+@using Microsoft.AspNetCore.Components.Forms
+@inject PokerAnalyzer.Web.Services.ApiClient Api
+
+<h3>Upload Hand History (XML)</h3>
+
+<p>Select an XML hand history file. Upload starts immediately.</p>
+
+<InputFile OnChange="OnFileSelected" accept=".xml" />
+
+@if (!string.IsNullOrWhiteSpace(_status))
+{
+    <div class="alert alert-info mt-3">
+        @_status
+    </div>
+}
+
+@if (!string.IsNullOrWhiteSpace(_error))
+{
+    <div class="alert alert-danger mt-3">
+        <pre style="white-space:pre-wrap">@_error</pre>
+    </div>
+}
+
+@code {
+    private string? _status;
+    private string? _error;
+
+    private async Task OnFileSelected(InputFileChangeEventArgs e)
+    {
+        _status = "OnFileSelected fired.";
+        _status = null;
+        _error = null;
+
+        try
+        {
+            var file = e.File;
+            if (file is null)
+            {
+                _error = "No file received from InputFile.";
+                return;
+            }
+
+            _status = $"Selected: {file.Name} ({file.Size} bytes). Uploading...";
+
+            var result = await Api.UploadHandHistoryXmlAsync(file);
+
+            _status = $"Upload successful. SessionId: {result.SessionId}";
+        }
+        catch (Exception ex)
+        {
+            _error = ex.ToString();
+        }
+    }
+}

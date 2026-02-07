@@ -1,0 +1,101 @@
+html, body {
+  font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+  margin: 0;
+  padding: 0;
+}
+
+.app-shell {
+  display: grid;
+  grid-template-columns: 240px 1fr;
+  min-height: 100vh;
+}
+
+.sidebar {
+  border-right: 1px solid #e5e5e5;
+  padding: 16px;
+}
+
+.brand {
+  font-weight: 700;
+  margin-bottom: 16px;
+}
+
+.nav {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.nav-link {
+  text-decoration: none;
+  padding: 8px 10px;
+  border-radius: 8px;
+  color: #111;
+  border: 1px solid transparent;
+}
+
+.nav-link.active {
+  border-color: #ddd;
+  background: #fafafa;
+}
+
+.main {
+  padding: 20px;
+}
+
+.content {
+  max-width: 980px;
+}
+
+.card {
+  border: 1px solid #e5e5e5;
+  border-radius: 12px;
+  padding: 14px;
+  margin: 14px 0;
+  background: #fff;
+}
+
+.card-title {
+  font-weight: 650;
+  margin-bottom: 10px;
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 10px;
+}
+
+.btn {
+  padding: 8px 12px;
+  border-radius: 10px;
+  border: 1px solid #ddd;
+  background: #fafafa;
+  cursor: pointer;
+}
+
+.btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.hint {
+  font-size: 0.9rem;
+  color: #555;
+  margin-top: 6px;
+}
+
+.error {
+  border: 1px solid #f3c1c1;
+  background: #fff5f5;
+  padding: 10px;
+  border-radius: 10px;
+  color: #7a1c1c;
+  margin: 12px 0;
+}
+
+.pre {
+  overflow: auto;
+  white-space: pre-wrap;
+}
