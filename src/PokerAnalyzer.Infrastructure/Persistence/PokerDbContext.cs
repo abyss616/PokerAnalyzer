@@ -49,6 +49,9 @@ namespace PokerAnalyzer.Infrastructure.Persistence
                 .HasIndex(x => new { x.SessionId, x.Player })
                 .IsUnique();
 
+            b.Entity<OpponentProfile>()
+                .OwnsOne(o => o.PreflopModel);
+
             b.Entity<PositionStats>()
                 .Property(x => x.Position)
                 .HasConversion<int>()      // explicit, future-proof
@@ -187,6 +190,7 @@ namespace PokerAnalyzer.Infrastructure.Persistence
 
                 f.Ignore(x => x.FlopTexture);
             });
+
         }
 
         public override int SaveChanges(bool acceptAllChangesOnSuccess)
