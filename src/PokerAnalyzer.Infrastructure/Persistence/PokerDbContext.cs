@@ -179,14 +179,6 @@ namespace PokerAnalyzer.Infrastructure.Persistence
                 });
             });
 
-            b.Entity<Flop>(f =>
-            {
-                f.ToTable("Flops");
-                f.HasKey(x => x.Id);
-
-                f.HasOne(x => x.Hand)
-                 .WithOne(h => h.FlopModel)
-                 .HasForeignKey<Flop>(x => x.HandId);
 
                 f.Ignore(x => x.FlopTexture);
             });

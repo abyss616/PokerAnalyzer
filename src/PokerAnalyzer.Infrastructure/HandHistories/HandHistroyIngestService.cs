@@ -358,22 +358,6 @@ public sealed class HandHistoryIngestService : IHandHistoryIngestService
         hand.PreflopAggressor = hand.Actions.Where(a => a.Street == Street.Preflop).Where(a => PreFlopOperations.IsPreflopAggressive(a.Type)).Select(a => a.Player).LastOrDefault();
         var flopAggressor = FlopOperations.CalculateFlopAggressor(hand.Actions);
         hand.FlopAggressor = flopAggressor;
-        var cbet = FlopOperations.GetFlopCBetResult(hand.Actions);
-        hand.FlopModel.CBetOpportunityPlayer = cbet.OpportunityPlayer;
-        hand.FlopModel.CBetPlayer = cbet.CBetPlayer;
-        var donkBet = FlopOperations.GetFlopDonkBet(hand.Actions);
-        hand.FlopModel.DonkBet = donkBet.DonkBettor;
-        var foldToCBet = FlopOperations.GetFirstFoldToFlopCBet(hand.Actions);
-        hand.FlopModel.FoldToFlopCBet = foldToCBet.Folder;
-        //2nd tier stats
-        hand.FlopModel.GetFirstCallVsFlopCBet = FlopTier2Operations.GetFirstCallVsFlopCBet(hand.Actions).Caller;
-        hand.FlopModel.GetFirstRaiseVsFlopCBet = FlopTier2Operations.GetFirstRaiseVsFlopCBet(hand.Actions).Raiser;
-        hand.FlopModel.GetMultiwayFlopCBetPlayer = FlopTier2Operations.GetMultiwayFlopCBetPlayer(hand.Actions);
-        //3rd tier
-        hand.FlopModel.GetFlopProbeBet = FlopTier3Operations.GetFlopProbeBet(hand.Actions).ProbeBettor;
-        if (hand.Board is not null && hand.Board.Flop.Count()==3)
-            hand.FlopModel.FlopTexture = FlopTier3Operations.ClassifyFlopTexture(hand.Board.Flop);
-
 
         return hand;
     }
