@@ -174,11 +174,11 @@ public sealed class HandHistoryIngestService : IHandHistoryIngestService
                 }
             }
 
-            IncrementProfiles(profiles, vpipPlayers, heroName, p => p.VpipHands++);
-            IncrementProfiles(profiles, pfrPlayers, heroName, p => p.PfrHands++);
-            IncrementProfiles(profiles, threeBetPlayers, heroName, p => p.ThreeBetHands++);
-            IncrementProfiles(profiles, facedThreeBetPlayers, heroName, p => p.FacedThreeBetHands++);
-            IncrementProfiles(profiles, foldToThreeBetPlayers, heroName, p => p.FoldToThreeBetHands++);
+            IncrementProfiles(profiles, vpipPlayers, heroName, p => p.PreflopModel.VpipHands++);
+            IncrementProfiles(profiles, pfrPlayers, heroName, p => p.PreflopModel.PfrHands++);
+            IncrementProfiles(profiles, threeBetPlayers, heroName, p => p.PreflopModel.ThreeBetHands++);
+            IncrementProfiles(profiles, facedThreeBetPlayers, heroName, p => p.PreflopModel.FacedThreeBetHands++);
+            IncrementProfiles(profiles, foldToThreeBetPlayers, heroName, p => p.PreflopModel.FoldToThreeBetHands++);
         }
 
         return profiles.Values;
