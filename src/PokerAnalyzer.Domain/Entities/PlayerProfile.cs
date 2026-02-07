@@ -67,19 +67,17 @@ public sealed class TurnStats
 {
     public int SawTurn { get; set; }
     public int WentToShowdown { get; set; }
+    public int WonAtShowdown { get; set; }
     public int CBetOpportunities { get; set; }
     public int CBets { get; set; }
-    public int CheckOpportunities { get; set; }
-    public int Checks { get; set; }
-    public int FoldToBetOpportunities { get; set; }
-    public int FoldToBet { get; set; }
-    public int TurnBetCount { get; set; }
-    public int TurnRaiseCount { get; set; }
-    public int TurnCallCount { get; set; }
-    public decimal TurnBetSizePotSum { get; set; }
-    public int TurnBetSizeSamples { get; set; }
-    public int RaiseVsBetOpportunities { get; set; }
-    public int RaiseVsBet { get; set; }
+    public int FoldToCBetOpportunities { get; set; }
+    public int FoldToCBet { get; set; }
+    public int DonkBets { get; set; }
+    public int FirstFoldToCBet { get; set; }
+    public int CallVsCBet { get; set; }
+    public int RaiseVsCBet { get; set; }
+    public int MultiwayCBets { get; set; }
+    public int ProbeBets { get; set; }
 }
 
 public sealed class RiverStats
