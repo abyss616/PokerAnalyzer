@@ -8,11 +8,7 @@
 
     public int Hands { get; set; }
 
-    public int VpipHands { get; set; }
-    public int PfrHands { get; set; }
-    public int ThreeBetHands { get; set; }
-    public int FacedThreeBetHands { get; set; }
-    public int FoldToThreeBetHands { get; set; }
+    public PreflopStats PreflopModel { get; set; } = new();
 
     public int SawFlop { get; set; }
     public int WentToShowdown { get; set; }
@@ -39,4 +35,13 @@ public sealed class PositionStats
     public int Vpip { get; set; }
     public int Pfr { get; set; }
     public int ThreeBet { get; set; }
+}
+
+public sealed class PreflopStats
+{
+    public int VpipHands { get; set; }
+    public int PfrHands { get; set; }
+    public int ThreeBetHands { get; set; }
+    public int FacedThreeBetHands { get; set; }
+    public int FoldToThreeBetHands { get; set; }
 }
