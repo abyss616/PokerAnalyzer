@@ -316,9 +316,9 @@ public sealed class HandHistoryIngestService : IHandHistoryIngestService
                 IncrementProfiles(profiles, winners, p => p.TurnModel.WonAtShowdown++);
 
                 var flopCBetResult = FlopOperations.GetFlopCBetResult(hand.Actions);
-                if (!string.IsNullOrWhiteSpace(flopCBetResult.cbetPlayer))
+                if (!string.IsNullOrWhiteSpace(flopCBetResult.CBetPlayer))
                 {
-                    var flopCBetPlayer = flopCBetResult.cbetPlayer;
+                    var flopCBetPlayer = flopCBetResult.CBetPlayer;
                     var firstTurnBet = turnActions.FirstOrDefault(a =>
                         string.Equals(a.Player, flopCBetPlayer, StringComparison.Ordinal));
 
@@ -359,7 +359,7 @@ public sealed class HandHistoryIngestService : IHandHistoryIngestService
                         var current = turnAggressionByPlayer.TryGetValue(action.Player, out var value)
                             ? value
                             : (0, 0);
-                        turnAggressionByPlayer[action.Player] = (current.BetsRaises + 1, current.Calls);
+                        turnAggressionByPlayer[action.Player] = (current.Item1 + 1, current.Item2);
 
                         if (betSeen)
                         {
@@ -372,7 +372,7 @@ public sealed class HandHistoryIngestService : IHandHistoryIngestService
                             var betTotals = turnBetSizeTotals.TryGetValue(action.Player, out var totals)
                                 ? totals
                                 : (0m, 0);
-                            turnBetSizeTotals[action.Player] = (betTotals.TotalPercent + percent, betTotals.Count + 1);
+                            turnBetSizeTotals[action.Player] = (betTotals.Item1 + percent, betTotals.Item2 + 1);
                         }
 
                         betSeen = true;
@@ -382,7 +382,7 @@ public sealed class HandHistoryIngestService : IHandHistoryIngestService
                         var current = turnAggressionByPlayer.TryGetValue(action.Player, out var value)
                             ? value
                             : (0, 0);
-                        turnAggressionByPlayer[action.Player] = (current.BetsRaises, current.Calls + 1);
+                        turnAggressionByPlayer[action.Player] = (current.Item1, current.Item2 + 1);
                     }
                 }
 
