@@ -6,7 +6,7 @@ namespace PokerAnalyzer.Infrastructure.Persistence
     {
         public DbSet<HandHistorySession> Sessions => Set<HandHistorySession>();
         public DbSet<Hand> Hands => Set<Hand>();
-        public DbSet<OpponentProfile> OpponentProfiles => Set<OpponentProfile>();
+        public DbSet<PlayerProfile> PlayerProfiles => Set<PlayerProfile>();
         public DbSet<Hand> HandHistoryHands { get; set; } = null!;
         public DbSet<PositionStats> PositionStats => Set<PositionStats>();
         public DbSet<HandPlayer> HandPlayers => Set<HandPlayer>();
@@ -26,31 +26,31 @@ namespace PokerAnalyzer.Infrastructure.Persistence
             b.Entity<HandHistorySession>()
                 .Property(x => x.RawXml);
 
-            // Relationship: Session -> OpponentProfiles (1-to-many)
+            // Relationship: Session -> PlayerProfiles (1-to-many)
             b.Entity<HandHistorySession>()
-                .HasMany(s => s.Opponents)
+                .HasMany(s => s.Players)
                 .WithOne(o => o.Session)
                 .HasForeignKey(o => o.SessionId)
                 .OnDelete(DeleteBehavior.Cascade);
 
-            // ---- OpponentProfile ----
-            b.Entity<OpponentProfile>()
+            // ---- PlayerProfile ----
+            b.Entity<PlayerProfile>()
                 .HasKey(x => x.Id);
 
-            b.Entity<OpponentProfile>()
+            b.Entity<PlayerProfile>()
                 .Property(x => x.Player)
                 .IsRequired()
                 .HasMaxLength(128);
 
             // Ensure 1 profile per player per session
-            b.Entity<OpponentProfile>()
+            b.Entity<PlayerProfile>()
                 .HasIndex(x => new { x.SessionId, x.Player })
                 .IsUnique();
 
-            b.Entity<OpponentProfile>()
+            b.Entity<PlayerProfile>()
                 .OwnsOne(o => o.PreflopModel);
 
-            b.Entity<OpponentProfile>()
+            b.Entity<PlayerProfile>()
                 .OwnsOne(o => o.FlopModel);
 
             b.Entity<PositionStats>()
@@ -60,7 +60,7 @@ namespace PokerAnalyzer.Infrastructure.Persistence
 
             // One row per position per opponent profile
             b.Entity<PositionStats>()
-                .HasIndex(x => new { x.OpponentProfileId, x.Position })
+                .HasIndex(x => new { x.PlayerProfileId, x.Position })
                 .IsUnique();
             b.Entity<HandAction>()
                 .HasKey(x => x.Id);

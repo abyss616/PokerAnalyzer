@@ -28,5 +28,5 @@
     public DateTime UploadedAtUtc { get; set; } = DateTime.UtcNow;
 
     public List<Hand> Hands { get; set; } = new();
-    public List<OpponentProfile> Opponents { get; set; } = new();
+    public List<PlayerProfile> Players { get; set; } = new();
 }
