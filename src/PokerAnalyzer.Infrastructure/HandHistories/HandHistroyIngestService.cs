@@ -290,16 +290,6 @@ public sealed class HandHistoryIngestService : IHandHistoryIngestService
 
             if (turnActions.Count > 0)
             {
-                var flopBettors = new HashSet<string>(StringComparer.Ordinal);
-                foreach (var action in flopActions)
-                {
-                    if (string.IsNullOrWhiteSpace(action.Player))
-                        continue;
-
-                    if (IsAggressivePostflopAction(action.Type))
-                        flopBettors.Add(action.Player);
-                }
-
                 var turnPlayers = turnActions
                     .Select(a => a.Player)
                     .Where(p => !string.IsNullOrWhiteSpace(p))
@@ -324,70 +314,6 @@ public sealed class HandHistoryIngestService : IHandHistoryIngestService
                     .ToList();
 
                 IncrementProfiles(profiles, winners, p => p.TurnModel.WonAtShowdown++);
-
-                bool betSeen = false;
-                var processedPlayers = new HashSet<string>(StringComparer.Ordinal);
-
-                foreach (var action in turnActions)
-                {
-                    if (string.IsNullOrWhiteSpace(action.Player))
-                        continue;
-
-                    if (!processedPlayers.Contains(action.Player))
-                    {
-                        processedPlayers.Add(action.Player);
-
-                        if (!betSeen)
-                        {
-                            IncrementProfiles(profiles, new[] { action.Player }, p => p.TurnModel.CheckOpportunities++);
-
-                            if (action.Type == ActionType.Check)
-                                IncrementProfiles(profiles, new[] { action.Player }, p => p.TurnModel.Checks++);
-
-                            if (flopBettors.Contains(action.Player))
-                            {
-                                IncrementProfiles(profiles, new[] { action.Player }, p => p.TurnModel.CBetOpportunities++);
-
-                                if (IsAggressivePostflopAction(action.Type))
-                                    IncrementProfiles(profiles, new[] { action.Player }, p => p.TurnModel.CBets++);
-                            }
-                        }
-                        else
-                        {
-                            IncrementProfiles(profiles, new[] { action.Player }, p => p.TurnModel.FoldToBetOpportunities++);
-                            IncrementProfiles(profiles, new[] { action.Player }, p => p.TurnModel.RaiseVsBetOpportunities++);
-
-                            if (action.Type == ActionType.Fold)
-                                IncrementProfiles(profiles, new[] { action.Player }, p => p.TurnModel.FoldToBet++);
-
-                            if (IsRaisePostflopAction(action.Type))
-                                IncrementProfiles(profiles, new[] { action.Player }, p => p.TurnModel.RaiseVsBet++);
-                        }
-                    }
-
-                    if (action.Type == ActionType.Bet)
-                    {
-                        IncrementProfiles(profiles, new[] { action.Player }, p => p.TurnModel.TurnBetCount++);
-
-                        if (hand.Pot.HasValue && hand.Pot.Value > 0 && action.Amount.HasValue)
-                        {
-                            var ratio = action.Amount.Value / hand.Pot.Value;
-                            IncrementProfiles(profiles, new[] { action.Player }, p => p.TurnModel.TurnBetSizeSamples++);
-                            IncrementProfiles(profiles, new[] { action.Player }, p => p.TurnModel.TurnBetSizePotSum += ratio);
-                        }
-                    }
-                    else if (IsRaisePostflopAction(action.Type))
-                    {
-                        IncrementProfiles(profiles, new[] { action.Player }, p => p.TurnModel.TurnRaiseCount++);
-                    }
-                    else if (action.Type == ActionType.Call)
-                    {
-                        IncrementProfiles(profiles, new[] { action.Player }, p => p.TurnModel.TurnCallCount++);
-                    }
-
-                    if (IsAggressivePostflopAction(action.Type))
-                        betSeen = true;
-                }
             }
 
             var riverActions = hand.Actions
