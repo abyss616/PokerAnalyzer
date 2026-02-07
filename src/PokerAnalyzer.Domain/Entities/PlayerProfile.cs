@@ -10,6 +10,7 @@
 
     public PreflopStats PreflopModel { get; set; } = new();
 
+
     public FlopStats FlopModel { get; set; } = new();
     public TurnStats TurnModel { get; set; } = new();
     public RiverStats RiverModel { get; set; } = new();
