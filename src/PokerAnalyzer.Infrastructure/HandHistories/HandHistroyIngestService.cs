@@ -249,6 +249,42 @@ public sealed class HandHistoryIngestService : IHandHistoryIngestService
                     IncrementProfiles(profiles, facedCBetPlayers, heroName, p => p.FlopModel.FoldToCBetOpportunities++);
                     IncrementProfiles(profiles, foldedToCBetPlayers, heroName, p => p.FlopModel.FoldToCBet++);
                 }
+
+                var donkBet = FlopOperations.GetFlopDonkBet(hand.Actions);
+                if (!string.IsNullOrWhiteSpace(donkBet.DonkBettor))
+                {
+                    IncrementProfiles(profiles, new[] { donkBet.DonkBettor }, heroName, p => p.FlopModel.DonkBets++);
+                }
+
+                var firstFoldToCBet = FlopOperations.GetFirstFoldToFlopCBet(hand.Actions);
+                if (!string.IsNullOrWhiteSpace(firstFoldToCBet.Folder))
+                {
+                    IncrementProfiles(profiles, new[] { firstFoldToCBet.Folder }, heroName, p => p.FlopModel.FirstFoldToCBet++);
+                }
+
+                var firstCallVsCBet = FlopTier2Operations.GetFirstCallVsFlopCBet(hand.Actions);
+                if (!string.IsNullOrWhiteSpace(firstCallVsCBet.Caller))
+                {
+                    IncrementProfiles(profiles, new[] { firstCallVsCBet.Caller }, heroName, p => p.FlopModel.CallVsCBet++);
+                }
+
+                var firstRaiseVsCBet = FlopTier2Operations.GetFirstRaiseVsFlopCBet(hand.Actions);
+                if (!string.IsNullOrWhiteSpace(firstRaiseVsCBet.Raiser))
+                {
+                    IncrementProfiles(profiles, new[] { firstRaiseVsCBet.Raiser }, heroName, p => p.FlopModel.RaiseVsCBet++);
+                }
+
+                var multiwayCBetPlayer = FlopTier2Operations.GetMultiwayFlopCBetPlayer(hand.Actions);
+                if (!string.IsNullOrWhiteSpace(multiwayCBetPlayer))
+                {
+                    IncrementProfiles(profiles, new[] { multiwayCBetPlayer }, heroName, p => p.FlopModel.MultiwayCBets++);
+                }
+
+                var probeBet = FlopTier3Operations.GetFlopProbeBet(hand.Actions);
+                if (!string.IsNullOrWhiteSpace(probeBet.ProbeBettor))
+                {
+                    IncrementProfiles(profiles, new[] { probeBet.ProbeBettor }, heroName, p => p.FlopModel.ProbeBets++);
+                }
             }
         }
 
