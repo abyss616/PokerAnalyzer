@@ -1,4 +1,5 @@
 ﻿using Microsoft.EntityFrameworkCore;
+using PokerAnalyzer.Domain.Entities;
 using PokerAnalyzer.Domain.Game;
 using PokerAnalyzer.Domain.Helpers;
 using PokerAnalyzer.Infrastructure.Helpers;
@@ -85,6 +86,11 @@ public sealed class HandHistoryIngestService : IHandHistoryIngestService
             i++;
         }
 
+        foreach (var profile in BuildOpponentProfiles(session.Hands, session.Nickname))
+        {
+            session.Opponents.Add(profile);
+        }
+
         _db.Sessions.Add(session);
         await _db.SaveChangesAsync(ct);
         return session.Id;
@@ -97,6 +103,112 @@ public sealed class HandHistoryIngestService : IHandHistoryIngestService
         foreach (var b in bytes) sb.Append(b.ToString("x2"));
         return sb.ToString();
     }
+
+    private static IEnumerable<OpponentProfile> BuildOpponentProfiles(IEnumerable<Hand> hands, string? heroName)
+    {
+        var profiles = new Dictionary<string, OpponentProfile>(StringComparer.Ordinal);
+
+        foreach (var hand in hands)
+        {
+            var preflopActions = hand.Actions
+                .Where(a => a.Street == Street.Preflop)
+                .ToList();
+
+            var activePlayers = preflopActions
+                .Where(a => a.Type != ActionType.SitOut)
+                .Select(a => a.Player)
+                .Where(p => !string.IsNullOrWhiteSpace(p))
+                .Distinct(StringComparer.Ordinal)
+                .ToList();
+
+            foreach (var player in activePlayers)
+            {
+                if (!string.IsNullOrWhiteSpace(heroName) && string.Equals(player, heroName, StringComparison.Ordinal))
+                    continue;
+
+                GetOrCreate(profiles, player).Hands++;
+            }
+
+            var vpipPlayers = new HashSet<string>(StringComparer.Ordinal);
+            var pfrPlayers = new HashSet<string>(StringComparer.Ordinal);
+            var threeBetPlayers = new HashSet<string>(StringComparer.Ordinal);
+            var facedThreeBetPlayers = new HashSet<string>(StringComparer.Ordinal);
+            var foldToThreeBetPlayers = new HashSet<string>(StringComparer.Ordinal);
+
+            string? preflopRaiser = null;
+            bool sawRaise = false;
+            bool sawThreeBet = false;
+
+            foreach (var action in preflopActions)
+            {
+                if (action.Type == ActionType.SitOut) continue;
+
+                if (IsVoluntaryPreflopInvestment(action.Type))
+                {
+                    vpipPlayers.Add(action.Player);
+                }
+
+                if (PreFlopOperations.IsPreflopAggressive(action.Type))
+                {
+                    if (!sawRaise)
+                    {
+                        sawRaise = true;
+                        preflopRaiser = action.Player;
+                        pfrPlayers.Add(action.Player);
+                    }
+                    else if (!sawThreeBet && !string.Equals(action.Player, preflopRaiser, StringComparison.Ordinal))
+                    {
+                        sawThreeBet = true;
+                        threeBetPlayers.Add(action.Player);
+                        if (!string.IsNullOrWhiteSpace(preflopRaiser))
+                            facedThreeBetPlayers.Add(preflopRaiser);
+                    }
+                }
+
+                if (sawThreeBet &&
+                    action.Type == ActionType.Fold &&
+                    !string.IsNullOrWhiteSpace(preflopRaiser) &&
+                    string.Equals(action.Player, preflopRaiser, StringComparison.Ordinal))
+                {
+                    foldToThreeBetPlayers.Add(action.Player);
+                }
+            }
+
+            IncrementProfiles(profiles, vpipPlayers, heroName, p => p.VpipHands++);
+            IncrementProfiles(profiles, pfrPlayers, heroName, p => p.PfrHands++);
+            IncrementProfiles(profiles, threeBetPlayers, heroName, p => p.ThreeBetHands++);
+            IncrementProfiles(profiles, facedThreeBetPlayers, heroName, p => p.FacedThreeBetHands++);
+            IncrementProfiles(profiles, foldToThreeBetPlayers, heroName, p => p.FoldToThreeBetHands++);
+        }
+
+        return profiles.Values;
+    }
+
+    private static OpponentProfile GetOrCreate(Dictionary<string, OpponentProfile> profiles, string player)
+    {
+        if (profiles.TryGetValue(player, out var existing)) return existing;
+        var created = new OpponentProfile { Player = player };
+        profiles[player] = created;
+        return created;
+    }
+
+    private static void IncrementProfiles(
+        Dictionary<string, OpponentProfile> profiles,
+        IEnumerable<string> players,
+        string? heroName,
+        Action<OpponentProfile> increment)
+    {
+        foreach (var player in players)
+        {
+            if (!string.IsNullOrWhiteSpace(heroName) && string.Equals(player, heroName, StringComparison.Ordinal))
+                continue;
+
+            increment(GetOrCreate(profiles, player));
+        }
+    }
+
+    private static bool IsVoluntaryPreflopInvestment(ActionType type) =>
+        type is ActionType.Call or ActionType.Raise or ActionType.AllIn or ActionType.Bet;
 
 
 
