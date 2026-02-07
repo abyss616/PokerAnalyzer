@@ -53,4 +53,10 @@ public sealed class FlopStats
     public int CBets { get; set; }
     public int FoldToCBetOpportunities { get; set; }
     public int FoldToCBet { get; set; }
+    public int DonkBets { get; set; }
+    public int FirstFoldToCBet { get; set; }
+    public int CallVsCBet { get; set; }
+    public int RaiseVsCBet { get; set; }
+    public int MultiwayCBets { get; set; }
+    public int ProbeBets { get; set; }
 }
