@@ -50,6 +50,9 @@ namespace PokerAnalyzer.Infrastructure.Persistence
             b.Entity<OpponentProfile>()
                 .OwnsOne(o => o.PreflopModel);
 
+            b.Entity<OpponentProfile>()
+                .OwnsOne(o => o.FlopModel);
+
             b.Entity<PositionStats>()
                 .Property(x => x.Position)
                 .HasConversion<int>()      // explicit, future-proof
