@@ -314,6 +314,101 @@ public sealed class HandHistoryIngestService : IHandHistoryIngestService
                     .ToList();
 
                 IncrementProfiles(profiles, winners, p => p.TurnModel.WonAtShowdown++);
+
+                var flopCBetResult = FlopOperations.GetFlopCBetResult(hand.Actions);
+                if (!string.IsNullOrWhiteSpace(flopCBetResult.cbetPlayer))
+                {
+                    var flopCBetPlayer = flopCBetResult.cbetPlayer;
+                    var firstTurnBet = turnActions.FirstOrDefault(a =>
+                        string.Equals(a.Player, flopCBetPlayer, StringComparison.Ordinal));
+
+                    if (firstTurnBet is not null)
+                    {
+                        var betBefore = turnActions
+                            .TakeWhile(a => !string.Equals(a.Player, flopCBetPlayer, StringComparison.Ordinal))
+                            .Any(a => IsAggressivePostflopAction(a.Type));
+
+                        if (!betBefore && IsAggressivePostflopAction(firstTurnBet.Type))
+                        {
+                            IncrementProfiles(profiles, new[] { flopCBetPlayer }, p => p.TurnModel.TurnCBet++);
+                        }
+                    }
+                }
+
+                var turnAggressionByPlayer = new Dictionary<string, (int BetsRaises, int Calls)>(StringComparer.Ordinal);
+                var turnBetSizeTotals = new Dictionary<string, (decimal TotalPercent, int Count)>(StringComparer.Ordinal);
+                var betSeen = false;
+
+                foreach (var action in turnActions)
+                {
+                    if (string.IsNullOrWhiteSpace(action.Player))
+                        continue;
+
+                    if (action.Type == ActionType.Check && !betSeen)
+                    {
+                        IncrementProfiles(profiles, new[] { action.Player }, p => p.TurnModel.TurnCheck++);
+                    }
+
+                    if (action.Type == ActionType.Fold && betSeen)
+                    {
+                        IncrementProfiles(profiles, new[] { action.Player }, p => p.TurnModel.TurnFoldToBet++);
+                    }
+
+                    if (IsAggressivePostflopAction(action.Type))
+                    {
+                        var current = turnAggressionByPlayer.TryGetValue(action.Player, out var value)
+                            ? value
+                            : (0, 0);
+                        turnAggressionByPlayer[action.Player] = (current.BetsRaises + 1, current.Calls);
+
+                        if (betSeen)
+                        {
+                            IncrementProfiles(profiles, new[] { action.Player }, p => p.TurnModel.TurnRaiseVsBet++);
+                        }
+
+                        if (action.Amount.HasValue && hand.Pot.HasValue && hand.Pot.Value > 0m)
+                        {
+                            var percent = action.Amount.Value / hand.Pot.Value * 100m;
+                            var betTotals = turnBetSizeTotals.TryGetValue(action.Player, out var totals)
+                                ? totals
+                                : (0m, 0);
+                            turnBetSizeTotals[action.Player] = (betTotals.TotalPercent + percent, betTotals.Count + 1);
+                        }
+
+                        betSeen = true;
+                    }
+                    else if (action.Type == ActionType.Call)
+                    {
+                        var current = turnAggressionByPlayer.TryGetValue(action.Player, out var value)
+                            ? value
+                            : (0, 0);
+                        turnAggressionByPlayer[action.Player] = (current.BetsRaises, current.Calls + 1);
+                    }
+                }
+
+                foreach (var playerAggression in turnAggressionByPlayer)
+                {
+                    if (playerAggression.Value.BetsRaises == 0 && playerAggression.Value.Calls == 0)
+                        continue;
+
+                    var factor = playerAggression.Value.Calls == 0
+                        ? playerAggression.Value.BetsRaises
+                        : (decimal)playerAggression.Value.BetsRaises / playerAggression.Value.Calls;
+
+                    IncrementProfiles(profiles, new[] { playerAggression.Key }, p => p.TurnModel.TurnAggressionFactor += factor);
+                }
+
+                foreach (var playerBetSize in turnBetSizeTotals)
+                {
+                    var averagePercent = playerBetSize.Value.TotalPercent / playerBetSize.Value.Count;
+                    IncrementProfiles(profiles, new[] { playerBetSize.Key }, p => p.TurnModel.TurnBetSizePercentPot += averagePercent);
+                }
+
+                var wtsdCarryoverPlayers = turnPlayers
+                    .Where(p => showdownPlayers.Contains(p, StringComparer.Ordinal))
+                    .ToList();
+
+                IncrementProfiles(profiles, wtsdCarryoverPlayers, p => p.TurnModel.TurnWTSDCarryover++);
             }
 
             var riverActions = hand.Actions
