@@ -10,9 +10,6 @@
 
     public PreflopStats PreflopModel { get; set; } = new();
 
-    public int SawFlop { get; set; }
-    public int WentToShowdown { get; set; }
-    public int WonAtShowdown { get; set; }
 
     public FlopStats FlopModel { get; set; } = new();
     public TurnStats TurnModel { get; set; } = new();
