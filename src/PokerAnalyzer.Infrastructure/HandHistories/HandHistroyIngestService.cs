@@ -417,6 +417,72 @@ public sealed class HandHistoryIngestService : IHandHistoryIngestService
 
             if (riverActions.Count > 0)
             {
+                var riverAggressionByPlayer = new Dictionary<string, (int BetsRaises, int Calls)>(StringComparer.Ordinal);
+                var riverBetSizeTotals = new Dictionary<string, (decimal TotalPercent, int Count)>(StringComparer.Ordinal);
+                var betSeen = false;
+
+                foreach (var action in riverActions)
+                {
+                    if (string.IsNullOrWhiteSpace(action.Player))
+                        continue;
+
+                    if (!betSeen && (action.Type == ActionType.Check || IsAggressivePostflopAction(action.Type)))
+                    {
+                        IncrementProfiles(profiles, new[] { action.Player }, p => p.RiverModel.RiverBetOpportunities++);
+
+                        if (IsAggressivePostflopAction(action.Type))
+                        {
+                            IncrementProfiles(profiles, new[] { action.Player }, p => p.RiverModel.RiverBetsWhenCheckedTo++);
+                        }
+                    }
+
+                    if (betSeen && (action.Type == ActionType.Call || action.Type == ActionType.Fold || IsAggressivePostflopAction(action.Type)))
+                    {
+                        IncrementProfiles(profiles, new[] { action.Player }, p => p.RiverModel.RiverFacedBet++);
+
+                        if (action.Type == ActionType.Call)
+                        {
+                            IncrementProfiles(profiles, new[] { action.Player }, p => p.RiverModel.RiverCallsVsBet++);
+                        }
+
+                        if (action.Type == ActionType.Fold)
+                        {
+                            IncrementProfiles(profiles, new[] { action.Player }, p => p.RiverModel.RiverFoldToBet++);
+                        }
+
+                        if (IsAggressivePostflopAction(action.Type))
+                        {
+                            IncrementProfiles(profiles, new[] { action.Player }, p => p.RiverModel.RiverRaiseVsBet++);
+                        }
+                    }
+
+                    if (IsAggressivePostflopAction(action.Type))
+                    {
+                        var current = riverAggressionByPlayer.TryGetValue(action.Player, out var value)
+                            ? value
+                            : (0, 0);
+                        riverAggressionByPlayer[action.Player] = (current.Item1 + 1, current.Item2);
+
+                        if (action.Amount.HasValue && hand.Pot.HasValue && hand.Pot.Value > 0m)
+                        {
+                            var percent = action.Amount.Value / hand.Pot.Value * 100m;
+                            var betTotals = riverBetSizeTotals.TryGetValue(action.Player, out var totals)
+                                ? totals
+                                : (0m, 0);
+                            riverBetSizeTotals[action.Player] = (betTotals.Item1 + percent, betTotals.Item2 + 1);
+                        }
+
+                        betSeen = true;
+                    }
+                    else if (action.Type == ActionType.Call)
+                    {
+                        var current = riverAggressionByPlayer.TryGetValue(action.Player, out var value)
+                            ? value
+                            : (0, 0);
+                        riverAggressionByPlayer[action.Player] = (current.Item1, current.Item2 + 1);
+                    }
+                }
+
                 var riverPlayers = riverActions
                     .Select(a => a.Player)
                     .Where(p => !string.IsNullOrWhiteSpace(p))
@@ -424,6 +490,24 @@ public sealed class HandHistoryIngestService : IHandHistoryIngestService
                     .ToList();
 
                 IncrementProfiles(profiles, riverPlayers, p => p.RiverModel.SawRiver++);
+
+                foreach (var playerAggression in riverAggressionByPlayer)
+                {
+                    if (playerAggression.Value.BetsRaises == 0 && playerAggression.Value.Calls == 0)
+                        continue;
+
+                    var factor = playerAggression.Value.Calls == 0
+                        ? playerAggression.Value.BetsRaises
+                        : (decimal)playerAggression.Value.BetsRaises / playerAggression.Value.Calls;
+
+                    IncrementProfiles(profiles, new[] { playerAggression.Key }, p => p.RiverModel.RiverAggressionFactor += factor);
+                }
+
+                foreach (var playerBetSize in riverBetSizeTotals)
+                {
+                    var averagePercent = playerBetSize.Value.TotalPercent / playerBetSize.Value.Count;
+                    IncrementProfiles(profiles, new[] { playerBetSize.Key }, p => p.RiverModel.RiverBetSizePercentPot += averagePercent);
+                }
 
                 var showdownPlayers = hand.Showdown
                     .Select(s => s.Player)
