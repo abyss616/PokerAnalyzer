@@ -374,6 +374,12 @@ public sealed class HandHistoryIngestService : IHandHistoryIngestService
     private static bool IsVoluntaryPreflopInvestment(ActionType type) =>
         type is ActionType.Call or ActionType.Raise or ActionType.AllIn or ActionType.Bet;
 
+    private static bool IsAggressivePostflopAction(ActionType type) =>
+        type is ActionType.Bet or ActionType.Raise or ActionType.AllIn;
+
+    private static bool IsRaisePostflopAction(ActionType type) =>
+        type is ActionType.Raise or ActionType.AllIn;
+
 
 
     private static Hand ParseHand(XElement game, string? heroName)
