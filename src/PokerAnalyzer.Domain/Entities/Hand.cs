@@ -21,9 +21,6 @@ public sealed class Hand
     public string? PreflopAggressor { get; set; }   // last raiser preflop
     public string? FlopAggressor { get; set; }
 
-    //Flop
-    public Flop FlopModel { get; set; } = new Flop();
-
     public Board? Board { get; set; }
     public List<HandPlayer> Players { get; set; } = new();
     public List<HandAction> Actions { get; set; } = new();

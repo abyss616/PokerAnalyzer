@@ -14,10 +14,7 @@
     public int WentToShowdown { get; set; }
     public int WonAtShowdown { get; set; }
 
-    public int FlopCBetOpportunities { get; set; }
-    public int FlopCBets { get; set; }
-    public int FoldToFlopCBetOpportunities { get; set; }
-    public int FoldToFlopCBet { get; set; }
+    public FlopStats FlopModel { get; set; } = new();
 
     // Optional: by-position dictionaries
     public List<PositionStats> ByPosition { get; set; } = new();
