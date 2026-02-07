@@ -1,6 +1,4 @@
 ﻿using Microsoft.EntityFrameworkCore;
-using PokerAnalyzer.Domain.Entities;
-using System.Reflection.Emit;
 
 namespace PokerAnalyzer.Infrastructure.Persistence
 {
@@ -179,9 +177,8 @@ namespace PokerAnalyzer.Infrastructure.Persistence
                 });
             });
 
-
-                f.Ignore(x => x.FlopTexture);
-            });
+           
+            
 
         }
 

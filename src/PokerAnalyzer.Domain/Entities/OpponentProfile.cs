@@ -42,3 +42,15 @@ public sealed class PreflopStats
     public int FacedThreeBetHands { get; set; }
     public int FoldToThreeBetHands { get; set; }
 }
+
+
+public sealed class FlopStats
+{
+    public int SawFlop { get; set; }
+    public int WentToShowdown { get; set; }
+    public int WonAtShowdown { get; set; }
+    public int CBetOpportunities { get; set; }
+    public int CBets { get; set; }
+    public int FoldToCBetOpportunities { get; set; }
+    public int FoldToCBet { get; set; }
+}

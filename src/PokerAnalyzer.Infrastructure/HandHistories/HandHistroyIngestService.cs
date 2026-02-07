@@ -1,5 +1,4 @@
 ﻿using Microsoft.EntityFrameworkCore;
-using PokerAnalyzer.Domain.Entities;
 using PokerAnalyzer.Domain.Game;
 using PokerAnalyzer.Domain.Helpers;
 using PokerAnalyzer.Infrastructure.Helpers;

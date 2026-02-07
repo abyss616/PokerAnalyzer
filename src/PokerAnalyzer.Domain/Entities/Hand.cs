@@ -1,5 +1,4 @@
-﻿using PokerAnalyzer.Domain.Entities;
-using PokerAnalyzer.Domain.Game;
+﻿using PokerAnalyzer.Domain.Game;
 
 public sealed class Hand
 {
