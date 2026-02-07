@@ -283,6 +283,70 @@ public sealed class HandHistoryIngestService : IHandHistoryIngestService
                     IncrementProfiles(profiles, new[] { probeBet.ProbeBettor }, p => p.FlopModel.ProbeBets++);
                 }
             }
+
+            var turnActions = hand.Actions
+                .Where(a => a.Street == Street.Turn && a.Type != ActionType.SitOut)
+                .ToList();
+
+            if (turnActions.Count > 0)
+            {
+                var turnPlayers = turnActions
+                    .Select(a => a.Player)
+                    .Where(p => !string.IsNullOrWhiteSpace(p))
+                    .Distinct(StringComparer.Ordinal)
+                    .ToList();
+
+                IncrementProfiles(profiles, turnPlayers, p => p.TurnModel.SawTurn++);
+
+                var showdownPlayers = hand.Showdown
+                    .Select(s => s.Player)
+                    .Where(p => !string.IsNullOrWhiteSpace(p))
+                    .Distinct(StringComparer.Ordinal)
+                    .ToList();
+
+                IncrementProfiles(profiles, showdownPlayers, p => p.TurnModel.WentToShowdown++);
+
+                var winners = hand.Showdown
+                    .Where(s => s.Won)
+                    .Select(s => s.Player)
+                    .Where(p => !string.IsNullOrWhiteSpace(p))
+                    .Distinct(StringComparer.Ordinal)
+                    .ToList();
+
+                IncrementProfiles(profiles, winners, p => p.TurnModel.WonAtShowdown++);
+            }
+
+            var riverActions = hand.Actions
+                .Where(a => a.Street == Street.River && a.Type != ActionType.SitOut)
+                .ToList();
+
+            if (riverActions.Count > 0)
+            {
+                var riverPlayers = riverActions
+                    .Select(a => a.Player)
+                    .Where(p => !string.IsNullOrWhiteSpace(p))
+                    .Distinct(StringComparer.Ordinal)
+                    .ToList();
+
+                IncrementProfiles(profiles, riverPlayers, p => p.RiverModel.SawRiver++);
+
+                var showdownPlayers = hand.Showdown
+                    .Select(s => s.Player)
+                    .Where(p => !string.IsNullOrWhiteSpace(p))
+                    .Distinct(StringComparer.Ordinal)
+                    .ToList();
+
+                IncrementProfiles(profiles, showdownPlayers, p => p.RiverModel.WentToShowdown++);
+
+                var winners = hand.Showdown
+                    .Where(s => s.Won)
+                    .Select(s => s.Player)
+                    .Where(p => !string.IsNullOrWhiteSpace(p))
+                    .Distinct(StringComparer.Ordinal)
+                    .ToList();
+
+                IncrementProfiles(profiles, winners, p => p.RiverModel.WonAtShowdown++);
+            }
         }
 
         return profiles.Values;

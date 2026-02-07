@@ -15,6 +15,8 @@
     public int WonAtShowdown { get; set; }
 
     public FlopStats FlopModel { get; set; } = new();
+    public TurnStats TurnModel { get; set; } = new();
+    public RiverStats RiverModel { get; set; } = new();
 
     // Optional: by-position dictionaries
     public List<PositionStats> ByPosition { get; set; } = new();
@@ -47,6 +49,40 @@ public sealed class PreflopStats
 public sealed class FlopStats
 {
     public int SawFlop { get; set; }
+    public int WentToShowdown { get; set; }
+    public int WonAtShowdown { get; set; }
+    public int CBetOpportunities { get; set; }
+    public int CBets { get; set; }
+    public int FoldToCBetOpportunities { get; set; }
+    public int FoldToCBet { get; set; }
+    public int DonkBets { get; set; }
+    public int FirstFoldToCBet { get; set; }
+    public int CallVsCBet { get; set; }
+    public int RaiseVsCBet { get; set; }
+    public int MultiwayCBets { get; set; }
+    public int ProbeBets { get; set; }
+}
+
+public sealed class TurnStats
+{
+    public int SawTurn { get; set; }
+    public int WentToShowdown { get; set; }
+    public int WonAtShowdown { get; set; }
+    public int CBetOpportunities { get; set; }
+    public int CBets { get; set; }
+    public int FoldToCBetOpportunities { get; set; }
+    public int FoldToCBet { get; set; }
+    public int DonkBets { get; set; }
+    public int FirstFoldToCBet { get; set; }
+    public int CallVsCBet { get; set; }
+    public int RaiseVsCBet { get; set; }
+    public int MultiwayCBets { get; set; }
+    public int ProbeBets { get; set; }
+}
+
+public sealed class RiverStats
+{
+    public int SawRiver { get; set; }
     public int WentToShowdown { get; set; }
     public int WonAtShowdown { get; set; }
     public int CBetOpportunities { get; set; }
