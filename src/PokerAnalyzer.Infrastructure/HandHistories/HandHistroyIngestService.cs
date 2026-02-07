@@ -178,6 +178,78 @@ public sealed class HandHistoryIngestService : IHandHistoryIngestService
             IncrementProfiles(profiles, threeBetPlayers, heroName, p => p.PreflopModel.ThreeBetHands++);
             IncrementProfiles(profiles, facedThreeBetPlayers, heroName, p => p.PreflopModel.FacedThreeBetHands++);
             IncrementProfiles(profiles, foldToThreeBetPlayers, heroName, p => p.PreflopModel.FoldToThreeBetHands++);
+
+            var flopActions = hand.Actions
+                .Where(a => a.Street == Street.Flop && a.Type != ActionType.SitOut)
+                .ToList();
+
+            if (flopActions.Count > 0)
+            {
+                var flopPlayers = flopActions
+                    .Select(a => a.Player)
+                    .Where(p => !string.IsNullOrWhiteSpace(p))
+                    .Distinct(StringComparer.Ordinal)
+                    .ToList();
+
+                IncrementProfiles(profiles, flopPlayers, heroName, p => p.FlopModel.SawFlop++);
+
+                var showdownPlayers = hand.Showdown
+                    .Select(s => s.Player)
+                    .Where(p => !string.IsNullOrWhiteSpace(p))
+                    .Distinct(StringComparer.Ordinal)
+                    .ToList();
+
+                IncrementProfiles(profiles, showdownPlayers, heroName, p => p.FlopModel.WentToShowdown++);
+
+                var winners = hand.Showdown
+                    .Where(s => s.Won)
+                    .Select(s => s.Player)
+                    .Where(p => !string.IsNullOrWhiteSpace(p))
+                    .Distinct(StringComparer.Ordinal)
+                    .ToList();
+
+                IncrementProfiles(profiles, winners, heroName, p => p.FlopModel.WonAtShowdown++);
+
+                var (cbetOpportunityPlayer, cbetPlayer) = FlopOperations.GetFlopCBetResult(hand.Actions);
+                if (!string.IsNullOrWhiteSpace(cbetOpportunityPlayer))
+                {
+                    IncrementProfiles(profiles, new[] { cbetOpportunityPlayer }, heroName, p => p.FlopModel.CBetOpportunities++);
+                }
+
+                if (!string.IsNullOrWhiteSpace(cbetPlayer))
+                {
+                    IncrementProfiles(profiles, new[] { cbetPlayer }, heroName, p => p.FlopModel.CBets++);
+
+                    var facedCBetPlayers = new HashSet<string>(StringComparer.Ordinal);
+                    var foldedToCBetPlayers = new HashSet<string>(StringComparer.Ordinal);
+                    bool afterCBet = false;
+
+                    foreach (var action in flopActions)
+                    {
+                        if (!afterCBet)
+                        {
+                            if (action.Type == ActionType.Bet && string.Equals(action.Player, cbetPlayer, StringComparison.Ordinal))
+                                afterCBet = true;
+
+                            continue;
+                        }
+
+                        if (string.Equals(action.Player, cbetPlayer, StringComparison.Ordinal))
+                            continue;
+
+                        if (string.IsNullOrWhiteSpace(action.Player))
+                            continue;
+
+                        facedCBetPlayers.Add(action.Player);
+
+                        if (action.Type == ActionType.Fold)
+                            foldedToCBetPlayers.Add(action.Player);
+                    }
+
+                    IncrementProfiles(profiles, facedCBetPlayers, heroName, p => p.FlopModel.FoldToCBetOpportunities++);
+                    IncrementProfiles(profiles, foldedToCBetPlayers, heroName, p => p.FlopModel.FoldToCBet++);
+                }
+            }
         }
 
         return profiles.Values;
