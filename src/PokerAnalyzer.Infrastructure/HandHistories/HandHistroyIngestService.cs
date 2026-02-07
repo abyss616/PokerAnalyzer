@@ -85,9 +85,9 @@ public sealed class HandHistoryIngestService : IHandHistoryIngestService
             i++;
         }
 
-        foreach (var profile in BuildOpponentProfiles(session.Hands, session.Nickname))
+        foreach (var profile in BuildPlayerProfiles(session.Hands))
         {
-            session.Opponents.Add(profile);
+            session.Players.Add(profile);
         }
 
         _db.Sessions.Add(session);
@@ -103,9 +103,9 @@ public sealed class HandHistoryIngestService : IHandHistoryIngestService
         return sb.ToString();
     }
 
-    private static IEnumerable<OpponentProfile> BuildOpponentProfiles(IEnumerable<Hand> hands, string? heroName)
+    private static IEnumerable<PlayerProfile> BuildPlayerProfiles(IEnumerable<Hand> hands)
     {
-        var profiles = new Dictionary<string, OpponentProfile>(StringComparer.Ordinal);
+        var profiles = new Dictionary<string, PlayerProfile>(StringComparer.Ordinal);
 
         foreach (var hand in hands)
         {
@@ -122,9 +122,6 @@ public sealed class HandHistoryIngestService : IHandHistoryIngestService
 
             foreach (var player in activePlayers)
             {
-                if (!string.IsNullOrWhiteSpace(heroName) && string.Equals(player, heroName, StringComparison.Ordinal))
-                    continue;
-
                 GetOrCreate(profiles, player).Hands++;
             }
 
@@ -173,11 +170,11 @@ public sealed class HandHistoryIngestService : IHandHistoryIngestService
                 }
             }
 
-            IncrementProfiles(profiles, vpipPlayers, heroName, p => p.PreflopModel.VpipHands++);
-            IncrementProfiles(profiles, pfrPlayers, heroName, p => p.PreflopModel.PfrHands++);
-            IncrementProfiles(profiles, threeBetPlayers, heroName, p => p.PreflopModel.ThreeBetHands++);
-            IncrementProfiles(profiles, facedThreeBetPlayers, heroName, p => p.PreflopModel.FacedThreeBetHands++);
-            IncrementProfiles(profiles, foldToThreeBetPlayers, heroName, p => p.PreflopModel.FoldToThreeBetHands++);
+            IncrementProfiles(profiles, vpipPlayers, p => p.PreflopModel.VpipHands++);
+            IncrementProfiles(profiles, pfrPlayers, p => p.PreflopModel.PfrHands++);
+            IncrementProfiles(profiles, threeBetPlayers, p => p.PreflopModel.ThreeBetHands++);
+            IncrementProfiles(profiles, facedThreeBetPlayers, p => p.PreflopModel.FacedThreeBetHands++);
+            IncrementProfiles(profiles, foldToThreeBetPlayers, p => p.PreflopModel.FoldToThreeBetHands++);
 
             var flopActions = hand.Actions
                 .Where(a => a.Street == Street.Flop && a.Type != ActionType.SitOut)
@@ -191,7 +188,7 @@ public sealed class HandHistoryIngestService : IHandHistoryIngestService
                     .Distinct(StringComparer.Ordinal)
                     .ToList();
 
-                IncrementProfiles(profiles, flopPlayers, heroName, p => p.FlopModel.SawFlop++);
+                IncrementProfiles(profiles, flopPlayers, p => p.FlopModel.SawFlop++);
 
                 var showdownPlayers = hand.Showdown
                     .Select(s => s.Player)
@@ -199,7 +196,7 @@ public sealed class HandHistoryIngestService : IHandHistoryIngestService
                     .Distinct(StringComparer.Ordinal)
                     .ToList();
 
-                IncrementProfiles(profiles, showdownPlayers, heroName, p => p.FlopModel.WentToShowdown++);
+                IncrementProfiles(profiles, showdownPlayers, p => p.FlopModel.WentToShowdown++);
 
                 var winners = hand.Showdown
                     .Where(s => s.Won)
@@ -208,17 +205,17 @@ public sealed class HandHistoryIngestService : IHandHistoryIngestService
                     .Distinct(StringComparer.Ordinal)
                     .ToList();
 
-                IncrementProfiles(profiles, winners, heroName, p => p.FlopModel.WonAtShowdown++);
+                IncrementProfiles(profiles, winners, p => p.FlopModel.WonAtShowdown++);
 
                 var (cbetOpportunityPlayer, cbetPlayer) = FlopOperations.GetFlopCBetResult(hand.Actions);
                 if (!string.IsNullOrWhiteSpace(cbetOpportunityPlayer))
                 {
-                    IncrementProfiles(profiles, new[] { cbetOpportunityPlayer }, heroName, p => p.FlopModel.CBetOpportunities++);
+                    IncrementProfiles(profiles, new[] { cbetOpportunityPlayer }, p => p.FlopModel.CBetOpportunities++);
                 }
 
                 if (!string.IsNullOrWhiteSpace(cbetPlayer))
                 {
-                    IncrementProfiles(profiles, new[] { cbetPlayer }, heroName, p => p.FlopModel.CBets++);
+                    IncrementProfiles(profiles, new[] { cbetPlayer }, p => p.FlopModel.CBets++);
 
                     var facedCBetPlayers = new HashSet<string>(StringComparer.Ordinal);
                     var foldedToCBetPlayers = new HashSet<string>(StringComparer.Ordinal);
@@ -246,44 +243,44 @@ public sealed class HandHistoryIngestService : IHandHistoryIngestService
                             foldedToCBetPlayers.Add(action.Player);
                     }
 
-                    IncrementProfiles(profiles, facedCBetPlayers, heroName, p => p.FlopModel.FoldToCBetOpportunities++);
-                    IncrementProfiles(profiles, foldedToCBetPlayers, heroName, p => p.FlopModel.FoldToCBet++);
+                    IncrementProfiles(profiles, facedCBetPlayers, p => p.FlopModel.FoldToCBetOpportunities++);
+                    IncrementProfiles(profiles, foldedToCBetPlayers, p => p.FlopModel.FoldToCBet++);
                 }
 
                 var donkBet = FlopOperations.GetFlopDonkBet(hand.Actions);
                 if (!string.IsNullOrWhiteSpace(donkBet.DonkBettor))
                 {
-                    IncrementProfiles(profiles, new[] { donkBet.DonkBettor }, heroName, p => p.FlopModel.DonkBets++);
+                    IncrementProfiles(profiles, new[] { donkBet.DonkBettor }, p => p.FlopModel.DonkBets++);
                 }
 
                 var firstFoldToCBet = FlopOperations.GetFirstFoldToFlopCBet(hand.Actions);
                 if (!string.IsNullOrWhiteSpace(firstFoldToCBet.Folder))
                 {
-                    IncrementProfiles(profiles, new[] { firstFoldToCBet.Folder }, heroName, p => p.FlopModel.FirstFoldToCBet++);
+                    IncrementProfiles(profiles, new[] { firstFoldToCBet.Folder }, p => p.FlopModel.FirstFoldToCBet++);
                 }
 
                 var firstCallVsCBet = FlopTier2Operations.GetFirstCallVsFlopCBet(hand.Actions);
                 if (!string.IsNullOrWhiteSpace(firstCallVsCBet.Caller))
                 {
-                    IncrementProfiles(profiles, new[] { firstCallVsCBet.Caller }, heroName, p => p.FlopModel.CallVsCBet++);
+                    IncrementProfiles(profiles, new[] { firstCallVsCBet.Caller }, p => p.FlopModel.CallVsCBet++);
                 }
 
                 var firstRaiseVsCBet = FlopTier2Operations.GetFirstRaiseVsFlopCBet(hand.Actions);
                 if (!string.IsNullOrWhiteSpace(firstRaiseVsCBet.Raiser))
                 {
-                    IncrementProfiles(profiles, new[] { firstRaiseVsCBet.Raiser }, heroName, p => p.FlopModel.RaiseVsCBet++);
+                    IncrementProfiles(profiles, new[] { firstRaiseVsCBet.Raiser }, p => p.FlopModel.RaiseVsCBet++);
                 }
 
                 var multiwayCBetPlayer = FlopTier2Operations.GetMultiwayFlopCBetPlayer(hand.Actions);
                 if (!string.IsNullOrWhiteSpace(multiwayCBetPlayer))
                 {
-                    IncrementProfiles(profiles, new[] { multiwayCBetPlayer }, heroName, p => p.FlopModel.MultiwayCBets++);
+                    IncrementProfiles(profiles, new[] { multiwayCBetPlayer }, p => p.FlopModel.MultiwayCBets++);
                 }
 
                 var probeBet = FlopTier3Operations.GetFlopProbeBet(hand.Actions);
                 if (!string.IsNullOrWhiteSpace(probeBet.ProbeBettor))
                 {
-                    IncrementProfiles(profiles, new[] { probeBet.ProbeBettor }, heroName, p => p.FlopModel.ProbeBets++);
+                    IncrementProfiles(profiles, new[] { probeBet.ProbeBettor }, p => p.FlopModel.ProbeBets++);
                 }
             }
         }
@@ -291,25 +288,21 @@ public sealed class HandHistoryIngestService : IHandHistoryIngestService
         return profiles.Values;
     }
 
-    private static OpponentProfile GetOrCreate(Dictionary<string, OpponentProfile> profiles, string player)
+    private static PlayerProfile GetOrCreate(Dictionary<string, PlayerProfile> profiles, string player)
     {
         if (profiles.TryGetValue(player, out var existing)) return existing;
-        var created = new OpponentProfile { Player = player };
+        var created = new PlayerProfile { Player = player };
         profiles[player] = created;
         return created;
     }
 
     private static void IncrementProfiles(
-        Dictionary<string, OpponentProfile> profiles,
+        Dictionary<string, PlayerProfile> profiles,
         IEnumerable<string> players,
-        string? heroName,
-        Action<OpponentProfile> increment)
+        Action<PlayerProfile> increment)
     {
         foreach (var player in players)
         {
-            if (!string.IsNullOrWhiteSpace(heroName) && string.Equals(player, heroName, StringComparison.Ordinal))
-                continue;
-
             increment(GetOrCreate(profiles, player));
         }
     }

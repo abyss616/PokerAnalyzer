@@ -1,4 +1,4 @@
-﻿public sealed class OpponentProfile
+﻿public sealed class PlayerProfile
 {
     public Guid Id { get; set; }
     public Guid SessionId { get; set; }
@@ -25,8 +25,8 @@ public sealed class PositionStats
     public PositionEnum Position { get; set; }
     public Guid Id { get; set; } = Guid.NewGuid();
 
-    public Guid OpponentProfileId { get; set; }
-    public OpponentProfile OpponentProfile { get; set; } = null!;
+    public Guid PlayerProfileId { get; set; }
+    public PlayerProfile PlayerProfile { get; set; } = null!;
     public enum PositionEnum { UTG, UTG1, UTG2, LJ, HJ, CO, BTN, SB, BB }
     public int Hands { get; set; }
     public int Vpip { get; set; }
