@@ -49,6 +49,11 @@ namespace PokerAnalyzer.Infrastructure.Persistence
                 .HasIndex(x => new { x.SessionId, x.Player })
                 .IsUnique();
 
+            b.Entity<OpponentProfile>()
+                .OwnsOne(o => o.PreflopModel);
+            b.Entity<OpponentProfile>()
+                .OwnsOne(o => o.FlopModel);
+
             b.Entity<PositionStats>()
                 .Property(x => x.Position)
                 .HasConversion<int>()      // explicit, future-proof
@@ -176,17 +181,7 @@ namespace PokerAnalyzer.Infrastructure.Persistence
                 });
             });
 
-            b.Entity<Flop>(f =>
-            {
-                f.ToTable("Flops");
-                f.HasKey(x => x.Id);
 
-                f.HasOne(x => x.Hand)
-                 .WithOne(h => h.FlopModel)
-                 .HasForeignKey<Flop>(x => x.HandId);
-
-                f.Ignore(x => x.FlopTexture);
-            });
         }
 
         public override int SaveChanges(bool acceptAllChangesOnSuccess)
