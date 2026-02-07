@@ -51,8 +51,6 @@ namespace PokerAnalyzer.Infrastructure.Persistence
 
             b.Entity<OpponentProfile>()
                 .OwnsOne(o => o.PreflopModel);
-            b.Entity<OpponentProfile>()
-                .OwnsOne(o => o.FlopModel);
 
             b.Entity<PositionStats>()
                 .Property(x => x.Position)
@@ -181,6 +179,9 @@ namespace PokerAnalyzer.Infrastructure.Persistence
                 });
             });
 
+
+                f.Ignore(x => x.FlopTexture);
+            });
 
         }
 

@@ -114,8 +114,6 @@ public sealed class HandHistoryIngestService : IHandHistoryIngestService
                 .Where(a => a.Street == Street.Preflop)
                 .ToList();
 
-            var preflopSnapshot = BuildPreflopSnapshot(preflopActions);
-
             var activePlayers = preflopActions
                 .Where(a => a.Type != ActionType.SitOut)
                 .Select(a => a.Player)
@@ -131,22 +129,56 @@ public sealed class HandHistoryIngestService : IHandHistoryIngestService
                 GetOrCreate(profiles, player).Hands++;
             }
 
-            var vpipPlayers = new HashSet<string>(preflopSnapshot.VpipPlayers, StringComparer.Ordinal);
+            var vpipPlayers = new HashSet<string>(StringComparer.Ordinal);
             var pfrPlayers = new HashSet<string>(StringComparer.Ordinal);
             var threeBetPlayers = new HashSet<string>(StringComparer.Ordinal);
             var facedThreeBetPlayers = new HashSet<string>(StringComparer.Ordinal);
             var foldToThreeBetPlayers = new HashSet<string>(StringComparer.Ordinal);
 
-            AddIfPresent(pfrPlayers, preflopSnapshot.PfrPlayer);
-            AddIfPresent(threeBetPlayers, preflopSnapshot.ThreeBetPlayer);
-            AddIfPresent(facedThreeBetPlayers, preflopSnapshot.FacedThreeBetPlayer);
-            AddIfPresent(foldToThreeBetPlayers, preflopSnapshot.FoldToThreeBetPlayer);
+            string? preflopRaiser = null;
+            bool sawRaise = false;
+            bool sawThreeBet = false;
 
-            IncrementProfiles(profiles, vpipPlayers, heroName, p => p.PreflopModel.VpipHands++);
-            IncrementProfiles(profiles, pfrPlayers, heroName, p => p.PreflopModel.PfrHands++);
-            IncrementProfiles(profiles, threeBetPlayers, heroName, p => p.PreflopModel.ThreeBetHands++);
-            IncrementProfiles(profiles, facedThreeBetPlayers, heroName, p => p.PreflopModel.FacedThreeBetHands++);
-            IncrementProfiles(profiles, foldToThreeBetPlayers, heroName, p => p.PreflopModel.FoldToThreeBetHands++);
+            foreach (var action in preflopActions)
+            {
+                if (action.Type == ActionType.SitOut) continue;
+
+                if (IsVoluntaryPreflopInvestment(action.Type))
+                {
+                    vpipPlayers.Add(action.Player);
+                }
+
+                if (PreFlopOperations.IsPreflopAggressive(action.Type))
+                {
+                    if (!sawRaise)
+                    {
+                        sawRaise = true;
+                        preflopRaiser = action.Player;
+                        pfrPlayers.Add(action.Player);
+                    }
+                    else if (!sawThreeBet && !string.Equals(action.Player, preflopRaiser, StringComparison.Ordinal))
+                    {
+                        sawThreeBet = true;
+                        threeBetPlayers.Add(action.Player);
+                        if (!string.IsNullOrWhiteSpace(preflopRaiser))
+                            facedThreeBetPlayers.Add(preflopRaiser);
+                    }
+                }
+
+                if (sawThreeBet &&
+                    action.Type == ActionType.Fold &&
+                    !string.IsNullOrWhiteSpace(preflopRaiser) &&
+                    string.Equals(action.Player, preflopRaiser, StringComparison.Ordinal))
+                {
+                    foldToThreeBetPlayers.Add(action.Player);
+                }
+            }
+
+            IncrementProfiles(profiles, vpipPlayers, heroName, p => p.VpipHands++);
+            IncrementProfiles(profiles, pfrPlayers, heroName, p => p.PfrHands++);
+            IncrementProfiles(profiles, threeBetPlayers, heroName, p => p.ThreeBetHands++);
+            IncrementProfiles(profiles, facedThreeBetPlayers, heroName, p => p.FacedThreeBetHands++);
+            IncrementProfiles(profiles, foldToThreeBetPlayers, heroName, p => p.FoldToThreeBetHands++);
         }
 
         return profiles.Values;
@@ -178,66 +210,6 @@ public sealed class HandHistoryIngestService : IHandHistoryIngestService
     private static bool IsVoluntaryPreflopInvestment(ActionType type) =>
         type is ActionType.Call or ActionType.Raise or ActionType.AllIn or ActionType.Bet;
 
-    private static void AddIfPresent(ISet<string> target, string? player)
-    {
-        if (!string.IsNullOrWhiteSpace(player))
-            target.Add(player);
-    }
-
-    private static PreflopSnapshot BuildPreflopSnapshot(IEnumerable<HandAction> actions)
-    {
-        var vpipPlayers = new List<string>();
-        var vpipSet = new HashSet<string>(StringComparer.Ordinal);
-
-        string? preflopRaiser = null;
-        string? pfrPlayer = null;
-        string? threeBetPlayer = null;
-        string? facedThreeBetPlayer = null;
-        string? foldToThreeBetPlayer = null;
-        bool sawRaise = false;
-        bool sawThreeBet = false;
-
-        foreach (var action in actions)
-        {
-            if (action.Type == ActionType.SitOut) continue;
-
-            if (IsVoluntaryPreflopInvestment(action.Type) && vpipSet.Add(action.Player))
-                vpipPlayers.Add(action.Player);
-
-            if (PreFlopOperations.IsPreflopAggressive(action.Type))
-            {
-                if (!sawRaise)
-                {
-                    sawRaise = true;
-                    preflopRaiser = action.Player;
-                    pfrPlayer = action.Player;
-                }
-                else if (!sawThreeBet && !string.Equals(action.Player, preflopRaiser, StringComparison.Ordinal))
-                {
-                    sawThreeBet = true;
-                    threeBetPlayer = action.Player;
-                    facedThreeBetPlayer = preflopRaiser;
-                }
-            }
-
-            if (sawThreeBet &&
-                action.Type == ActionType.Fold &&
-                !string.IsNullOrWhiteSpace(preflopRaiser) &&
-                string.Equals(action.Player, preflopRaiser, StringComparison.Ordinal))
-            {
-                foldToThreeBetPlayer = action.Player;
-            }
-        }
-
-        return new PreflopSnapshot(vpipPlayers, pfrPlayer, threeBetPlayer, facedThreeBetPlayer, foldToThreeBetPlayer);
-    }
-
-    private sealed record PreflopSnapshot(
-        IReadOnlyCollection<string> VpipPlayers,
-        string? PfrPlayer,
-        string? ThreeBetPlayer,
-        string? FacedThreeBetPlayer,
-        string? FoldToThreeBetPlayer);
 
 
     private static Hand ParseHand(XElement game, string? heroName)
