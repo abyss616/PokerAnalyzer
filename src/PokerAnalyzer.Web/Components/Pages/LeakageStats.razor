@@ -115,6 +115,11 @@
             AggregatedNumber = GetValue("Fold BB vs Steal")
         };
     }
+
+    private static decimal GetValue(PositionPreflopStats bb)
+        => bb.FacedLateOpenHands <= 0
+            ? 0m
+            : Math.Round((decimal)bb.FoldedVsLateOpenHands / bb.FacedLateOpenHands * 100m, 2);
 }
 
 <style>
