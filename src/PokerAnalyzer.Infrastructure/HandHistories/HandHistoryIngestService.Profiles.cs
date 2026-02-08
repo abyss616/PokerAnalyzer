@@ -75,16 +75,7 @@ public sealed partial class HandHistoryIngestService
             foreach (var assignment in positionAssignments)
             {
                 var profile = GetOrCreate(profiles, assignment.Key);
-                var positionStats = assignment.Value switch
-                {
-                    PositionStats.PositionEnum.UTG => profile.PreflopModel.UTGPosition,
-                    PositionStats.PositionEnum.HJ => profile.PreflopModel.HJPosition,
-                    PositionStats.PositionEnum.CO => profile.PreflopModel.COPosition,
-                    PositionStats.PositionEnum.BTN => profile.PreflopModel.BTNPosition,
-                    PositionStats.PositionEnum.SB => profile.PreflopModel.SBPosition,
-                    PositionStats.PositionEnum.BB => profile.PreflopModel.BBPosition,
-                    _ => profile.PreflopModel.UTGPosition
-                };
+                var positionStats = GetPositionPreflopStats(profile.PreflopModel, assignment.Value);
 
                 if (vpipPlayers.Contains(assignment.Key))
                     positionStats.VpipHands++;
@@ -100,6 +91,23 @@ public sealed partial class HandHistoryIngestService
 
                 if (foldToThreeBetPlayers.Contains(assignment.Key))
                     positionStats.FoldToThreeBetHands++;
+            }
+
+            var positionAssignments = GetSixMaxPositionAssignments(hand, activePlayers, preflopActions);
+            foreach (var assignment in positionAssignments)
+            {
+                var profile = GetOrCreate(profiles, assignment.Key);
+                var positionStats = GetOrCreatePositionStats(profile, assignment.Value);
+                positionStats.Hands++;
+
+                if (vpipPlayers.Contains(assignment.Key))
+                    positionStats.Vpip++;
+
+                if (pfrPlayers.Contains(assignment.Key))
+                    positionStats.Pfr++;
+
+                if (threeBetPlayers.Contains(assignment.Key))
+                    positionStats.ThreeBet++;
             }
 
             var flopActions = hand.Actions
@@ -526,5 +534,21 @@ public sealed partial class HandHistoryIngestService
         }
 
         return assignments;
+    }
+
+    private static PositionStats GetOrCreatePositionStats(PlayerProfile profile, PositionStats.PositionEnum position)
+    {
+        var existing = profile.ByPosition.FirstOrDefault(p => p.Position == position);
+        if (existing != null)
+            return existing;
+
+        var created = new PositionStats
+        {
+            Position = position,
+            PlayerProfile = profile
+        };
+
+        profile.ByPosition.Add(created);
+        return created;
     }
 }
