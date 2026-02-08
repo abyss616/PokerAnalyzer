@@ -1,9 +1,7 @@
 using PokerAnalyzer.Web.Components;
 using PokerAnalyzer.Web.Services;
 using Radzen;
-using Microsoft.EntityFrameworkCore;
 using PokerAnalyzer.Infrastructure;
-using PokerAnalyzer.Infrastructure.Persistence;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -29,13 +27,6 @@ builder.Services.AddHttpClient<ApiClient>(client =>
 });
 builder.Services.AddServerSideBlazor().AddCircuitOptions(o => o.DetailedErrors = true);
 var app = builder.Build();
-
-using (var scope = app.Services.CreateScope())
-{
-    var db = scope.ServiceProvider.GetRequiredService<PokerDbContext>();
-    db.Database.EnsureCreated();
-}
-
 app.MapRazorComponents<App>()
    .AddInteractiveServerRenderMode();
 if (!app.Environment.IsDevelopment())
