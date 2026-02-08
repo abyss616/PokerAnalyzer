@@ -526,12 +526,12 @@ public sealed partial class HandHistoryIngestService
     {
         return position switch
         {
-            PositionStats.PositionEnum.UTG => preflopStats.UTGPosition,
-            PositionStats.PositionEnum.HJ => preflopStats.HJPosition,
-            PositionStats.PositionEnum.CO => preflopStats.COPosition,
-            PositionStats.PositionEnum.BTN => preflopStats.BTNPosition,
-            PositionStats.PositionEnum.SB => preflopStats.SBPosition,
-            PositionStats.PositionEnum.BB => preflopStats.BBPosition,
+            PositionStats.PositionEnum.UTG => preflopStats.Positions.Utg,
+            PositionStats.PositionEnum.HJ => preflopStats.Positions.Hj,
+            PositionStats.PositionEnum.CO => preflopStats.Positions.Co,
+            PositionStats.PositionEnum.BTN => preflopStats.Positions.Btn,
+            PositionStats.PositionEnum.SB => preflopStats.Positions.Sb,
+            PositionStats.PositionEnum.BB => preflopStats.Positions.Bb,
             _ => throw new ArgumentOutOfRangeException(nameof(position), position, "Unsupported position.")
         };
     }
