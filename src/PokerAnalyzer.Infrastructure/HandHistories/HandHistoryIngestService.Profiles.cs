@@ -349,32 +349,32 @@ public sealed partial class HandHistoryIngestService
                     {
                         if (checkSeen)
                         {
-                            IncrementProfiles(profiles, new[] { action.Player }, p => p.RiverModel.RiverBetOpportunities++);
+                            IncrementRiverProfilesByPosition(profiles, positionAssignments, new[] { action.Player }, p => p.RiverBetOpportunities++);
                         }
 
                         if (checkSeen && IsAggressivePostflopAction(action.Type))
                         {
-                            IncrementProfiles(profiles, new[] { action.Player }, p => p.RiverModel.RiverBetsWhenCheckedTo++);
+                            IncrementRiverProfilesByPosition(profiles, positionAssignments, new[] { action.Player }, p => p.RiverBetsWhenCheckedTo++);
                         }
                     }
 
                     if (betSeen && (action.Type == ActionType.Call || action.Type == ActionType.Fold || IsAggressivePostflopAction(action.Type)))
                     {
-                        IncrementProfiles(profiles, new[] { action.Player }, p => p.RiverModel.RiverFacedBet++);
+                        IncrementRiverProfilesByPosition(profiles, positionAssignments, new[] { action.Player }, p => p.RiverFacedBet++);
 
                         if (action.Type == ActionType.Call)
                         {
-                            IncrementProfiles(profiles, new[] { action.Player }, p => p.RiverModel.RiverCallsVsBet++);
+                            IncrementRiverProfilesByPosition(profiles, positionAssignments, new[] { action.Player }, p => p.RiverCallsVsBet++);
                         }
 
                         if (action.Type == ActionType.Fold)
                         {
-                            IncrementProfiles(profiles, new[] { action.Player }, p => p.RiverModel.RiverFoldToBet++);
+                            IncrementRiverProfilesByPosition(profiles, positionAssignments, new[] { action.Player }, p => p.RiverFoldToBet++);
                         }
 
                         if (IsAggressivePostflopAction(action.Type))
                         {
-                            IncrementProfiles(profiles, new[] { action.Player }, p => p.RiverModel.RiverRaiseVsBet++);
+                            IncrementRiverProfilesByPosition(profiles, positionAssignments, new[] { action.Player }, p => p.RiverRaiseVsBet++);
                         }
                     }
 
@@ -416,7 +416,7 @@ public sealed partial class HandHistoryIngestService
                     .Distinct(StringComparer.Ordinal)
                     .ToList();
 
-                IncrementProfiles(profiles, riverPlayers, p => p.RiverModel.SawRiver++);
+                IncrementRiverProfilesByPosition(profiles, positionAssignments, riverPlayers, p => p.SawRiver++);
 
                 foreach (var playerAggression in riverAggressionByPlayer)
                 {
@@ -427,13 +427,13 @@ public sealed partial class HandHistoryIngestService
                         ? playerAggression.Value.BetsRaises
                         : (decimal)playerAggression.Value.BetsRaises / playerAggression.Value.Calls;
 
-                    IncrementProfiles(profiles, new[] { playerAggression.Key }, p => p.RiverModel.RiverAggressionFactor += factor);
+                    IncrementRiverProfilesByPosition(profiles, positionAssignments, new[] { playerAggression.Key }, p => p.RiverAggressionFactor += factor);
                 }
 
                 foreach (var playerBetSize in riverBetSizeTotals)
                 {
                     var averagePercent = playerBetSize.Value.TotalPercent / playerBetSize.Value.Count;
-                    IncrementProfiles(profiles, new[] { playerBetSize.Key }, p => p.RiverModel.RiverBetSizePercentPot += averagePercent);
+                    IncrementRiverProfilesByPosition(profiles, positionAssignments, new[] { playerBetSize.Key }, p => p.RiverBetSizePercentPot += averagePercent);
                 }
 
                 var showdownPlayers = hand.Showdown
@@ -442,7 +442,7 @@ public sealed partial class HandHistoryIngestService
                     .Distinct(StringComparer.Ordinal)
                     .ToList();
 
-                IncrementProfiles(profiles, showdownPlayers, p => p.RiverModel.WentToShowdown++);
+                IncrementRiverProfilesByPosition(profiles, positionAssignments, showdownPlayers, p => p.WentToShowdown++);
 
                 var winners = hand.Showdown
                     .Where(s => s.Won)
@@ -451,7 +451,7 @@ public sealed partial class HandHistoryIngestService
                     .Distinct(StringComparer.Ordinal)
                     .ToList();
 
-                IncrementProfiles(profiles, winners, p => p.RiverModel.WonAtShowdown++);
+                IncrementRiverProfilesByPosition(profiles, positionAssignments, winners, p => p.WonAtShowdown++);
             }
         }
 
@@ -577,6 +577,22 @@ public sealed partial class HandHistoryIngestService
         };
     }
 
+    private static RiverStats GetPositionRiverStats(
+        RiverStatsByPosition riverStats,
+        PositionStats.PositionEnum position)
+    {
+        return position switch
+        {
+            PositionStats.PositionEnum.UTG => riverStats.Positions.Utg,
+            PositionStats.PositionEnum.HJ => riverStats.Positions.Hj,
+            PositionStats.PositionEnum.CO => riverStats.Positions.Co,
+            PositionStats.PositionEnum.BTN => riverStats.Positions.Btn,
+            PositionStats.PositionEnum.SB => riverStats.Positions.Sb,
+            PositionStats.PositionEnum.BB => riverStats.Positions.Bb,
+            _ => throw new ArgumentOutOfRangeException(nameof(position), position, "Unsupported position.")
+        };
+    }
+
     private static void IncrementFlopProfilesByPosition(
         Dictionary<string, PlayerProfile> profiles,
         Dictionary<string, PositionStats.PositionEnum> positionAssignments,
@@ -607,6 +623,23 @@ public sealed partial class HandHistoryIngestService
 
             var profile = GetOrCreate(profiles, player);
             var positionStats = GetPositionTurnStats(profile.TurnModel, position);
+            incrementAction(positionStats);
+        }
+    }
+
+    private static void IncrementRiverProfilesByPosition(
+        Dictionary<string, PlayerProfile> profiles,
+        Dictionary<string, PositionStats.PositionEnum> positionAssignments,
+        IEnumerable<string> players,
+        Action<RiverStats> incrementAction)
+    {
+        foreach (var player in players)
+        {
+            if (!positionAssignments.TryGetValue(player, out var position))
+                continue;
+
+            var profile = GetOrCreate(profiles, player);
+            var positionStats = GetPositionRiverStats(profile.RiverModel, position);
             incrementAction(positionStats);
         }
     }
