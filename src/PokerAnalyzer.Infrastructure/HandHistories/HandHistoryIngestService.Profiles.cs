@@ -92,8 +92,7 @@ public sealed partial class HandHistoryIngestService
                 if (foldToThreeBetPlayers.Contains(assignment.Key))
                     positionStats.FoldToThreeBetHands++;
             }
-
-            var positionAssignments = GetSixMaxPositionAssignments(hand, activePlayers, preflopActions);
+            
             foreach (var assignment in positionAssignments)
             {
                 var profile = GetOrCreate(profiles, assignment.Key);
@@ -534,6 +533,22 @@ public sealed partial class HandHistoryIngestService
         }
 
         return assignments;
+    }
+
+    private static PositionPreflopStats GetPositionPreflopStats(
+        PreflopStats preflopStats,
+        PositionStats.PositionEnum position)
+    {
+        return position switch
+        {
+            PositionStats.PositionEnum.UTG => preflopStats.UTGPosition,
+            PositionStats.PositionEnum.HJ => preflopStats.HJPosition,
+            PositionStats.PositionEnum.CO => preflopStats.COPosition,
+            PositionStats.PositionEnum.BTN => preflopStats.BTNPosition,
+            PositionStats.PositionEnum.SB => preflopStats.SBPosition,
+            PositionStats.PositionEnum.BB => preflopStats.BBPosition,
+            _ => throw new ArgumentOutOfRangeException(nameof(position), position, "Unsupported position.")
+        };
     }
 
     private static PositionStats GetOrCreatePositionStats(PlayerProfile profile, PositionStats.PositionEnum position)
