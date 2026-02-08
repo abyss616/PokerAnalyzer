@@ -27,10 +27,6 @@ public sealed class PositionStats
     public Guid PlayerProfileId { get; set; }
     public PlayerProfile PlayerProfile { get; set; } = null!;
     public enum PositionEnum { UTG, UTG1, UTG2, LJ, HJ, CO, BTN, SB, BB }
-    public int Hands { get; set; }
-    public int Vpip { get; set; }
-    public int Pfr { get; set; }
-    public int ThreeBet { get; set; }
 }
 
 public sealed class PreflopStats

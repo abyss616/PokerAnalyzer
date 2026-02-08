@@ -93,22 +93,7 @@ public sealed partial class HandHistoryIngestService
                     positionStats.FoldToThreeBetHands++;
             }
             
-            foreach (var assignment in positionAssignments)
-            {
-                var profile = GetOrCreate(profiles, assignment.Key);
-                var positionStats = GetOrCreatePositionStats(profile, assignment.Value);
-                positionStats.Hands++;
-
-                if (vpipPlayers.Contains(assignment.Key))
-                    positionStats.Vpip++;
-
-                if (pfrPlayers.Contains(assignment.Key))
-                    positionStats.Pfr++;
-
-                if (threeBetPlayers.Contains(assignment.Key))
-                    positionStats.ThreeBet++;
-            }
-
+ 
             var flopActions = hand.Actions
                 .Where(a => a.Street == Street.Flop && a.Type != ActionType.SitOut)
                 .ToList();
