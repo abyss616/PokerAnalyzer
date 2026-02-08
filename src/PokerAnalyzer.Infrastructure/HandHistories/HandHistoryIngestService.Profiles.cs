@@ -214,7 +214,7 @@ public sealed partial class HandHistoryIngestService
                     .Distinct(StringComparer.Ordinal)
                     .ToList();
 
-                IncrementProfiles(profiles, turnPlayers, p => p.TurnModel.SawTurn++);
+                IncrementTurnProfilesByPosition(profiles, positionAssignments, turnPlayers, p => p.SawTurn++);
 
                 var showdownPlayers = hand.Showdown
                     .Select(s => s.Player)
@@ -222,7 +222,7 @@ public sealed partial class HandHistoryIngestService
                     .Distinct(StringComparer.Ordinal)
                     .ToList();
 
-                IncrementProfiles(profiles, showdownPlayers, p => p.TurnModel.WentToShowdown++);
+                IncrementTurnProfilesByPosition(profiles, positionAssignments, showdownPlayers, p => p.WentToShowdown++);
 
                 var winners = hand.Showdown
                     .Where(s => s.Won)
@@ -231,7 +231,7 @@ public sealed partial class HandHistoryIngestService
                     .Distinct(StringComparer.Ordinal)
                     .ToList();
 
-                IncrementProfiles(profiles, winners, p => p.TurnModel.WonAtShowdown++);
+                IncrementTurnProfilesByPosition(profiles, positionAssignments, winners, p => p.WonAtShowdown++);
 
                 var flopCBetResult = FlopOperations.GetFlopCBetResult(hand.Actions);
                 if (!string.IsNullOrWhiteSpace(flopCBetResult.CBetPlayer))
@@ -248,7 +248,7 @@ public sealed partial class HandHistoryIngestService
 
                         if (!betBefore && IsAggressivePostflopAction(firstTurnBet.Type))
                         {
-                            IncrementProfiles(profiles, new[] { flopCBetPlayer }, p => p.TurnModel.TurnCBet++);
+                            IncrementTurnProfilesByPosition(profiles, positionAssignments, new[] { flopCBetPlayer }, p => p.TurnCBet++);
                         }
                     }
                 }
@@ -264,12 +264,12 @@ public sealed partial class HandHistoryIngestService
 
                     if (action.Type == ActionType.Check && !betSeen)
                     {
-                        IncrementProfiles(profiles, new[] { action.Player }, p => p.TurnModel.TurnCheck++);
+                        IncrementTurnProfilesByPosition(profiles, positionAssignments, new[] { action.Player }, p => p.TurnCheck++);
                     }
 
                     if (action.Type == ActionType.Fold && betSeen)
                     {
-                        IncrementProfiles(profiles, new[] { action.Player }, p => p.TurnModel.TurnFoldToBet++);
+                        IncrementTurnProfilesByPosition(profiles, positionAssignments, new[] { action.Player }, p => p.TurnFoldToBet++);
                     }
 
                     if (IsAggressivePostflopAction(action.Type))
@@ -281,7 +281,7 @@ public sealed partial class HandHistoryIngestService
 
                         if (betSeen)
                         {
-                            IncrementProfiles(profiles, new[] { action.Player }, p => p.TurnModel.TurnRaiseVsBet++);
+                            IncrementTurnProfilesByPosition(profiles, positionAssignments, new[] { action.Player }, p => p.TurnRaiseVsBet++);
                         }
 
                         if (action.Amount.HasValue && hand.Pot.HasValue && hand.Pot.Value > 0m)
@@ -313,20 +313,20 @@ public sealed partial class HandHistoryIngestService
                         ? playerAggression.Value.BetsRaises
                         : (decimal)playerAggression.Value.BetsRaises / playerAggression.Value.Calls;
 
-                    IncrementProfiles(profiles, new[] { playerAggression.Key }, p => p.TurnModel.TurnAggressionFactor += factor);
+                    IncrementTurnProfilesByPosition(profiles, positionAssignments, new[] { playerAggression.Key }, p => p.TurnAggressionFactor += factor);
                 }
 
                 foreach (var playerBetSize in turnBetSizeTotals)
                 {
                     var averagePercent = playerBetSize.Value.TotalPercent / playerBetSize.Value.Count;
-                    IncrementProfiles(profiles, new[] { playerBetSize.Key }, p => p.TurnModel.TurnBetSizePercentPot += averagePercent);
+                    IncrementTurnProfilesByPosition(profiles, positionAssignments, new[] { playerBetSize.Key }, p => p.TurnBetSizePercentPot += averagePercent);
                 }
 
                 var wtsdCarryoverPlayers = turnPlayers
                     .Where(p => showdownPlayers.Contains(p, StringComparer.Ordinal))
                     .ToList();
 
-                IncrementProfiles(profiles, wtsdCarryoverPlayers, p => p.TurnModel.TurnWTSDCarryover++);
+                IncrementTurnProfilesByPosition(profiles, positionAssignments, wtsdCarryoverPlayers, p => p.TurnWTSDCarryover++);
             }
 
             var riverActions = hand.Actions
@@ -552,6 +552,22 @@ public sealed partial class HandHistoryIngestService
         };
     }
 
+    private static TurnStats GetPositionTurnStats(
+        TurnStatsByPosition turnStats,
+        PositionStats.PositionEnum position)
+    {
+        return position switch
+        {
+            PositionStats.PositionEnum.UTG => turnStats.Positions.Utg,
+            PositionStats.PositionEnum.HJ => turnStats.Positions.Hj,
+            PositionStats.PositionEnum.CO => turnStats.Positions.Co,
+            PositionStats.PositionEnum.BTN => turnStats.Positions.Btn,
+            PositionStats.PositionEnum.SB => turnStats.Positions.Sb,
+            PositionStats.PositionEnum.BB => turnStats.Positions.Bb,
+            _ => throw new ArgumentOutOfRangeException(nameof(position), position, "Unsupported position.")
+        };
+    }
+
     private static void IncrementFlopProfilesByPosition(
         Dictionary<string, PlayerProfile> profiles,
         Dictionary<string, PositionStats.PositionEnum> positionAssignments,
@@ -565,6 +581,23 @@ public sealed partial class HandHistoryIngestService
 
             var profile = GetOrCreate(profiles, player);
             var positionStats = GetPositionFlopStats(profile.FlopModel, position);
+            incrementAction(positionStats);
+        }
+    }
+
+    private static void IncrementTurnProfilesByPosition(
+        Dictionary<string, PlayerProfile> profiles,
+        Dictionary<string, PositionStats.PositionEnum> positionAssignments,
+        IEnumerable<string> players,
+        Action<TurnStats> incrementAction)
+    {
+        foreach (var player in players)
+        {
+            if (!positionAssignments.TryGetValue(player, out var position))
+                continue;
+
+            var profile = GetOrCreate(profiles, player);
+            var positionStats = GetPositionTurnStats(profile.TurnModel, position);
             incrementAction(positionStats);
         }
     }
