@@ -93,6 +93,23 @@ public sealed partial class HandHistoryIngestService
                     positionStats.FoldToThreeBetHands++;
             }
 
+            var positionAssignments = GetSixMaxPositionAssignments(hand, activePlayers, preflopActions);
+            foreach (var assignment in positionAssignments)
+            {
+                var profile = GetOrCreate(profiles, assignment.Key);
+                var positionStats = GetOrCreatePositionStats(profile, assignment.Value);
+                positionStats.Hands++;
+
+                if (vpipPlayers.Contains(assignment.Key))
+                    positionStats.Vpip++;
+
+                if (pfrPlayers.Contains(assignment.Key))
+                    positionStats.Pfr++;
+
+                if (threeBetPlayers.Contains(assignment.Key))
+                    positionStats.ThreeBet++;
+            }
+
             var flopActions = hand.Actions
                 .Where(a => a.Street == Street.Flop && a.Type != ActionType.SitOut)
                 .ToList();
@@ -519,15 +536,19 @@ public sealed partial class HandHistoryIngestService
         return assignments;
     }
 
-    private static PositionPreflopStats GetPositionPreflopStats(PreflopStats stats, PositionStats.PositionEnum position) =>
-        position switch
+    private static PositionStats GetOrCreatePositionStats(PlayerProfile profile, PositionStats.PositionEnum position)
+    {
+        var existing = profile.ByPosition.FirstOrDefault(p => p.Position == position);
+        if (existing != null)
+            return existing;
+
+        var created = new PositionStats
         {
-            PositionStats.PositionEnum.UTG => stats.UTGPosition,
-            PositionStats.PositionEnum.HJ => stats.HJPosition,
-            PositionStats.PositionEnum.CO => stats.COPosition,
-            PositionStats.PositionEnum.BTN => stats.BTNPosition,
-            PositionStats.PositionEnum.SB => stats.SBPosition,
-            PositionStats.PositionEnum.BB => stats.BBPosition,
-            _ => stats.UTGPosition
+            Position = position,
+            PlayerProfile = profile
         };
+
+        profile.ByPosition.Add(created);
+        return created;
+    }
 }
