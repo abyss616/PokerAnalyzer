@@ -107,16 +107,6 @@ public sealed class FlopStats
 [Owned]
 public sealed class TurnStatsByPosition
 {
-    public int SawTurn { get; set; }
-    public int WentToShowdown { get; set; }
-    public int WonAtShowdown { get; set; }
-    public int TurnCBet { get; set; }
-    public int TurnCheck { get; set; }
-    public int TurnFoldToBet { get; set; }
-    public decimal TurnAggressionFactor { get; set; }
-    public decimal TurnBetSizePercentPot { get; set; }
-    public int TurnRaiseVsBet { get; set; }
-    public int TurnWTSDCarryover { get; set; }
     public PositionTurnStatsByPosition Positions { get; set; } = new();
 }
 
