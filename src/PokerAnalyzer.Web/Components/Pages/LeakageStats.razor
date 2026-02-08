@@ -49,7 +49,7 @@
                                           Frozen="true"
                                           Width="220px" />
                     <RadzenDataGridColumn TItem="LeakageStatsGridModel"
-                                          Property="AggregatedNumber"
+                                          Property="FoldBBvsSteal"
                                           Title="Fold BB vs Steal"
                                           Width="160px"
                                           TextAlign="TextAlign.Right"
@@ -108,14 +108,14 @@
     private static LeakageStatsGridModel MapToLeakageGridModel(PlayerProfile player)
     {
         var bb = player.PreflopModel.Positions.Bb;
-        var aggregatedNumber = bb.FacedLateOpenHands <= 0
+        var foldBBvsSteal = bb.FacedLateOpenHands <= 0
             ? 0m
             : Math.Round((decimal)bb.FoldedVsLateOpenHands / bb.FacedLateOpenHands * 100m, 2);
 
         return new LeakageStatsGridModel
         {
             PlayerName = player.Player,
-            AggregatedNumber = GetValue(bb)
+            FoldBBvsSteal = GetValue(bb)
         };
     }
 
