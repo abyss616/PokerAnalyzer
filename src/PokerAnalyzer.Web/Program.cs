@@ -23,6 +23,7 @@ builder.Services.AddHttpClient<ApiClient>(client =>
 {
     client.BaseAddress = new Uri(apiBaseUrl);
 });
+builder.Services.AddServerSideBlazor().AddCircuitOptions(o => o.DetailedErrors = true);
 var app = builder.Build();
 app.MapRazorComponents<App>()
    .AddInteractiveServerRenderMode();

@@ -1,8 +1,9 @@
 ﻿@page "/handhistories/upload"
 @rendermode InteractiveServer
 @using Microsoft.AspNetCore.Components.Forms
+@using Microsoft.AspNetCore.Components.Web
 @inject PokerAnalyzer.Web.Services.ApiClient Api
-
+@inject TooltipService TooltipService
 <h3>Upload Hand History (XML)</h3>
 
 <p>Select an XML hand history file. Upload starts immediately.</p>
@@ -27,50 +28,70 @@
 {
     <div class="mt-4">
         <h4>Player Stats</h4>
+
         @{
             var statNames = GetStatNames(_playerStats);
         }
-        <RadzenDataGrid Data="@_playerStats"
-                        TItem="PokerAnalyzer.Web.Services.ApiClient.PlayerStatsResult"
-                        AllowSorting="true"
-                        AllowPaging="true"
-                        PageSize="10"
-                        Responsive="true"
-                        Class="player-stats-grid">
-            <Columns>
-                <RadzenDataGridColumn TItem="PokerAnalyzer.Web.Services.ApiClient.PlayerStatsResult"
-                                      Property="Player"
-                                      Title="Player" />
-                <RadzenDataGridColumn TItem="PokerAnalyzer.Web.Services.ApiClient.PlayerStatsResult"
-                                      Property="Hands"
-                                      Title="Hands"
-                                      TextAlign="TextAlign.Right" />
-                @foreach (var statName in statNames)
-                {
+
+        <div class="grid-wrap">
+            <RadzenDataGrid Data="@_playerStats"
+                            TItem="PokerAnalyzer.Web.Services.ApiClient.PlayerStatsResult"
+                            AllowSorting="true"
+                            AllowPaging="true"
+                            PageSize="10"
+                            AllowFiltering="true"
+                            FilterMode="FilterMode.Simple"
+                            AllowColumnResize="true"
+                            ColumnResizeMode="DataGridColumnResizeMode.NextColumn"
+                            AllowColumnReorder="true"
+                            AllowColumnPicking="true"
+                            Style="width: 100%;"
+                            Class="player-stats-grid">
+
+                <Columns>
+                    <!-- Freeze these so you always see who/what row you're on -->
                     <RadzenDataGridColumn TItem="PokerAnalyzer.Web.Services.ApiClient.PlayerStatsResult"
-                                          Title="@statName"
-                                          TextAlign="TextAlign.Right">
-                        <HeaderTemplate>
-                            <span class="stat-tooltip" data-tooltip="@GetStatDescription(statName)">
-                                @statName
-                            </span>
-                        </HeaderTemplate>
-                        <Template Context="player">
-                            @{
-                                var stat = player.Stats.FirstOrDefault(item => item.Name.Equals(statName, StringComparison.OrdinalIgnoreCase));
-                            }
-                            @((stat is null) ? "-" : FormatPercent(stat.Percent))
-                        </Template>
-                    </RadzenDataGridColumn>
-                }
-            </Columns>
-        </RadzenDataGrid>
+                                          Property="Player"
+                                          Title="Player"
+                                          Frozen="true"
+                                          Width="220px" />
+
+                    <RadzenDataGridColumn TItem="PokerAnalyzer.Web.Services.ApiClient.PlayerStatsResult"
+                                          Property="Hands"
+                                          Title="Hands"
+                                          Frozen="true"
+                                          Width="100px"
+                                          TextAlign="TextAlign.Right" />
+
+                    @foreach (var statName in statNames)
+                    {
+                        <RadzenDataGridColumn TItem="PokerAnalyzer.Web.Services.ApiClient.PlayerStatsResult"
+                                              Title="@statName"
+                                              Width="100px"
+                                              TextAlign="TextAlign.Right"
+                                              Filterable="false">
+     
+
+                            <Template Context="player">
+                                @{
+                                    var stat = player.Stats.FirstOrDefault(item =>
+                                    item.Name.Equals(statName, StringComparison.OrdinalIgnoreCase));
+                                }
+                                @((stat is null) ? "-" : FormatPercent(stat.Percent))
+                            </Template>
+                        </RadzenDataGridColumn>
+                    }
+                </Columns>
+            </RadzenDataGrid>
+        </div>
     </div>
 }
+
 
 @code {
     private string? _status;
     private string? _error;
+    private readonly Dictionary<string, ElementReference> _statHeaderRefs = new();
     private IReadOnlyList<PokerAnalyzer.Web.Services.ApiClient.PlayerStatsResult> _playerStats = Array.Empty<PokerAnalyzer.Web.Services.ApiClient.PlayerStatsResult>();
     private static readonly IReadOnlyDictionary<string, string> StatDescriptions = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
     {
@@ -203,5 +224,38 @@
     .stat-tooltip:hover::before {
         opacity: 1;
         transform: translateY(0);
+    }
+
+    /* Wrapper enables horizontal scrolling for lots of columns */
+    .grid-wrap {
+        width: 200%;
+        overflow-x: auto;
+    }
+
+    /* Prevent the grid from trying to fit all columns into the viewport */
+    .player-stats-grid .rz-datatable {
+        table-layout: auto;
+    }
+
+    /* Critical: stop character-by-character wrapping */
+    .player-stats-grid .rz-cell,
+    .player-stats-grid .rz-column-title,
+    .player-stats-grid th,
+    .player-stats-grid td {
+        white-space: nowrap;
+    }
+
+    /* Optional: keep headers readable */
+    .player-stats-grid th {
+        position: sticky;
+        top: 0;
+        z-index: 2;
+        background: white;
+    }
+
+    .stat-header {
+        cursor: help;
+        border-bottom: 1px dotted rgba(0,0,0,0.4);
+        white-space: nowrap;
     }
 </style>
