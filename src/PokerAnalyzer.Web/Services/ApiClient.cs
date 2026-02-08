@@ -14,6 +14,8 @@ public sealed class ApiClient
     }
 
     public sealed record UploadHandHistoryResult(Guid SessionId);
+    public sealed record PlayerStatPercent(string Name, decimal Percent);
+    public sealed record PlayerStatsResult(string Player, int Hands, IReadOnlyList<PlayerStatPercent> Stats);
 
     public async Task<UploadHandHistoryResult> UploadHandHistoryXmlAsync(
         IBrowserFile file,
@@ -48,5 +50,24 @@ public sealed class ApiClient
             throw new InvalidOperationException("Upload succeeded but response was invalid.");
 
         return result;
+    }
+
+    public async Task<IReadOnlyList<PlayerStatsResult>> GetPlayerStatsAsync(
+        Guid sessionId,
+        CancellationToken ct = default)
+    {
+        if (sessionId == Guid.Empty)
+            throw new ArgumentException("SessionId is required.", nameof(sessionId));
+
+        using var resp = await _http.GetAsync($"api/hand-histories/{sessionId}/player-stats", ct);
+        if (!resp.IsSuccessStatusCode)
+        {
+            var body = await resp.Content.ReadAsStringAsync(ct);
+            throw new InvalidOperationException(
+                $"Player stats request failed: {(int)resp.StatusCode} {resp.ReasonPhrase}. {body}");
+        }
+
+        var result = await resp.Content.ReadFromJsonAsync<IReadOnlyList<PlayerStatsResult>>(cancellationToken: ct);
+        return result ?? Array.Empty<PlayerStatsResult>();
     }
 }

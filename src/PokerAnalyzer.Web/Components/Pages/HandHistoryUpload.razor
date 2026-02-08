@@ -23,15 +23,47 @@
     </div>
 }
 
+@if (_playerStats.Count > 0)
+{
+    <div class="mt-4">
+        <h4>Player Stats</h4>
+        @foreach (var player in _playerStats)
+        {
+            <div class="mb-4">
+                <h5>@player.Player <small class="text-muted">(Hands: @player.Hands)</small></h5>
+                <table class="table table-sm table-striped">
+                    <thead>
+                        <tr>
+                            <th>Stat</th>
+                            <th class="text-end">Percent</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var stat in player.Stats)
+                        {
+                            <tr>
+                                <td>@stat.Name</td>
+                                <td class="text-end">@FormatPercent(stat.Percent)</td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        }
+    </div>
+}
+
 @code {
     private string? _status;
     private string? _error;
+    private IReadOnlyList<PokerAnalyzer.Web.Services.ApiClient.PlayerStatsResult> _playerStats = Array.Empty<PokerAnalyzer.Web.Services.ApiClient.PlayerStatsResult>();
 
     private async Task OnFileSelected(InputFileChangeEventArgs e)
     {
         _status = "OnFileSelected fired.";
         _status = null;
         _error = null;
+        _playerStats = Array.Empty<PokerAnalyzer.Web.Services.ApiClient.PlayerStatsResult>();
 
         try
         {
@@ -47,10 +79,14 @@
             var result = await Api.UploadHandHistoryXmlAsync(file);
 
             _status = $"Upload successful. SessionId: {result.SessionId}";
+
+            _playerStats = await Api.GetPlayerStatsAsync(result.SessionId);
         }
         catch (Exception ex)
         {
             _error = ex.ToString();
         }
     }
+
+    private static string FormatPercent(decimal value) => $"{value:0.##}%";
 }
