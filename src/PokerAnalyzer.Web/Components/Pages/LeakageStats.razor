@@ -104,12 +104,15 @@
 
     private static LeakageStatsGridModel MapToLeakageGridModel(PlayerProfile player)
     {
-        var aggregatedNumber = GetValue(player.PreflopModel.Positions.Bb);
+        var bb = player.PreflopModel.Positions.Bb;
+        var aggregatedNumber = bb.FacedLateOpenHands <= 0
+            ? 0m
+            : Math.Round((decimal)bb.FoldedVsLateOpenHands / bb.FacedLateOpenHands * 100m, 2);
 
         return new LeakageStatsGridModel
         {
             PlayerName = player.Player,
-            AggregatedNumber = aggregatedNumber
+            AggregatedNumber = GetValue("Fold BB vs Steal")
         };
     }
 
@@ -120,30 +123,22 @@
 }
 
 <style>
-    /* Wrapper enables horizontal scrolling for lots of columns */
+    /* Normal responsive wrapper: only scroll if it truly overflows */
     .grid-wrap {
-        width: 200%;
+        width: 100%;
         overflow-x: auto;
     }
 
-    /* Prevent the grid from trying to fit all columns into the viewport */
-    .player-stats-grid .rz-datatable {
-        table-layout: auto;
+    /* Let the grid take full width */
+    .player-stats-grid {
+        width: 100%;
     }
 
-    /* Critical: stop character-by-character wrapping */
-    .player-stats-grid .rz-cell,
-    .player-stats-grid .rz-column-title,
-    .player-stats-grid th,
-    .player-stats-grid td {
-        white-space: nowrap;
-    }
-
-    /* Optional: keep headers readable */
-    .player-stats-grid th {
-        position: sticky;
-        top: 0;
-        z-index: 2;
-        background: white;
-    }
+        /* Optional: keep text readable but not force weird layout */
+        .player-stats-grid .rz-cell,
+        .player-stats-grid .rz-column-title,
+        .player-stats-grid th,
+        .player-stats-grid td {
+            white-space: nowrap;
+        }
 </style>
