@@ -1,7 +1,9 @@
+using Microsoft.EntityFrameworkCore;
+using PokerAnalyzer.Infrastructure;
+using PokerAnalyzer.Infrastructure.Persistence;
 using PokerAnalyzer.Web.Components;
 using PokerAnalyzer.Web.Services;
 using Radzen;
-using PokerAnalyzer.Infrastructure;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -26,6 +28,11 @@ builder.Services.AddHttpClient<ApiClient>(client =>
     client.BaseAddress = new Uri(apiBaseUrl);
 });
 builder.Services.AddServerSideBlazor().AddCircuitOptions(o => o.DetailedErrors = true);
+builder.Services.AddDbContextFactory<PokerDbContext>(opt =>
+{
+    var dbPath = PokerDbPaths.GetDefaultSqlitePath();
+    opt.UseSqlite($"Data Source={PokerDbPaths.GetDefaultSqlitePath()}");
+});
 var app = builder.Build();
 app.MapRazorComponents<App>()
    .AddInteractiveServerRenderMode();

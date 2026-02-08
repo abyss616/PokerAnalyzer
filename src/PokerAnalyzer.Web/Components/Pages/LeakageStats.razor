@@ -1,8 +1,9 @@
 @page "/leakage-stats"
 @rendermode InteractiveServer
+@using PokerAnalyzer.Infrastructure.Persistence
 @using PokerAnalyzer.Web.Models
 @using Microsoft.EntityFrameworkCore
-@inject PokerAnalyzer.Infrastructure.Persistence.PokerDbContext Db
+@inject IDbContextFactory<PokerDbContext> DbFactory
 
 <h3>Leakage Stats</h3>
 
@@ -74,7 +75,9 @@
 
         try
         {
-            var latestSessionId = await Db.Sessions
+
+            await using var db = await DbFactory.CreateDbContextAsync();
+            var latestSessionId = await db.Sessions
                 .AsNoTracking()
                 .OrderByDescending(s => s.UploadedAtUtc)
                 .Select(s => s.Id)
@@ -85,8 +88,8 @@
                 _status = "No leakage stats found for the latest session.";
                 return;
             }
-
-            var players = await Db.PlayerProfiles
+       
+            var players = await db.PlayerProfiles
                 .AsNoTracking()
                 .Where(p => p.SessionId == latestSessionId)
                 .OrderBy(p => p.Player)

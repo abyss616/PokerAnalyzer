@@ -22,10 +22,10 @@ public static class ServiceCollectionExtensions
 
     private static IServiceCollection AddPokerAnalyzerDb(this IServiceCollection services)
     {
-        services.AddDbContext<PokerDbContext>(opt =>
+        services.AddDbContextFactory<PokerDbContext>(opt =>
         {
             var dbPath = PokerDbPaths.GetDefaultSqlitePath();
-            opt.UseSqlite($"Data Source={dbPath}");
+            opt.UseSqlite($"Data Source={PokerDbPaths.GetDefaultSqlitePath()}");
         });
 
         return services;

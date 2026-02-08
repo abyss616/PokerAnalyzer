@@ -5,11 +5,12 @@ public static class PokerDbPaths
     public static string GetDefaultSqlitePath()
     {
         // AppContext.BaseDirectory works reliably for API + Blazor Server.
-        var baseDir = AppContext.BaseDirectory;
+        var root = Path.Combine(
+              Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+              "PokerAnalyzer");
 
-        var dataDir = Path.Combine(baseDir, "data");
-        Directory.CreateDirectory(dataDir);
+        Directory.CreateDirectory(root);
 
-        return Path.Combine(dataDir, "pokeranalyzer.db");
+        return Path.Combine(root, "poker.db");
     }
 }
