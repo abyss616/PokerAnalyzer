@@ -2,6 +2,7 @@
 @rendermode InteractiveServer
 @using Microsoft.AspNetCore.Components.Forms
 @using Microsoft.AspNetCore.Components.Web
+@using PokerAnalyzer.Web.Models
 @inject PokerAnalyzer.Web.Services.ApiClient Api
 @inject TooltipService TooltipService
 <h3>Upload Hand History (XML)</h3>
@@ -29,13 +30,9 @@
     <div class="mt-4">
         <h4>Player Stats</h4>
 
-        @{
-            var statNames = GetStatNames(_playerStats);
-        }
-
         <div class="grid-wrap">
             <RadzenDataGrid Data="@_playerStats"
-                            TItem="PokerAnalyzer.Web.Services.ApiClient.PlayerStatsResult"
+                            TItem="PokerStatsGridModel"
                             AllowSorting="true"
                             AllowPaging="true"
                             PageSize="10"
@@ -50,35 +47,28 @@
 
                 <Columns>
                     <!-- Freeze these so you always see who/what row you're on -->
-                    <RadzenDataGridColumn TItem="PokerAnalyzer.Web.Services.ApiClient.PlayerStatsResult"
+                    <RadzenDataGridColumn TItem="PokerStatsGridModel"
                                           Property="Player"
                                           Title="Player"
                                           Frozen="true"
                                           Width="220px" />
 
-                    <RadzenDataGridColumn TItem="PokerAnalyzer.Web.Services.ApiClient.PlayerStatsResult"
+                    <RadzenDataGridColumn TItem="PokerStatsGridModel"
                                           Property="Hands"
                                           Title="Hands"
                                           Frozen="true"
                                           Width="100px"
                                           TextAlign="TextAlign.Right" />
 
-                    @foreach (var statName in statNames)
+                    @foreach (var statColumn in StatColumns)
                     {
-                        <RadzenDataGridColumn TItem="PokerAnalyzer.Web.Services.ApiClient.PlayerStatsResult"
-                                              Title="@statName"
+                        <RadzenDataGridColumn TItem="PokerStatsGridModel"
+                                              Property="@statColumn.Property"
+                                              Title="@statColumn.Title"
                                               Width="100px"
                                               TextAlign="TextAlign.Right"
-                                              Filterable="false">
-     
-
-                            <Template Context="player">
-                                @{
-                                    var stat = player.Stats.FirstOrDefault(item =>
-                                    item.Name.Equals(statName, StringComparison.OrdinalIgnoreCase));
-                                }
-                                @((stat is null) ? "-" : FormatPercent(stat.Percent))
-                            </Template>
+                                              Filterable="false"
+                                              FormatString="{0:0.##}%">
                         </RadzenDataGridColumn>
                     }
                 </Columns>
@@ -91,8 +81,36 @@
 @code {
     private string? _status;
     private string? _error;
-    private readonly Dictionary<string, ElementReference> _statHeaderRefs = new();
-    private IReadOnlyList<PokerAnalyzer.Web.Services.ApiClient.PlayerStatsResult> _playerStats = Array.Empty<PokerAnalyzer.Web.Services.ApiClient.PlayerStatsResult>();
+    private IReadOnlyList<PokerStatsGridModel> _playerStats = Array.Empty<PokerStatsGridModel>();
+    private static readonly IReadOnlyList<StatColumn> StatColumns = new[]
+    {
+        new StatColumn("VPIP", nameof(PokerStatsGridModel.VPIP)),
+        new StatColumn("PFR", nameof(PokerStatsGridModel.PFR)),
+        new StatColumn("3Bet", nameof(PokerStatsGridModel.ThreeBet)),
+        new StatColumn("Faced 3Bet", nameof(PokerStatsGridModel.Faced3Bet)),
+        new StatColumn("Fold to 3Bet", nameof(PokerStatsGridModel.FoldTo3Bet)),
+        new StatColumn("Flop WTSD", nameof(PokerStatsGridModel.FlopWTSD)),
+        new StatColumn("Flop W$SD", nameof(PokerStatsGridModel.FlopWSD)),
+        new StatColumn("Flop CBet Opp", nameof(PokerStatsGridModel.FlopCBetOpp)),
+        new StatColumn("Flop CBet", nameof(PokerStatsGridModel.FlopCBet)),
+        new StatColumn("Fold to Flop CBet Opp", nameof(PokerStatsGridModel.FoldToFlopCBetOpp)),
+        new StatColumn("Fold to Flop CBet", nameof(PokerStatsGridModel.FoldToFlopCBet)),
+        new StatColumn("First Fold to CBet", nameof(PokerStatsGridModel.FirstFoldToCBet)),
+        new StatColumn("Call vs CBet", nameof(PokerStatsGridModel.CallVsCBet)),
+        new StatColumn("Raise vs CBet", nameof(PokerStatsGridModel.RaiseVsCBet)),
+        new StatColumn("Multiway CBet", nameof(PokerStatsGridModel.MultiwayCBet)),
+        new StatColumn("Turn WTSD", nameof(PokerStatsGridModel.TurnWTSD)),
+        new StatColumn("Turn W$SD", nameof(PokerStatsGridModel.TurnWSD)),
+        new StatColumn("Turn CBet", nameof(PokerStatsGridModel.TurnCBet)),
+        new StatColumn("Turn Fold to Bet", nameof(PokerStatsGridModel.TurnFoldToBet)),
+        new StatColumn("Turn Aggression", nameof(PokerStatsGridModel.TurnAggression)),
+        new StatColumn("Turn WTSD Carryover", nameof(PokerStatsGridModel.TurnWTSDCarryover)),
+        new StatColumn("River WTSD", nameof(PokerStatsGridModel.RiverWTSD)),
+        new StatColumn("River W$SD", nameof(PokerStatsGridModel.RiverWSD)),
+        new StatColumn("River Bets When Checked To", nameof(PokerStatsGridModel.RiverBetsWhenCheckedTo)),
+        new StatColumn("River Fold to Bet", nameof(PokerStatsGridModel.RiverFoldToBet)),
+        new StatColumn("River Aggression", nameof(PokerStatsGridModel.RiverAggression))
+    };
     private static readonly IReadOnlyDictionary<string, string> StatDescriptions = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
     {
         ["VPIP"] = "Voluntarily Put Money In Pot: % of hands where the player called or raised preflop.",
@@ -128,7 +146,7 @@
         _status = "OnFileSelected fired.";
         _status = null;
         _error = null;
-        _playerStats = Array.Empty<PokerAnalyzer.Web.Services.ApiClient.PlayerStatsResult>();
+        _playerStats = Array.Empty<PokerStatsGridModel>();
 
         try
         {
@@ -145,7 +163,8 @@
 
             _status = $"Upload successful. SessionId: {result.SessionId}";
 
-            _playerStats = await Api.GetPlayerStatsAsync(result.SessionId);
+            var stats = await Api.GetPlayerStatsAsync(result.SessionId);
+            _playerStats = stats.Select(MapToGridModel).ToList();
         }
         catch (Exception ex)
         {
@@ -153,31 +172,51 @@
         }
     }
 
-    private static string FormatPercent(decimal value) => $"{value:0.##}%";
-
     private static string GetStatDescription(string statName) =>
         StatDescriptions.TryGetValue(statName, out var description)
             ? description
             : "No description available.";
 
-    private static IReadOnlyList<string> GetStatNames(IReadOnlyList<PokerAnalyzer.Web.Services.ApiClient.PlayerStatsResult> players)
+    private static PokerStatsGridModel MapToGridModel(PokerAnalyzer.Web.Services.ApiClient.PlayerStatsResult player)
     {
-        var names = new List<string>();
-        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var stats = player.Stats.ToDictionary(stat => stat.Name, StringComparer.OrdinalIgnoreCase);
+        decimal? GetValue(string name) =>
+            stats.TryGetValue(name, out var stat) ? stat.Percent : null;
 
-        foreach (var player in players)
+        return new PokerStatsGridModel
         {
-            foreach (var stat in player.Stats)
-            {
-                if (seen.Add(stat.Name))
-                {
-                    names.Add(stat.Name);
-                }
-            }
-        }
-
-        return names;
+            Player = player.Player,
+            Hands = player.Hands,
+            VPIP = GetValue("VPIP"),
+            PFR = GetValue("PFR"),
+            ThreeBet = GetValue("3Bet"),
+            Faced3Bet = GetValue("Faced 3Bet"),
+            FoldTo3Bet = GetValue("Fold to 3Bet"),
+            FlopWTSD = GetValue("Flop WTSD"),
+            FlopWSD = GetValue("Flop W$SD"),
+            FlopCBetOpp = GetValue("Flop CBet Opp"),
+            FlopCBet = GetValue("Flop CBet"),
+            FoldToFlopCBetOpp = GetValue("Fold to Flop CBet Opp"),
+            FoldToFlopCBet = GetValue("Fold to Flop CBet"),
+            FirstFoldToCBet = GetValue("First Fold to CBet"),
+            CallVsCBet = GetValue("Call vs CBet"),
+            RaiseVsCBet = GetValue("Raise vs CBet"),
+            MultiwayCBet = GetValue("Multiway CBet"),
+            TurnWTSD = GetValue("Turn WTSD"),
+            TurnWSD = GetValue("Turn W$SD"),
+            TurnCBet = GetValue("Turn CBet"),
+            TurnFoldToBet = GetValue("Turn Fold to Bet"),
+            TurnAggression = GetValue("Turn Aggression"),
+            TurnWTSDCarryover = GetValue("Turn WTSD Carryover"),
+            RiverWTSD = GetValue("River WTSD"),
+            RiverWSD = GetValue("River W$SD"),
+            RiverBetsWhenCheckedTo = GetValue("River Bets When Checked To"),
+            RiverFoldToBet = GetValue("River Fold to Bet"),
+            RiverAggression = GetValue("River Aggression")
+        };
     }
+
+    private sealed record StatColumn(string Title, string Property);
 }
 
 <style>
