@@ -30,7 +30,7 @@
         <h4>Player Stats</h4>
 
         @{
-            var gridColumns = _gridColumns;
+            var statNames = GetStatNames(_playerStats);
         }
 
         <div class="grid-wrap">
@@ -63,10 +63,10 @@
                                           Width="100px"
                                           TextAlign="TextAlign.Right" />
 
-                    @foreach (var column in gridColumns)
+                    @foreach (var statName in statNames)
                     {
                         <RadzenDataGridColumn TItem="PokerAnalyzer.Web.Services.ApiClient.PlayerStatsResult"
-                                              Title="@column.DisplayName"
+                                              Title="@statName"
                                               Width="100px"
                                               TextAlign="TextAlign.Right"
                                               Filterable="false">
@@ -75,7 +75,7 @@
                             <Template Context="player">
                                 @{
                                     var stat = player.Stats.FirstOrDefault(item =>
-                                    item.Name.Equals(column.StatName, StringComparison.OrdinalIgnoreCase));
+                                    item.Name.Equals(statName, StringComparison.OrdinalIgnoreCase));
                                 }
                                 @((stat is null) ? "-" : FormatPercent(stat.Percent))
                             </Template>
@@ -93,7 +93,6 @@
     private string? _error;
     private readonly Dictionary<string, ElementReference> _statHeaderRefs = new();
     private IReadOnlyList<PokerAnalyzer.Web.Services.ApiClient.PlayerStatsResult> _playerStats = Array.Empty<PokerAnalyzer.Web.Services.ApiClient.PlayerStatsResult>();
-    private IReadOnlyList<PokerAnalyzer.Web.Services.ApiClient.GridColumnResult> _gridColumns = Array.Empty<PokerAnalyzer.Web.Services.ApiClient.GridColumnResult>();
     private static readonly IReadOnlyDictionary<string, string> StatDescriptions = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
     {
         ["VPIP"] = "Voluntarily Put Money In Pot: % of hands where the player called or raised preflop.",
@@ -147,7 +146,6 @@
             _status = $"Upload successful. SessionId: {result.SessionId}";
 
             _playerStats = await Api.GetPlayerStatsAsync(result.SessionId);
-            _gridColumns = await Api.GetGridColumnsAsync();
         }
         catch (Exception ex)
         {
@@ -162,6 +160,24 @@
             ? description
             : "No description available.";
 
+    private static IReadOnlyList<string> GetStatNames(IReadOnlyList<PokerAnalyzer.Web.Services.ApiClient.PlayerStatsResult> players)
+    {
+        var names = new List<string>();
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var player in players)
+        {
+            foreach (var stat in player.Stats)
+            {
+                if (seen.Add(stat.Name))
+                {
+                    names.Add(stat.Name);
+                }
+            }
+        }
+
+        return names;
+    }
 }
 
 <style>

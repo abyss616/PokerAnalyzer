@@ -16,7 +16,6 @@ public sealed class ApiClient
     public sealed record UploadHandHistoryResult(Guid SessionId);
     public sealed record PlayerStatPercent(string Name, decimal Percent);
     public sealed record PlayerStatsResult(string Player, int Hands, IReadOnlyList<PlayerStatPercent> Stats);
-    public sealed record GridColumnResult(string StatName, string DisplayName, int SortOrder);
 
     public async Task<UploadHandHistoryResult> UploadHandHistoryXmlAsync(
         IBrowserFile file,
@@ -70,19 +69,5 @@ public sealed class ApiClient
 
         var result = await resp.Content.ReadFromJsonAsync<IReadOnlyList<PlayerStatsResult>>(cancellationToken: ct);
         return result ?? Array.Empty<PlayerStatsResult>();
-    }
-
-    public async Task<IReadOnlyList<GridColumnResult>> GetGridColumnsAsync(CancellationToken ct = default)
-    {
-        using var resp = await _http.GetAsync("api/hand-histories/grid-columns", ct);
-        if (!resp.IsSuccessStatusCode)
-        {
-            var body = await resp.Content.ReadAsStringAsync(ct);
-            throw new InvalidOperationException(
-                $"Grid column request failed: {(int)resp.StatusCode} {resp.ReasonPhrase}. {body}");
-        }
-
-        var result = await resp.Content.ReadFromJsonAsync<IReadOnlyList<GridColumnResult>>(cancellationToken: ct);
-        return result ?? Array.Empty<GridColumnResult>();
     }
 }

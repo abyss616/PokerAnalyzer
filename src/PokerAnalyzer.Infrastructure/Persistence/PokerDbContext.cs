@@ -7,7 +7,6 @@ namespace PokerAnalyzer.Infrastructure.Persistence
         public DbSet<HandHistorySession> Sessions => Set<HandHistorySession>();
         public DbSet<Hand> Hands => Set<Hand>();
         public DbSet<PlayerProfile> PlayerProfiles => Set<PlayerProfile>();
-        public DbSet<GridColumnDefinition> GridColumns => Set<GridColumnDefinition>();
         public DbSet<Hand> HandHistoryHands { get; set; } = null!;
         public DbSet<PositionStats> PositionStats => Set<PositionStats>();
         public DbSet<HandPlayer> HandPlayers => Set<HandPlayer>();
@@ -53,24 +52,6 @@ namespace PokerAnalyzer.Infrastructure.Persistence
                 .WithOne(p => p.PlayerProfile)
                 .HasForeignKey(p => p.PlayerProfileId)
                 .OnDelete(DeleteBehavior.Cascade);
-
-            b.Entity<GridColumnDefinition>(grid =>
-            {
-                grid.HasKey(x => x.Id);
-                grid.Property(x => x.StatName)
-                    .IsRequired()
-                    .HasMaxLength(128);
-                grid.Property(x => x.DisplayName)
-                    .IsRequired()
-                    .HasMaxLength(128);
-                grid.Property(x => x.SortOrder)
-                    .IsRequired();
-
-                grid.HasIndex(x => x.StatName)
-                    .IsUnique();
-
-                grid.HasData(GridColumnSeedData.All);
-            });
 
             b.Entity<PlayerProfile>()
                 .OwnsOne(o => o.PreflopModel, preflop =>
