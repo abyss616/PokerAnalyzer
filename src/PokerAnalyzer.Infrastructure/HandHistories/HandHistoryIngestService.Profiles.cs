@@ -106,7 +106,7 @@ public sealed partial class HandHistoryIngestService
                     .Distinct(StringComparer.Ordinal)
                     .ToList();
 
-                IncrementProfiles(profiles, flopPlayers, p => p.FlopModel.SawFlop++);
+                IncrementFlopProfilesByPosition(profiles, positionAssignments, flopPlayers, p => p.SawFlop++);
 
                 var showdownPlayers = hand.Showdown
                     .Select(s => s.Player)
@@ -114,7 +114,7 @@ public sealed partial class HandHistoryIngestService
                     .Distinct(StringComparer.Ordinal)
                     .ToList();
 
-                IncrementProfiles(profiles, showdownPlayers, p => p.FlopModel.WentToShowdown++);
+                IncrementFlopProfilesByPosition(profiles, positionAssignments, showdownPlayers, p => p.WentToShowdown++);
 
                 var winners = hand.Showdown
                     .Where(s => s.Won)
@@ -123,17 +123,17 @@ public sealed partial class HandHistoryIngestService
                     .Distinct(StringComparer.Ordinal)
                     .ToList();
 
-                IncrementProfiles(profiles, winners, p => p.FlopModel.WonAtShowdown++);
+                IncrementFlopProfilesByPosition(profiles, positionAssignments, winners, p => p.WonAtShowdown++);
 
                 var (cbetOpportunityPlayer, cbetPlayer) = FlopOperations.GetFlopCBetResult(hand.Actions);
                 if (!string.IsNullOrWhiteSpace(cbetOpportunityPlayer))
                 {
-                    IncrementProfiles(profiles, new[] { cbetOpportunityPlayer }, p => p.FlopModel.CBetOpportunities++);
+                    IncrementFlopProfilesByPosition(profiles, positionAssignments, new[] { cbetOpportunityPlayer }, p => p.CBetOpportunities++);
                 }
 
                 if (!string.IsNullOrWhiteSpace(cbetPlayer))
                 {
-                    IncrementProfiles(profiles, new[] { cbetPlayer }, p => p.FlopModel.CBets++);
+                    IncrementFlopProfilesByPosition(profiles, positionAssignments, new[] { cbetPlayer }, p => p.CBets++);
 
                     var facedCBetPlayers = new HashSet<string>(StringComparer.Ordinal);
                     var foldedToCBetPlayers = new HashSet<string>(StringComparer.Ordinal);
@@ -161,44 +161,44 @@ public sealed partial class HandHistoryIngestService
                             foldedToCBetPlayers.Add(action.Player);
                     }
 
-                    IncrementProfiles(profiles, facedCBetPlayers, p => p.FlopModel.FoldToCBetOpportunities++);
-                    IncrementProfiles(profiles, foldedToCBetPlayers, p => p.FlopModel.FoldToCBet++);
+                    IncrementFlopProfilesByPosition(profiles, positionAssignments, facedCBetPlayers, p => p.FoldToCBetOpportunities++);
+                    IncrementFlopProfilesByPosition(profiles, positionAssignments, foldedToCBetPlayers, p => p.FoldToCBet++);
                 }
 
                 var donkBet = FlopOperations.GetFlopDonkBet(hand.Actions);
                 if (!string.IsNullOrWhiteSpace(donkBet.DonkBettor))
                 {
-                    IncrementProfiles(profiles, new[] { donkBet.DonkBettor }, p => p.FlopModel.DonkBets++);
+                    IncrementFlopProfilesByPosition(profiles, positionAssignments, new[] { donkBet.DonkBettor }, p => p.DonkBets++);
                 }
 
                 var firstFoldToCBet = FlopOperations.GetFirstFoldToFlopCBet(hand.Actions);
                 if (!string.IsNullOrWhiteSpace(firstFoldToCBet.Folder))
                 {
-                    IncrementProfiles(profiles, new[] { firstFoldToCBet.Folder }, p => p.FlopModel.FirstFoldToCBet++);
+                    IncrementFlopProfilesByPosition(profiles, positionAssignments, new[] { firstFoldToCBet.Folder }, p => p.FirstFoldToCBet++);
                 }
 
                 var firstCallVsCBet = FlopTier2Operations.GetFirstCallVsFlopCBet(hand.Actions);
                 if (!string.IsNullOrWhiteSpace(firstCallVsCBet.Caller))
                 {
-                    IncrementProfiles(profiles, new[] { firstCallVsCBet.Caller }, p => p.FlopModel.CallVsCBet++);
+                    IncrementFlopProfilesByPosition(profiles, positionAssignments, new[] { firstCallVsCBet.Caller }, p => p.CallVsCBet++);
                 }
 
                 var firstRaiseVsCBet = FlopTier2Operations.GetFirstRaiseVsFlopCBet(hand.Actions);
                 if (!string.IsNullOrWhiteSpace(firstRaiseVsCBet.Raiser))
                 {
-                    IncrementProfiles(profiles, new[] { firstRaiseVsCBet.Raiser }, p => p.FlopModel.RaiseVsCBet++);
+                    IncrementFlopProfilesByPosition(profiles, positionAssignments, new[] { firstRaiseVsCBet.Raiser }, p => p.RaiseVsCBet++);
                 }
 
                 var multiwayCBetPlayer = FlopTier2Operations.GetMultiwayFlopCBetPlayer(hand.Actions);
                 if (!string.IsNullOrWhiteSpace(multiwayCBetPlayer))
                 {
-                    IncrementProfiles(profiles, new[] { multiwayCBetPlayer }, p => p.FlopModel.MultiwayCBets++);
+                    IncrementFlopProfilesByPosition(profiles, positionAssignments, new[] { multiwayCBetPlayer }, p => p.MultiwayCBets++);
                 }
 
                 var probeBet = FlopTier3Operations.GetFlopProbeBet(hand.Actions);
                 if (!string.IsNullOrWhiteSpace(probeBet.ProbeBettor))
                 {
-                    IncrementProfiles(profiles, new[] { probeBet.ProbeBettor }, p => p.FlopModel.ProbeBets++);
+                    IncrementFlopProfilesByPosition(profiles, positionAssignments, new[] { probeBet.ProbeBettor }, p => p.ProbeBets++);
                 }
             }
 
@@ -534,6 +534,39 @@ public sealed partial class HandHistoryIngestService
             PositionStats.PositionEnum.BB => preflopStats.Positions.Bb,
             _ => throw new ArgumentOutOfRangeException(nameof(position), position, "Unsupported position.")
         };
+    }
+
+    private static FlopStats GetPositionFlopStats(
+        FlopStatsByPosition flopStats,
+        PositionStats.PositionEnum position)
+    {
+        return position switch
+        {
+            PositionStats.PositionEnum.UTG => flopStats.Positions.Utg,
+            PositionStats.PositionEnum.HJ => flopStats.Positions.Hj,
+            PositionStats.PositionEnum.CO => flopStats.Positions.Co,
+            PositionStats.PositionEnum.BTN => flopStats.Positions.Btn,
+            PositionStats.PositionEnum.SB => flopStats.Positions.Sb,
+            PositionStats.PositionEnum.BB => flopStats.Positions.Bb,
+            _ => throw new ArgumentOutOfRangeException(nameof(position), position, "Unsupported position.")
+        };
+    }
+
+    private static void IncrementFlopProfilesByPosition(
+        Dictionary<string, PlayerProfile> profiles,
+        Dictionary<string, PositionStats.PositionEnum> positionAssignments,
+        IEnumerable<string> players,
+        Action<FlopStats> incrementAction)
+    {
+        foreach (var player in players)
+        {
+            if (!positionAssignments.TryGetValue(player, out var position))
+                continue;
+
+            var profile = GetOrCreate(profiles, player);
+            var positionStats = GetPositionFlopStats(profile.FlopModel, position);
+            incrementAction(positionStats);
+        }
     }
 
     private static PositionStats GetOrCreatePositionStats(PlayerProfile profile, PositionStats.PositionEnum position)
