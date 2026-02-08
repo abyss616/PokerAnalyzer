@@ -59,8 +59,6 @@ public sealed class PositionPreflopStats
     public int ThreeBetHands { get; set; }
     public int FacedThreeBetHands { get; set; }
     public int FoldToThreeBetHands { get; set; }
-    public int FoldToStealOpportunities { get; set; }
-    public int FoldToStealHands { get; set; }
 }
 
 #endregion

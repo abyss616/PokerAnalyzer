@@ -56,7 +56,6 @@ public sealed class HandHistoriesController : ControllerBase
     {
         var hands = profile.Hands;
         var preflop = SumPreflop(profile.PreflopModel.Positions);
-        var bbPreflop = profile.PreflopModel.Positions.Bb;
         var flop = SumFlop(profile.FlopModel.Positions);
         var turn = SumTurn(profile.TurnModel.Positions);
         var river = SumRiver(profile.RiverModel.Positions);
@@ -68,7 +67,6 @@ public sealed class HandHistoriesController : ControllerBase
             new("3Bet", Percent(preflop.ThreeBetHands, hands)),
             new("Faced 3Bet", Percent(preflop.FacedThreeBetHands, hands)),
             new("Fold to 3Bet", Percent(preflop.FoldToThreeBetHands, hands)),
-            new("Fold BB vs Steal", Percent(bbPreflop.FoldToStealHands, bbPreflop.FoldToStealOpportunities)),
             new("Saw Flop", Percent(flop.SawFlop, hands)),
             new("Flop WTSD", Percent(flop.WentToShowdown, hands)),
             new("Flop W$SD", Percent(flop.WonAtShowdown, hands)),
