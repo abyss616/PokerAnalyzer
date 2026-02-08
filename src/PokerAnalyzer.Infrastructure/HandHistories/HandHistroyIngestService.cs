@@ -71,6 +71,7 @@ public sealed partial class HandHistoryIngestService : IHandHistoryIngestService
         {
 
             var hand = ParseHand(game, session.Nickname);
+            hand.HandNumber = i + 1;
             if (i == 18)
             {
                 var jsonString = JsonSerializer.Serialize(hand);
