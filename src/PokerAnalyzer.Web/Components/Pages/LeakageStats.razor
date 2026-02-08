@@ -1,7 +1,6 @@
 @page "/leakage-stats"
 @rendermode InteractiveServer
 @using Microsoft.AspNetCore.Components.Forms
-@using Microsoft.AspNetCore.Components
 @using PokerAnalyzer.Web.Models
 @inject PokerAnalyzer.Web.Services.ApiClient Api
 
@@ -65,20 +64,9 @@
 }
 
 @code {
-    [SupplyParameterFromQuery]
-    public Guid? SessionId { get; set; }
-
     private string? _status;
     private string? _error;
     private IReadOnlyList<LeakageStatsGridModel> _leakageStats = Array.Empty<LeakageStatsGridModel>();
-
-    protected override async Task OnParametersSetAsync()
-    {
-        if (SessionId.HasValue && SessionId.Value != Guid.Empty)
-        {
-            await LoadStatsAsync(SessionId.Value);
-        }
-    }
 
     private async Task OnFileSelected(InputFileChangeEventArgs e)
     {
@@ -101,22 +89,8 @@
 
             _status = $"Upload successful. SessionId: {result.SessionId}";
 
-            await LoadStatsAsync(result.SessionId);
-        }
-        catch (Exception ex)
-        {
-            _error = ex.ToString();
-        }
-    }
-
-    private async Task LoadStatsAsync(Guid sessionId)
-    {
-        try
-        {
-            _status = $"Loading leakage stats for session {sessionId}...";
-            var stats = await Api.GetPlayerStatsAsync(sessionId);
+            var stats = await Api.GetPlayerStatsAsync(result.SessionId);
             _leakageStats = stats.Select(MapToLeakageGridModel).ToList();
-            _status = null;
         }
         catch (Exception ex)
         {
