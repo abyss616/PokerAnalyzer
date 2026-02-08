@@ -1,12 +1,14 @@
 using PokerAnalyzer.Web.Components;
 using PokerAnalyzer.Web.Services;
 using Radzen;
+using PokerAnalyzer.Infrastructure;
 
 var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddRazorComponents()
     .AddInteractiveServerComponents();
 builder.Services.AddRadzenComponents();
+builder.Services.AddPokerAnalyzer();
 
 builder.Services.AddHttpClient<ApiClient>(client =>
 {
