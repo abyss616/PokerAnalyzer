@@ -35,6 +35,16 @@ public sealed class PositionStats
 
 public sealed class PreflopStats
 {
+    public PositionPreflopStats UTGPosition { get; set; } = new();
+    public PositionPreflopStats HJPosition { get; set; } = new();
+    public PositionPreflopStats COPosition { get; set; } = new();
+    public PositionPreflopStats BTNPosition { get; set; } = new();
+    public PositionPreflopStats SBPosition { get; set; } = new();
+    public PositionPreflopStats BBPosition { get; set; } = new();
+}
+
+public sealed class PositionPreflopStats
+{
     public int VpipHands { get; set; }
     public int PfrHands { get; set; }
     public int ThreeBetHands { get; set; }
