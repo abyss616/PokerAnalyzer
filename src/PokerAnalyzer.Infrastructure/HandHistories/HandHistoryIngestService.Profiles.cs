@@ -71,11 +71,36 @@ public sealed partial class HandHistoryIngestService
                 }
             }
 
-            IncrementProfiles(profiles, vpipPlayers, p => p.PreflopModel.VpipHands++);
-            IncrementProfiles(profiles, pfrPlayers, p => p.PreflopModel.PfrHands++);
-            IncrementProfiles(profiles, threeBetPlayers, p => p.PreflopModel.ThreeBetHands++);
-            IncrementProfiles(profiles, facedThreeBetPlayers, p => p.PreflopModel.FacedThreeBetHands++);
-            IncrementProfiles(profiles, foldToThreeBetPlayers, p => p.PreflopModel.FoldToThreeBetHands++);
+            var positionAssignments = GetSixMaxPositionAssignments(hand, activePlayers, preflopActions);
+            foreach (var assignment in positionAssignments)
+            {
+                var profile = GetOrCreate(profiles, assignment.Key);
+                var positionStats = assignment.Value switch
+                {
+                    PositionStats.PositionEnum.UTG => profile.PreflopModel.UTGPosition,
+                    PositionStats.PositionEnum.HJ => profile.PreflopModel.HJPosition,
+                    PositionStats.PositionEnum.CO => profile.PreflopModel.COPosition,
+                    PositionStats.PositionEnum.BTN => profile.PreflopModel.BTNPosition,
+                    PositionStats.PositionEnum.SB => profile.PreflopModel.SBPosition,
+                    PositionStats.PositionEnum.BB => profile.PreflopModel.BBPosition,
+                    _ => profile.PreflopModel.UTGPosition
+                };
+
+                if (vpipPlayers.Contains(assignment.Key))
+                    positionStats.VpipHands++;
+
+                if (pfrPlayers.Contains(assignment.Key))
+                    positionStats.PfrHands++;
+
+                if (threeBetPlayers.Contains(assignment.Key))
+                    positionStats.ThreeBetHands++;
+
+                if (facedThreeBetPlayers.Contains(assignment.Key))
+                    positionStats.FacedThreeBetHands++;
+
+                if (foldToThreeBetPlayers.Contains(assignment.Key))
+                    positionStats.FoldToThreeBetHands++;
+            }
 
             var flopActions = hand.Actions
                 .Where(a => a.Street == Street.Flop && a.Type != ActionType.SitOut)
@@ -449,5 +474,57 @@ public sealed partial class HandHistoryIngestService
         {
             increment(GetOrCreate(profiles, player));
         }
+    }
+
+    private static Dictionary<string, PositionStats.PositionEnum> GetSixMaxPositionAssignments(
+        Hand hand,
+        IReadOnlyCollection<string> activePlayers,
+        IReadOnlyCollection<HandAction> preflopActions)
+    {
+        if (hand.Players.Count == 0 || activePlayers.Count == 0)
+            return new Dictionary<string, PositionStats.PositionEnum>(StringComparer.Ordinal);
+
+        var activeSeats = hand.Players
+            .Where(p => activePlayers.Contains(p.Name))
+            .Where(p => p.Seat > 0)
+            .OrderBy(p => p.Seat)
+            .ToList();
+
+        if (activeSeats.Count != 6)
+            return new Dictionary<string, PositionStats.PositionEnum>(StringComparer.Ordinal);
+
+        var sbPlayer = preflopActions
+            .FirstOrDefault(a => a.Type == ActionType.PostSmallBlind)?.Player;
+
+        if (string.IsNullOrWhiteSpace(sbPlayer))
+            return new Dictionary<string, PositionStats.PositionEnum>(StringComparer.Ordinal);
+
+        var sbIndex = activeSeats.FindIndex(p => string.Equals(p.Name, sbPlayer, StringComparison.Ordinal));
+        if (sbIndex < 0)
+            return new Dictionary<string, PositionStats.PositionEnum>(StringComparer.Ordinal);
+
+        var buttonIndex = (sbIndex - 1 + activeSeats.Count) % activeSeats.Count;
+        var orderedSeats = activeSeats
+            .Skip(buttonIndex)
+            .Concat(activeSeats.Take(buttonIndex))
+            .ToList();
+
+        var positions = new[]
+        {
+            PositionStats.PositionEnum.BTN,
+            PositionStats.PositionEnum.SB,
+            PositionStats.PositionEnum.BB,
+            PositionStats.PositionEnum.UTG,
+            PositionStats.PositionEnum.HJ,
+            PositionStats.PositionEnum.CO
+        };
+
+        var assignments = new Dictionary<string, PositionStats.PositionEnum>(StringComparer.Ordinal);
+        for (var i = 0; i < positions.Length && i < orderedSeats.Count; i++)
+        {
+            assignments[orderedSeats[i].Name] = positions[i];
+        }
+
+        return assignments;
     }
 }
