@@ -460,8 +460,8 @@ public sealed partial class HandHistoryIngestService
 
     private static bool HasAnyStats(PlayerProfile profile)
     {
-        return profile.Hands > 0
-            || HasPreflopStats(profile.PreflopModel)
+        return 
+             HasPreflopStats(profile.PreflopModel)
             || HasFlopStats(profile.FlopModel)
             || HasTurnStats(profile.TurnModel)
             || HasRiverStats(profile.RiverModel);
