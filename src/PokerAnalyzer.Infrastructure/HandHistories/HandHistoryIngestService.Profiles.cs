@@ -82,6 +82,15 @@ public sealed partial class HandHistoryIngestService
                     bbStats.FoldedVsLateOpenHands++;
             }
 
+            if (TryGetButtonFirstInRaise(preflopActions, positionAssignments, out var btnPlayer, out var btnRaised))
+            {
+                var profile = GetOrCreate(profiles, btnPlayer);
+                var btnStats = GetPositionPreflopStats(profile.PreflopModel, PositionStats.PositionEnum.BTN);
+                btnStats.FirstInHands++;
+                if (btnRaised)
+                    btnStats.RaisedFirstInHands++;
+            }
+
             foreach (var assignment in positionAssignments)
             {
                 var profile = GetOrCreate(profiles, assignment.Key);
@@ -836,5 +845,55 @@ public sealed partial class HandHistoryIngestService
         }
 
         return false;
+    }
+
+    private static bool TryGetButtonFirstInRaise(
+        IReadOnlyList<HandAction> preflopActions,
+        Dictionary<string, PositionStats.PositionEnum> positionAssignments,
+        out string btnPlayer,
+        out bool btnRaised)
+    {
+        btnPlayer = string.Empty;
+        btnRaised = false;
+
+        if (positionAssignments.Count == 0)
+            return false;
+
+        var btnEntry = positionAssignments.FirstOrDefault(p => p.Value == PositionStats.PositionEnum.BTN);
+        if (string.IsNullOrWhiteSpace(btnEntry.Key))
+            return false;
+
+        var btnActionIndex = -1;
+        HandAction? btnAction = null;
+        for (var i = 0; i < preflopActions.Count; i++)
+        {
+            var action = preflopActions[i];
+            if (!string.Equals(action.Player, btnEntry.Key, StringComparison.Ordinal))
+                continue;
+
+            if (action.Type is ActionType.PostSmallBlind or ActionType.PostBigBlind or ActionType.SitOut)
+                continue;
+
+            btnActionIndex = i;
+            btnAction = action;
+            break;
+        }
+
+        if (btnAction == null)
+            return false;
+
+        for (var i = 0; i < btnActionIndex; i++)
+        {
+            var action = preflopActions[i];
+            if (action.Type is ActionType.PostSmallBlind or ActionType.PostBigBlind or ActionType.SitOut)
+                continue;
+
+            if (IsVoluntaryPreflopInvestment(action.Type))
+                return false;
+        }
+
+        btnPlayer = btnEntry.Key;
+        btnRaised = PreFlopOperations.IsPreflopAggressive(btnAction.Type);
+        return true;
     }
 }

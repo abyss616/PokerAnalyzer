@@ -56,6 +56,14 @@
                                           Filterable="false"
                                           FormatString="{0:0.##}%">
                     </RadzenDataGridColumn>
+                    <RadzenDataGridColumn TItem="LeakageStatsGridModel"
+                                          Property="RfiButton"
+                                          Title="RFI BTN"
+                                          Width="140px"
+                                          TextAlign="TextAlign.Right"
+                                          Filterable="false"
+                                          FormatString="{0:0.##}%">
+                    </RadzenDataGridColumn>
                 </Columns>
             </RadzenDataGrid>
         </div>
@@ -119,10 +127,15 @@
         };
     }
 
-    private static decimal GetValue(PositionPreflopStats bb)
+    private static decimal GetFoldBbVsStealValue(PositionPreflopStats bb)
         => bb.FacedLateOpenHands <= 0
             ? 0m
             : Math.Round((decimal)bb.FoldedVsLateOpenHands / bb.FacedLateOpenHands * 100m, 2);
+
+    private static decimal GetRfiButtonValue(PositionPreflopStats btn)
+        => btn.FirstInHands <= 0
+            ? 0m
+            : Math.Round((decimal)btn.RaisedFirstInHands / btn.FirstInHands * 100m, 2);
 }
 
 <style>
