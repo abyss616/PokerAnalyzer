@@ -455,7 +455,115 @@ public sealed partial class HandHistoryIngestService
             }
         }
 
-        return profiles.Values;
+        return profiles.Values.Where(HasAnyStats);
+    }
+
+    private static bool HasAnyStats(PlayerProfile profile)
+    {
+        return profile.Hands > 0
+            || HasPreflopStats(profile.PreflopModel)
+            || HasFlopStats(profile.FlopModel)
+            || HasTurnStats(profile.TurnModel)
+            || HasRiverStats(profile.RiverModel);
+    }
+
+    private static bool HasPreflopStats(PreflopStats stats)
+    {
+        var positions = stats.Positions;
+        return HasPreflopPositionStats(positions.Utg)
+            || HasPreflopPositionStats(positions.Hj)
+            || HasPreflopPositionStats(positions.Co)
+            || HasPreflopPositionStats(positions.Btn)
+            || HasPreflopPositionStats(positions.Sb)
+            || HasPreflopPositionStats(positions.Bb);
+    }
+
+    private static bool HasPreflopPositionStats(PositionPreflopStats stats)
+    {
+        return stats.VpipHands > 0
+            || stats.PfrHands > 0
+            || stats.ThreeBetHands > 0
+            || stats.FacedThreeBetHands > 0
+            || stats.FoldToThreeBetHands > 0;
+    }
+
+    private static bool HasFlopStats(FlopStatsByPosition stats)
+    {
+        var positions = stats.Positions;
+        return HasFlopPositionStats(positions.Utg)
+            || HasFlopPositionStats(positions.Hj)
+            || HasFlopPositionStats(positions.Co)
+            || HasFlopPositionStats(positions.Btn)
+            || HasFlopPositionStats(positions.Sb)
+            || HasFlopPositionStats(positions.Bb);
+    }
+
+    private static bool HasFlopPositionStats(FlopStats stats)
+    {
+        return stats.SawFlop > 0
+            || stats.WentToShowdown > 0
+            || stats.WonAtShowdown > 0
+            || stats.CBetOpportunities > 0
+            || stats.CBets > 0
+            || stats.FoldToCBetOpportunities > 0
+            || stats.FoldToCBet > 0
+            || stats.DonkBets > 0
+            || stats.FirstFoldToCBet > 0
+            || stats.CallVsCBet > 0
+            || stats.RaiseVsCBet > 0
+            || stats.MultiwayCBets > 0
+            || stats.ProbeBets > 0;
+    }
+
+    private static bool HasTurnStats(TurnStatsByPosition stats)
+    {
+        var positions = stats.Positions;
+        return HasTurnPositionStats(positions.Utg)
+            || HasTurnPositionStats(positions.Hj)
+            || HasTurnPositionStats(positions.Co)
+            || HasTurnPositionStats(positions.Btn)
+            || HasTurnPositionStats(positions.Sb)
+            || HasTurnPositionStats(positions.Bb);
+    }
+
+    private static bool HasTurnPositionStats(TurnStats stats)
+    {
+        return stats.SawTurn > 0
+            || stats.WentToShowdown > 0
+            || stats.WonAtShowdown > 0
+            || stats.TurnCBet > 0
+            || stats.TurnCheck > 0
+            || stats.TurnFoldToBet > 0
+            || stats.TurnAggressionFactor != 0m
+            || stats.TurnBetSizePercentPot != 0m
+            || stats.TurnRaiseVsBet > 0
+            || stats.TurnWTSDCarryover > 0;
+    }
+
+    private static bool HasRiverStats(RiverStatsByPosition stats)
+    {
+        var positions = stats.Positions;
+        return HasRiverPositionStats(positions.Utg)
+            || HasRiverPositionStats(positions.Hj)
+            || HasRiverPositionStats(positions.Co)
+            || HasRiverPositionStats(positions.Btn)
+            || HasRiverPositionStats(positions.Sb)
+            || HasRiverPositionStats(positions.Bb);
+    }
+
+    private static bool HasRiverPositionStats(RiverStats stats)
+    {
+        return stats.SawRiver > 0
+            || stats.WentToShowdown > 0
+            || stats.WonAtShowdown > 0
+            || stats.RiverBetOpportunities > 0
+            || stats.RiverBetsWhenCheckedTo > 0
+            || stats.RiverFacedBet > 0
+            || stats.RiverCallsVsBet > 0
+            || stats.RiverFoldToBet > 0
+            || stats.RiverRaiseVsBet > 0
+            || stats.RiverAggressionFactor != 0m
+            || stats.RiverBetSizePercentPot != 0m;
     }
 
     private static PlayerProfile GetOrCreate(Dictionary<string, PlayerProfile> profiles, string player)
