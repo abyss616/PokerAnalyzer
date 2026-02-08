@@ -1,7 +1,8 @@
 @page "/leakage-stats"
 @rendermode InteractiveServer
 @using PokerAnalyzer.Web.Models
-@inject PokerAnalyzer.Web.Services.ApiClient Api
+@using Microsoft.EntityFrameworkCore
+@inject PokerAnalyzer.Infrastructure.Persistence.PokerDbContext Db
 
 <h3>Leakage Stats</h3>
 
@@ -47,7 +48,7 @@
                                           Frozen="true"
                                           Width="220px" />
                     <RadzenDataGridColumn TItem="LeakageStatsGridModel"
-                                          Property="FoldBbVsSteal"
+                                          Property="AggregatedNumber"
                                           Title="Fold BB vs Steal"
                                           Width="160px"
                                           TextAlign="TextAlign.Right"
@@ -73,8 +74,25 @@
 
         try
         {
-            var stats = await Api.GetLatestPlayerStatsAsync();
-            _leakageStats = stats.Select(MapToLeakageGridModel).ToList();
+            var latestSessionId = await Db.Sessions
+                .AsNoTracking()
+                .OrderByDescending(s => s.UploadedAtUtc)
+                .Select(s => s.Id)
+                .FirstOrDefaultAsync();
+
+            if (latestSessionId == Guid.Empty)
+            {
+                _status = "No leakage stats found for the latest session.";
+                return;
+            }
+
+            var players = await Db.PlayerProfiles
+                .AsNoTracking()
+                .Where(p => p.SessionId == latestSessionId)
+                .OrderBy(p => p.Player)
+                .ToListAsync();
+
+            _leakageStats = players.Select(MapToLeakageGridModel).ToList();
             _status = _leakageStats.Count > 0 ? null : "No leakage stats found for the latest session.";
         }
         catch (Exception ex)
@@ -84,18 +102,21 @@
         }
     }
 
-    private static LeakageStatsGridModel MapToLeakageGridModel(PokerAnalyzer.Web.Services.ApiClient.PlayerStatsResult player)
+    private static LeakageStatsGridModel MapToLeakageGridModel(PlayerProfile player)
     {
-        var stats = player.Stats.ToDictionary(stat => stat.Name, StringComparer.OrdinalIgnoreCase);
-        decimal? GetValue(string name) =>
-            stats.TryGetValue(name, out var stat) ? stat.Percent : null;
+        var aggregatedNumber = GetFoldBbVsStealPercent(player.PreflopModel.Positions.Bb);
 
         return new LeakageStatsGridModel
         {
             PlayerName = player.Player,
-            FoldBbVsSteal = GetValue("Fold BB vs Steal")
+            AggregatedNumber = aggregatedNumber
         };
     }
+
+    private static decimal GetFoldBbVsStealPercent(PositionPreflopStats bb)
+        => bb.FacedLateOpenHands <= 0
+            ? 0m
+            : Math.Round((decimal)bb.FoldedVsLateOpenHands / bb.FacedLateOpenHands * 100m, 2);
 }
 
 <style>
