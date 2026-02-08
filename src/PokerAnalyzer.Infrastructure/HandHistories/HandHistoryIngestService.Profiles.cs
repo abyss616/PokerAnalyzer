@@ -77,6 +77,23 @@ public sealed partial class HandHistoryIngestService
             IncrementProfiles(profiles, facedThreeBetPlayers, p => p.PreflopModel.FacedThreeBetHands++);
             IncrementProfiles(profiles, foldToThreeBetPlayers, p => p.PreflopModel.FoldToThreeBetHands++);
 
+            var positionAssignments = GetSixMaxPositionAssignments(hand, activePlayers, preflopActions);
+            foreach (var assignment in positionAssignments)
+            {
+                var profile = GetOrCreate(profiles, assignment.Key);
+                var positionStats = GetOrCreatePositionStats(profile, assignment.Value);
+                positionStats.Hands++;
+
+                if (vpipPlayers.Contains(assignment.Key))
+                    positionStats.Vpip++;
+
+                if (pfrPlayers.Contains(assignment.Key))
+                    positionStats.Pfr++;
+
+                if (threeBetPlayers.Contains(assignment.Key))
+                    positionStats.ThreeBet++;
+            }
+
             var flopActions = hand.Actions
                 .Where(a => a.Street == Street.Flop && a.Type != ActionType.SitOut)
                 .ToList();
@@ -449,5 +466,73 @@ public sealed partial class HandHistoryIngestService
         {
             increment(GetOrCreate(profiles, player));
         }
+    }
+
+    private static Dictionary<string, PositionStats.PositionEnum> GetSixMaxPositionAssignments(
+        Hand hand,
+        IReadOnlyCollection<string> activePlayers,
+        IReadOnlyCollection<HandAction> preflopActions)
+    {
+        if (hand.Players.Count == 0 || activePlayers.Count == 0)
+            return new Dictionary<string, PositionStats.PositionEnum>(StringComparer.Ordinal);
+
+        var activeSeats = hand.Players
+            .Where(p => activePlayers.Contains(p.Name))
+            .Where(p => p.Seat > 0)
+            .OrderBy(p => p.Seat)
+            .ToList();
+
+        if (activeSeats.Count != 6)
+            return new Dictionary<string, PositionStats.PositionEnum>(StringComparer.Ordinal);
+
+        var sbPlayer = preflopActions
+            .FirstOrDefault(a => a.Type == ActionType.PostSmallBlind)?.Player;
+
+        if (string.IsNullOrWhiteSpace(sbPlayer))
+            return new Dictionary<string, PositionStats.PositionEnum>(StringComparer.Ordinal);
+
+        var sbIndex = activeSeats.FindIndex(p => string.Equals(p.Name, sbPlayer, StringComparison.Ordinal));
+        if (sbIndex < 0)
+            return new Dictionary<string, PositionStats.PositionEnum>(StringComparer.Ordinal);
+
+        var buttonIndex = (sbIndex - 1 + activeSeats.Count) % activeSeats.Count;
+        var orderedSeats = activeSeats
+            .Skip(buttonIndex)
+            .Concat(activeSeats.Take(buttonIndex))
+            .ToList();
+
+        var positions = new[]
+        {
+            PositionStats.PositionEnum.BTN,
+            PositionStats.PositionEnum.SB,
+            PositionStats.PositionEnum.BB,
+            PositionStats.PositionEnum.UTG,
+            PositionStats.PositionEnum.HJ,
+            PositionStats.PositionEnum.CO
+        };
+
+        var assignments = new Dictionary<string, PositionStats.PositionEnum>(StringComparer.Ordinal);
+        for (var i = 0; i < positions.Length && i < orderedSeats.Count; i++)
+        {
+            assignments[orderedSeats[i].Name] = positions[i];
+        }
+
+        return assignments;
+    }
+
+    private static PositionStats GetOrCreatePositionStats(PlayerProfile profile, PositionStats.PositionEnum position)
+    {
+        var existing = profile.ByPosition.FirstOrDefault(p => p.Position == position);
+        if (existing != null)
+            return existing;
+
+        var created = new PositionStats
+        {
+            Position = position,
+            PlayerProfile = profile
+        };
+
+        profile.ByPosition.Add(created);
+        return created;
     }
 }
