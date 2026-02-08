@@ -42,7 +42,11 @@
                         @foreach (var stat in player.Stats)
                         {
                             <tr>
-                                <td>@stat.Name</td>
+                                <td>
+                                    <span class="stat-tooltip" data-tooltip="@GetStatDescription(stat.Name)">
+                                        @stat.Name
+                                    </span>
+                                </td>
                                 <td class="text-end">@FormatPercent(stat.Percent)</td>
                             </tr>
                         }
@@ -57,6 +61,35 @@
     private string? _status;
     private string? _error;
     private IReadOnlyList<PokerAnalyzer.Web.Services.ApiClient.PlayerStatsResult> _playerStats = Array.Empty<PokerAnalyzer.Web.Services.ApiClient.PlayerStatsResult>();
+    private static readonly IReadOnlyDictionary<string, string> StatDescriptions = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+    {
+        ["VPIP"] = "Voluntarily Put Money In Pot: % of hands where the player called or raised preflop.",
+        ["PFR"] = "Preflop Raise: % of hands where the player raised preflop.",
+        ["3Bet"] = "Three-bet: % of hands where the player re-raised preflop.",
+        ["Faced 3Bet"] = "Faced a three-bet: % of hands where the player opened and faced a re-raise.",
+        ["Fold to 3Bet"] = "Folded to a three-bet after opening preflop.",
+        ["Flop WTSD"] = "Flop Went To Showdown: % of hands reaching showdown after seeing the flop.",
+        ["Flop W$SD"] = "Flop Won at Showdown: % of showdowns won after seeing the flop.",
+        ["Flop CBet Opp"] = "Flop continuation bet opportunities: % of hands where the preflop aggressor could c-bet on the flop.",
+        ["Flop CBet"] = "Flop continuation bet: % of opportunities where the player c-bet the flop.",
+        ["Fold to Flop CBet Opp"] = "Flop fold-to-c-bet opportunities: % of hands where the player faced a flop c-bet.",
+        ["Fold to Flop CBet"] = "Flop fold to c-bet: % of times the player folded when facing a flop c-bet.",
+        ["First Fold to CBet"] = "First fold to flop c-bet: % of hands where the player was the first to fold versus a flop c-bet.",
+        ["Call vs CBet"] = "Call vs flop c-bet: % of times the player called when facing a flop c-bet.",
+        ["Raise vs CBet"] = "Raise vs flop c-bet: % of times the player raised when facing a flop c-bet.",
+        ["Multiway CBet"] = "Multiway c-bet: % of times the player c-bet the flop in a multiway pot.",
+        ["Turn WTSD"] = "Turn Went To Showdown: % of hands reaching showdown after seeing the turn.",
+        ["Turn W$SD"] = "Turn Won at Showdown: % of showdowns won after seeing the turn.",
+        ["Turn CBet"] = "Turn continuation bet: % of times the player fired a second barrel on the turn.",
+        ["Turn Fold to Bet"] = "Turn fold to bet: % of times the player folded when facing a turn bet.",
+        ["Turn Aggression"] = "Turn aggression factor: bets and raises divided by calls on the turn.",
+        ["Turn WTSD Carryover"] = "Turn WTSD carryover: % of hands that reached showdown after seeing the turn.",
+        ["River WTSD"] = "River Went To Showdown: % of hands reaching showdown after seeing the river.",
+        ["River W$SD"] = "River Won at Showdown: % of showdowns won after seeing the river.",
+        ["River Bets When Checked To"] = "River bet when checked to: % of times the player bet the river after it checked to them.",
+        ["River Fold to Bet"] = "River fold to bet: % of times the player folded when facing a river bet.",
+        ["River Aggression"] = "River aggression factor: bets and raises divided by calls on the river."
+    };
 
     private async Task OnFileSelected(InputFileChangeEventArgs e)
     {
@@ -89,4 +122,56 @@
     }
 
     private static string FormatPercent(decimal value) => $"{value:0.##}%";
+
+    private static string GetStatDescription(string statName) =>
+        StatDescriptions.TryGetValue(statName, out var description)
+            ? description
+            : "No description available.";
 }
+
+<style>
+    .stat-tooltip {
+        position: relative;
+        cursor: help;
+        border-bottom: 1px dotted rgba(0, 0, 0, 0.35);
+    }
+
+    .stat-tooltip::after {
+        content: attr(data-tooltip);
+        position: absolute;
+        left: 0;
+        top: 125%;
+        z-index: 10;
+        min-width: 220px;
+        max-width: 320px;
+        padding: 0.35rem 0.5rem;
+        border-radius: 0.35rem;
+        background: rgba(33, 37, 41, 0.95);
+        color: #fff;
+        font-size: 0.75rem;
+        line-height: 1.2;
+        opacity: 0;
+        pointer-events: none;
+        transform: translateY(-4px);
+        transition: opacity 0.15s ease, transform 0.15s ease;
+        white-space: normal;
+    }
+
+    .stat-tooltip::before {
+        content: "";
+        position: absolute;
+        left: 12px;
+        top: 115%;
+        border-width: 6px;
+        border-style: solid;
+        border-color: transparent transparent rgba(33, 37, 41, 0.95) transparent;
+        opacity: 0;
+        transition: opacity 0.15s ease;
+    }
+
+    .stat-tooltip:hover::after,
+    .stat-tooltip:hover::before {
+        opacity: 1;
+        transform: translateY(0);
+    }
+</style>
