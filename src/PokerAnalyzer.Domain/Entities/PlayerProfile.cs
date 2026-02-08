@@ -1,4 +1,6 @@
-﻿public sealed class PlayerProfile
+﻿using Microsoft.EntityFrameworkCore;
+
+public sealed class PlayerProfile
 {
     public Guid Id { get; set; }
     public Guid SessionId { get; set; }
@@ -21,24 +23,30 @@
 
 public sealed class PositionStats
 {
-    public PositionEnum Position { get; set; }
-    public Guid Id { get; set; } = Guid.NewGuid();
-
-    public Guid PlayerProfileId { get; set; }
-    public PlayerProfile PlayerProfile { get; set; } = null!;
-    public enum PositionEnum { UTG, UTG1, UTG2, LJ, HJ, CO, BTN, SB, BB }
+    public enum PositionEnum { UTG, HJ, CO, BTN, SB, BB }
 }
 
+
+#region Preflop
+
+[Owned]
 public sealed class PreflopStats
 {
-    public PositionPreflopStats UTGPosition { get; set; } = new();
-    public PositionPreflopStats HJPosition { get; set; } = new();
-    public PositionPreflopStats COPosition { get; set; } = new();
-    public PositionPreflopStats BTNPosition { get; set; } = new();
-    public PositionPreflopStats SBPosition { get; set; } = new();
-    public PositionPreflopStats BBPosition { get; set; } = new();
+    public PositionPreflopStatsByPosition Positions { get; set; } = new();
 }
 
+[Owned]
+public sealed class PositionPreflopStatsByPosition
+{
+    public PositionPreflopStats Utg { get; set; } = new();
+    public PositionPreflopStats Hj { get; set; } = new();
+    public PositionPreflopStats Co { get; set; } = new();
+    public PositionPreflopStats Btn { get; set; } = new();
+    public PositionPreflopStats Sb { get; set; } = new();
+    public PositionPreflopStats Bb { get; set; } = new();
+}
+
+[Owned]
 public sealed class PositionPreflopStats
 {
     public int VpipHands { get; set; }
@@ -48,7 +56,28 @@ public sealed class PositionPreflopStats
     public int FoldToThreeBetHands { get; set; }
 }
 
+#endregion
 
+#region Flop
+
+[Owned]
+public sealed class FlopStatsByPosition
+{
+    public PositionFlopStatsByPosition Positions { get; set; } = new();
+}
+
+[Owned]
+public sealed class PositionFlopStatsByPosition
+{
+    public FlopStats Utg { get; set; } = new();
+    public FlopStats Hj { get; set; } = new();
+    public FlopStats Co { get; set; } = new();
+    public FlopStats Btn { get; set; } = new();
+    public FlopStats Sb { get; set; } = new();
+    public FlopStats Bb { get; set; } = new();
+}
+
+[Owned]
 public sealed class FlopStats
 {
     public int SawFlop { get; set; }
@@ -66,6 +95,28 @@ public sealed class FlopStats
     public int ProbeBets { get; set; }
 }
 
+#endregion
+
+#region Turn
+
+[Owned]
+public sealed class TurnStatsByPosition
+{
+    public PositionTurnStatsByPosition Positions { get; set; } = new();
+}
+
+[Owned]
+public sealed class PositionTurnStatsByPosition
+{
+    public TurnStats Utg { get; set; } = new();
+    public TurnStats Hj { get; set; } = new();
+    public TurnStats Co { get; set; } = new();
+    public TurnStats Btn { get; set; } = new();
+    public TurnStats Sb { get; set; } = new();
+    public TurnStats Bb { get; set; } = new();
+}
+
+[Owned]
 public sealed class TurnStats
 {
     public int SawTurn { get; set; }
@@ -80,6 +131,28 @@ public sealed class TurnStats
     public int TurnWTSDCarryover { get; set; }
 }
 
+#endregion
+
+#region River
+
+[Owned]
+public sealed class RiverStatsByPosition
+{
+    public PositionRiverStatsByPosition Positions { get; set; } = new();
+}
+
+[Owned]
+public sealed class PositionRiverStatsByPosition
+{
+    public RiverStats Utg { get; set; } = new();
+    public RiverStats Hj { get; set; } = new();
+    public RiverStats Co { get; set; } = new();
+    public RiverStats Btn { get; set; } = new();
+    public RiverStats Sb { get; set; } = new();
+    public RiverStats Bb { get; set; } = new();
+}
+
+[Owned]
 public sealed class RiverStats
 {
     public int SawRiver { get; set; }
@@ -94,3 +167,5 @@ public sealed class RiverStats
     public decimal RiverAggressionFactor { get; set; }
     public decimal RiverBetSizePercentPot { get; set; }
 }
+
+#endregion
