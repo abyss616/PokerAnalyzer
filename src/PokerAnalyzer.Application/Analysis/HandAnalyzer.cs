@@ -24,7 +24,7 @@ public sealed class HandAnalyzer
 
         var heroCtx = new HeroContext(hand.HeroId, hand.SmallBlind, hand.BigBlind);
 
-        var state = HandState.CreateNewHand(hand.Seats, Street.Preflop, hand.Board);
+        var state = HandState.CreateNewHand(hand.Seats, hand.SmallBlind, hand.BigBlind, Street.Preflop, hand.Board);
 
         var decisions = new List<DecisionReview>();
 

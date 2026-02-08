@@ -49,6 +49,8 @@ public sealed class HandState
 
     public static HandState CreateNewHand(
         IEnumerable<PlayerSeat> seats,
+        ChipAmount smallBlind,
+        ChipAmount bigBlind,
         Street street = Street.Preflop,
         Board? board = null)
     {
@@ -56,7 +58,44 @@ public sealed class HandState
         var contrib = seats.ToDictionary(s => s.Id, _ => ChipAmount.Zero);
         var active = seats.Select(s => s.Id).ToHashSet();
 
-        return new HandState(street, board?? new Board(),  ChipAmount.Zero, ChipAmount.Zero, contrib, stacks, active, null);
+        var pot = ChipAmount.Zero;
+        var betToCall = ChipAmount.Zero;
+        PlayerId? lastAggressor = null;
+
+        var sbSeat = seats.FirstOrDefault(s => s.Position == Position.SB);
+        if (sbSeat is not null && smallBlind.Value > 0)
+        {
+            var posted = PostBlind(sbSeat.Id, smallBlind, stacks, contrib, ref pot);
+            betToCall = posted;
+        }
+
+        var bbSeat = seats.FirstOrDefault(s => s.Position == Position.BB);
+        if (bbSeat is not null && bigBlind.Value > 0)
+        {
+            var posted = PostBlind(bbSeat.Id, bigBlind, stacks, contrib, ref pot);
+            if (posted.Value >= betToCall.Value)
+            {
+                betToCall = posted;
+                lastAggressor = bbSeat.Id;
+            }
+        }
+
+        return new HandState(street, board ?? new Board(), pot, betToCall, contrib, stacks, active, lastAggressor);
+    }
+
+    private static ChipAmount PostBlind(
+        PlayerId playerId,
+        ChipAmount blind,
+        IDictionary<PlayerId, ChipAmount> stacks,
+        IDictionary<PlayerId, ChipAmount> contrib,
+        ref ChipAmount pot)
+    {
+        var stack = stacks[playerId];
+        var posted = blind.Value > stack.Value ? stack : blind;
+        stacks[playerId] = new ChipAmount(stack.Value - posted.Value);
+        contrib[playerId] = new ChipAmount(contrib[playerId].Value + posted.Value);
+        pot = new ChipAmount(pot.Value + posted.Value);
+        return posted;
     }
 
     public HandState Clone()
