@@ -24,6 +24,11 @@ public sealed class PlayerProfile
 public sealed class PositionStats
 {
     public enum PositionEnum { UTG, HJ, CO, BTN, SB, BB }
+
+    public Guid Id { get; set; }
+    public PositionEnum Position { get; set; }
+    public Guid PlayerProfileId { get; set; }
+    public PlayerProfile PlayerProfile { get; set; } = null!;
 }
 
 
