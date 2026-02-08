@@ -86,7 +86,7 @@ public sealed class HandAnalysisController : ControllerBase
                 playerIds[p.Name],
                 p.Name,
                 p.Seat,
-                Position.Unknown,
+                MapPosition(p.Position),
                 new ChipAmount(ToChipAmount(p.StackStart))
             ))
             .ToList();
@@ -130,6 +130,20 @@ public sealed class HandAnalysisController : ControllerBase
 
         return (long)Math.Round(value.Value * 100m, MidpointRounding.AwayFromZero);
     }
+
+    private static Position MapPosition(HandPlayer.Position position) => position switch
+    {
+        HandPlayer.Position.UTG => Position.UTG,
+        HandPlayer.Position.UTG1 => Position.UTG1,
+        HandPlayer.Position.UTG2 => Position.UTG2,
+        HandPlayer.Position.LJ => Position.LJ,
+        HandPlayer.Position.HJ => Position.HJ,
+        HandPlayer.Position.CO => Position.CO,
+        HandPlayer.Position.BTN => Position.BTN,
+        HandPlayer.Position.SB => Position.SB,
+        HandPlayer.Position.BB => Position.BB,
+        _ => Position.Unknown
+    };
 
     private static HoleCards? ParseHoleCards(string? value)
     {
