@@ -31,6 +31,8 @@ public sealed partial class HandHistoryIngestService
             var threeBetPlayers = new HashSet<string>(StringComparer.Ordinal);
             var facedThreeBetPlayers = new HashSet<string>(StringComparer.Ordinal);
             var foldToThreeBetPlayers = new HashSet<string>(StringComparer.Ordinal);
+            var foldToStealOpportunityPlayers = new HashSet<string>(StringComparer.Ordinal);
+            var foldToStealPlayers = new HashSet<string>(StringComparer.Ordinal);
 
             string? preflopRaiser = null;
             bool sawRaise = false;
@@ -72,6 +74,51 @@ public sealed partial class HandHistoryIngestService
             }
 
             var positionAssignments = GetSixMaxPositionAssignments(hand, activePlayers, preflopActions);
+            var openRaiseIndex = -1;
+            HandAction? openRaiseAction = null;
+
+            for (var i = 0; i < preflopActions.Count; i++)
+            {
+                var action = preflopActions[i];
+                if (action.Type == ActionType.SitOut)
+                    continue;
+
+                if (PreFlopOperations.IsPreflopAggressive(action.Type))
+                {
+                    openRaiseIndex = i;
+                    openRaiseAction = action;
+                    break;
+                }
+            }
+
+            if (openRaiseAction != null
+                && positionAssignments.TryGetValue(openRaiseAction.Player, out var openPosition)
+                && (openPosition == PositionStats.PositionEnum.CO
+                    || openPosition == PositionStats.PositionEnum.BTN
+                    || openPosition == PositionStats.PositionEnum.SB))
+            {
+                var bbPlayer = positionAssignments.FirstOrDefault(p => p.Value == PositionStats.PositionEnum.BB).Key;
+                if (!string.IsNullOrWhiteSpace(bbPlayer) && activePlayers.Contains(bbPlayer))
+                {
+                    foldToStealOpportunityPlayers.Add(bbPlayer);
+
+                    if (openRaiseIndex >= 0)
+                    {
+                        for (var i = openRaiseIndex + 1; i < preflopActions.Count; i++)
+                        {
+                            var action = preflopActions[i];
+                            if (!string.Equals(action.Player, bbPlayer, StringComparison.Ordinal))
+                                continue;
+
+                            if (action.Type == ActionType.Fold)
+                                foldToStealPlayers.Add(bbPlayer);
+
+                            break;
+                        }
+                    }
+                }
+            }
+
             foreach (var assignment in positionAssignments)
             {
                 var profile = GetOrCreate(profiles, assignment.Key);
@@ -91,6 +138,12 @@ public sealed partial class HandHistoryIngestService
 
                 if (foldToThreeBetPlayers.Contains(assignment.Key))
                     positionStats.FoldToThreeBetHands++;
+
+                if (foldToStealOpportunityPlayers.Contains(assignment.Key))
+                    positionStats.FoldToStealOpportunities++;
+
+                if (foldToStealPlayers.Contains(assignment.Key))
+                    positionStats.FoldToStealHands++;
             }
             
  
@@ -484,7 +537,9 @@ public sealed partial class HandHistoryIngestService
             || stats.PfrHands > 0
             || stats.ThreeBetHands > 0
             || stats.FacedThreeBetHands > 0
-            || stats.FoldToThreeBetHands > 0;
+            || stats.FoldToThreeBetHands > 0
+            || stats.FoldToStealOpportunities > 0
+            || stats.FoldToStealHands > 0;
     }
 
     private static bool HasFlopStats(FlopStatsByPosition stats)
