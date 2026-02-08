@@ -13,9 +13,9 @@ public sealed class PlayerProfile
     public PreflopStats PreflopModel { get; set; } = new();
 
 
-    public FlopStats FlopModel { get; set; } = new();
-    public TurnStats TurnModel { get; set; } = new();
-    public RiverStats RiverModel { get; set; } = new();
+    public FlopStatsByPosition FlopModel { get; set; } = new();
+    public TurnStatsByPosition TurnModel { get; set; } = new();
+    public RiverStatsByPosition RiverModel { get; set; } = new();
 
     // Optional: by-position dictionaries
     public List<PositionStats> ByPosition { get; set; } = new();
