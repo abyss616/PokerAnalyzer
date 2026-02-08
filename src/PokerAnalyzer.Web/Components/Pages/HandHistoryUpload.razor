@@ -30,38 +30,41 @@
         @{
             var statNames = GetStatNames(_playerStats);
         }
-        <div class="table-responsive">
-            <table class="table table-sm table-striped align-middle player-stats-grid">
-                <thead>
-                    <tr>
-                        <th>Player</th>
-                        <th class="text-end">Hands</th>
-                        @foreach (var statName in statNames)
-                        {
-                            <th class="text-end">
-                                <span class="stat-tooltip" data-tooltip="@GetStatDescription(statName)">
-                                    @statName
-                                </span>
-                            </th>
-                        }
-                    </tr>
-                </thead>
-                <tbody>
-                    @foreach (var player in _playerStats)
-                    {
-                        <tr>
-                            <th scope="row">@player.Player</th>
-                            <td class="text-end">@player.Hands</td>
-                            @foreach (var statName in statNames)
-                            {
+        <RadzenDataGrid Data="@_playerStats"
+                        TItem="PokerAnalyzer.Web.Services.ApiClient.PlayerStatsResult"
+                        AllowSorting="true"
+                        AllowPaging="true"
+                        PageSize="10"
+                        Responsive="true"
+                        Class="player-stats-grid">
+            <Columns>
+                <RadzenDataGridColumn TItem="PokerAnalyzer.Web.Services.ApiClient.PlayerStatsResult"
+                                      Property="Player"
+                                      Title="Player" />
+                <RadzenDataGridColumn TItem="PokerAnalyzer.Web.Services.ApiClient.PlayerStatsResult"
+                                      Property="Hands"
+                                      Title="Hands"
+                                      TextAlign="TextAlign.Right" />
+                @foreach (var statName in statNames)
+                {
+                    <RadzenDataGridColumn TItem="PokerAnalyzer.Web.Services.ApiClient.PlayerStatsResult"
+                                          Title="@statName"
+                                          TextAlign="TextAlign.Right">
+                        <HeaderTemplate>
+                            <span class="stat-tooltip" data-tooltip="@GetStatDescription(statName)">
+                                @statName
+                            </span>
+                        </HeaderTemplate>
+                        <Template Context="player">
+                            @{
                                 var stat = player.Stats.FirstOrDefault(item => item.Name.Equals(statName, StringComparison.OrdinalIgnoreCase));
-                                <td class="text-end">@((stat is null) ? "-" : FormatPercent(stat.Percent))</td>
                             }
-                        </tr>
-                    }
-                </tbody>
-            </table>
-        </div>
+                            @((stat is null) ? "-" : FormatPercent(stat.Percent))
+                        </Template>
+                    </RadzenDataGridColumn>
+                }
+            </Columns>
+        </RadzenDataGrid>
     </div>
 }
 
