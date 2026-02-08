@@ -63,7 +63,7 @@
                                           TextAlign="TextAlign.Right"
                                           Filterable="false"
                                           FormatString="{0:0.##}%">
-                    </RadzenDataGridColumn>
+                    </RadzenDataGridColumn>                 
                 </Columns>
             </RadzenDataGrid>
         </div>
@@ -116,6 +116,7 @@
     private static LeakageStatsGridModel MapToLeakageGridModel(PlayerProfile player)
     {
         var bb = player.PreflopModel.Positions.Bb;
+        var btn = player.PreflopModel.Positions.Btn;
         var foldBBvsSteal = bb.FacedLateOpenHands <= 0
             ? 0m
             : Math.Round((decimal)bb.FoldedVsLateOpenHands / bb.FacedLateOpenHands * 100m, 2);
@@ -123,7 +124,8 @@
         return new LeakageStatsGridModel
         {
             PlayerName = player.Player,
-            FoldBBvsSteal = GetValue(bb)
+            FoldBBvsSteal = GetFoldBbVsStealValue(bb),
+            RfiButton = GetRfiButtonValue(btn)
         };
     }
 
