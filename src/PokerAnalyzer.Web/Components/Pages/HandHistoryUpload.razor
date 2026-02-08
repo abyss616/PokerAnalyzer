@@ -27,33 +27,41 @@
 {
     <div class="mt-4">
         <h4>Player Stats</h4>
-        @foreach (var player in _playerStats)
-        {
-            <div class="mb-4">
-                <h5>@player.Player <small class="text-muted">(Hands: @player.Hands)</small></h5>
-                <table class="table table-sm table-striped">
-                    <thead>
-                        <tr>
-                            <th>Stat</th>
-                            <th class="text-end">Percent</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        @foreach (var stat in player.Stats)
-                        {
-                            <tr>
-                                <td>
-                                    <span class="stat-tooltip" data-tooltip="@GetStatDescription(stat.Name)">
-                                        @stat.Name
-                                    </span>
-                                </td>
-                                <td class="text-end">@FormatPercent(stat.Percent)</td>
-                            </tr>
-                        }
-                    </tbody>
-                </table>
-            </div>
+        @{
+            var statNames = GetStatNames(_playerStats);
         }
+        <div class="table-responsive">
+            <table class="table table-sm table-striped align-middle player-stats-grid">
+                <thead>
+                    <tr>
+                        <th>Player</th>
+                        <th class="text-end">Hands</th>
+                        @foreach (var statName in statNames)
+                        {
+                            <th class="text-end">
+                                <span class="stat-tooltip" data-tooltip="@GetStatDescription(statName)">
+                                    @statName
+                                </span>
+                            </th>
+                        }
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var player in _playerStats)
+                    {
+                        <tr>
+                            <th scope="row">@player.Player</th>
+                            <td class="text-end">@player.Hands</td>
+                            @foreach (var statName in statNames)
+                            {
+                                var stat = player.Stats.FirstOrDefault(item => item.Name.Equals(statName, StringComparison.OrdinalIgnoreCase));
+                                <td class="text-end">@((stat is null) ? "-" : FormatPercent(stat.Percent))</td>
+                            }
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
     </div>
 }
 
@@ -127,6 +135,25 @@
         StatDescriptions.TryGetValue(statName, out var description)
             ? description
             : "No description available.";
+
+    private static IReadOnlyList<string> GetStatNames(IReadOnlyList<PokerAnalyzer.Web.Services.ApiClient.PlayerStatsResult> players)
+    {
+        var names = new List<string>();
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var player in players)
+        {
+            foreach (var stat in player.Stats)
+            {
+                if (seen.Add(stat.Name))
+                {
+                    names.Add(stat.Name);
+                }
+            }
+        }
+
+        return names;
+    }
 }
 
 <style>
