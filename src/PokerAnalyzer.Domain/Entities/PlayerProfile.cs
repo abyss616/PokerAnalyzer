@@ -143,17 +143,6 @@ public sealed class TurnStats
 [Owned]
 public sealed class RiverStatsByPosition
 {
-    public int SawRiver { get; set; }
-    public int WentToShowdown { get; set; }
-    public int WonAtShowdown { get; set; }
-    public int RiverBetOpportunities { get; set; }
-    public int RiverBetsWhenCheckedTo { get; set; }
-    public int RiverFacedBet { get; set; }
-    public int RiverCallsVsBet { get; set; }
-    public int RiverFoldToBet { get; set; }
-    public int RiverRaiseVsBet { get; set; }
-    public decimal RiverAggressionFactor { get; set; }
-    public decimal RiverBetSizePercentPot { get; set; }
     public PositionRiverStatsByPosition Positions { get; set; } = new();
 }
 
