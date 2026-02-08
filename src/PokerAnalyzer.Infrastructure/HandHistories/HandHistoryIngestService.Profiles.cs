@@ -71,11 +71,27 @@ public sealed partial class HandHistoryIngestService
                 }
             }
 
-            IncrementProfiles(profiles, vpipPlayers, p => p.PreflopModel.VpipHands++);
-            IncrementProfiles(profiles, pfrPlayers, p => p.PreflopModel.PfrHands++);
-            IncrementProfiles(profiles, threeBetPlayers, p => p.PreflopModel.ThreeBetHands++);
-            IncrementProfiles(profiles, facedThreeBetPlayers, p => p.PreflopModel.FacedThreeBetHands++);
-            IncrementProfiles(profiles, foldToThreeBetPlayers, p => p.PreflopModel.FoldToThreeBetHands++);
+            var positionAssignments = GetSixMaxPositionAssignments(hand, activePlayers, preflopActions);
+            foreach (var assignment in positionAssignments)
+            {
+                var profile = GetOrCreate(profiles, assignment.Key);
+                var positionStats = GetPositionPreflopStats(profile.PreflopModel, assignment.Value);
+
+                if (vpipPlayers.Contains(assignment.Key))
+                    positionStats.VpipHands++;
+
+                if (pfrPlayers.Contains(assignment.Key))
+                    positionStats.PfrHands++;
+
+                if (threeBetPlayers.Contains(assignment.Key))
+                    positionStats.ThreeBetHands++;
+
+                if (facedThreeBetPlayers.Contains(assignment.Key))
+                    positionStats.FacedThreeBetHands++;
+
+                if (foldToThreeBetPlayers.Contains(assignment.Key))
+                    positionStats.FoldToThreeBetHands++;
+            }
 
             var positionAssignments = GetSixMaxPositionAssignments(hand, activePlayers, preflopActions);
             foreach (var assignment in positionAssignments)

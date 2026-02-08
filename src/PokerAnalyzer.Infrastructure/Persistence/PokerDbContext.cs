@@ -48,7 +48,15 @@ namespace PokerAnalyzer.Infrastructure.Persistence
                 .IsUnique();
 
             b.Entity<PlayerProfile>()
-                .OwnsOne(o => o.PreflopModel);
+                .OwnsOne(o => o.PreflopModel, preflop =>
+                {
+                    preflop.OwnsOne(p => p.UTGPosition);
+                    preflop.OwnsOne(p => p.HJPosition);
+                    preflop.OwnsOne(p => p.COPosition);
+                    preflop.OwnsOne(p => p.BTNPosition);
+                    preflop.OwnsOne(p => p.SBPosition);
+                    preflop.OwnsOne(p => p.BBPosition);
+                });
 
             b.Entity<PlayerProfile>()
                 .OwnsOne(o => o.FlopModel);
