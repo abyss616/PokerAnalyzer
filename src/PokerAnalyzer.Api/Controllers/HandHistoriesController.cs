@@ -52,6 +52,21 @@ public sealed class HandHistoriesController : ControllerBase
         return Ok(response);
     }
 
+    [HttpGet("latest/player-stats")]
+    public async Task<ActionResult<IReadOnlyList<PlayerStatsResponse>>> GetLatestPlayerStats(CancellationToken ct)
+    {
+        var latestSessionId = await _db.Sessions
+            .AsNoTracking()
+            .OrderByDescending(s => s.UploadedAtUtc)
+            .Select(s => s.Id)
+            .FirstOrDefaultAsync(ct);
+
+        if (latestSessionId == Guid.Empty)
+            return NotFound();
+
+        return await GetPlayerStats(latestSessionId, ct);
+    }
+
     private static PlayerStatsResponse BuildPlayerStats(PlayerProfile profile)
     {
         var hands = profile.Hands;

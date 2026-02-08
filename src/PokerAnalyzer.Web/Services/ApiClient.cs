@@ -70,4 +70,19 @@ public sealed class ApiClient
         var result = await resp.Content.ReadFromJsonAsync<IReadOnlyList<PlayerStatsResult>>(cancellationToken: ct);
         return result ?? Array.Empty<PlayerStatsResult>();
     }
+
+    public async Task<IReadOnlyList<PlayerStatsResult>> GetLatestPlayerStatsAsync(
+        CancellationToken ct = default)
+    {
+        using var resp = await _http.GetAsync("api/hand-histories/latest/player-stats", ct);
+        if (!resp.IsSuccessStatusCode)
+        {
+            var body = await resp.Content.ReadAsStringAsync(ct);
+            throw new InvalidOperationException(
+                $"Latest player stats request failed: {(int)resp.StatusCode} {resp.ReasonPhrase}. {body}");
+        }
+
+        var result = await resp.Content.ReadFromJsonAsync<IReadOnlyList<PlayerStatsResult>>(cancellationToken: ct);
+        return result ?? Array.Empty<PlayerStatsResult>();
+    }
 }
