@@ -48,6 +48,7 @@ public sealed class HandPlayer
     public int Seat { get; set; }
     public decimal? StackStart { get; set; }
     public enum Position { UTG, UTG1, UTG2, LJ, HJ, CO, BTN, SB, BB }
+    public Position Position { get; set; }
     public bool IsHero { get; set; }
 }
 
