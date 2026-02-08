@@ -25,6 +25,41 @@
     </div>
 }
 
+@if (_sessionId != Guid.Empty)
+{
+    <div class="card mt-4">
+        <div class="card-title">Run solver for a hand</div>
+        <p class="text-muted mb-2">Enter a hand number from the uploaded session (example: 18).</p>
+
+        <div class="form-group">
+            <label class="form-label" for="hand-number-input">Hand number</label>
+            <InputNumber id="hand-number-input"
+                         class="form-control"
+                         @bind-Value="_handNumber"
+                         min="1" />
+        </div>
+        <button class="btn btn-primary mt-2"
+                disabled="@(!_handNumber.HasValue)"
+                @onclick="RunSolverAsync">
+            Run solver
+        </button>
+
+        @if (!string.IsNullOrWhiteSpace(_solverStatus))
+        {
+            <div class="alert alert-success mt-3">
+                @_solverStatus
+            </div>
+        }
+
+        @if (!string.IsNullOrWhiteSpace(_solverError))
+        {
+            <div class="alert alert-danger mt-3">
+                <pre style="white-space:pre-wrap">@_solverError</pre>
+            </div>
+        }
+    </div>
+}
+
 @if (_playerStats.Count > 0)
 {
     <div class="mt-4">
@@ -80,6 +115,10 @@
 @code {
     private string? _status;
     private string? _error;
+    private string? _solverStatus;
+    private string? _solverError;
+    private Guid _sessionId;
+    private int? _handNumber;
     private IReadOnlyList<PokerStatsGridModel> _playerStats = Array.Empty<PokerStatsGridModel>();
     private static readonly IReadOnlyList<StatColumn> StatColumns = new[]
     {
@@ -145,6 +184,10 @@
         _status = "OnFileSelected fired.";
         _status = null;
         _error = null;
+        _solverStatus = null;
+        _solverError = null;
+        _handNumber = null;
+        _sessionId = Guid.Empty;
         _playerStats = Array.Empty<PokerStatsGridModel>();
 
         try
@@ -161,6 +204,7 @@
             var result = await Api.UploadHandHistoryXmlAsync(file);
 
             _status = $"Upload successful. SessionId: {result.SessionId}";
+            _sessionId = result.SessionId;
 
             var stats = await Api.GetPlayerStatsAsync(result.SessionId);
             _playerStats = stats.Select(MapToGridModel).ToList();
@@ -168,6 +212,35 @@
         catch (Exception ex)
         {
             _error = ex.ToString();
+        }
+    }
+
+    private async Task RunSolverAsync()
+    {
+        _solverStatus = null;
+        _solverError = null;
+
+        if (_sessionId == Guid.Empty)
+        {
+            _solverError = "Upload a hand history before running the solver.";
+            return;
+        }
+
+        if (!_handNumber.HasValue || _handNumber <= 0)
+        {
+            _solverError = "Enter a valid hand number.";
+            return;
+        }
+
+        try
+        {
+            var result = await Api.RunSolverAsync(_sessionId, _handNumber.Value);
+            _solverStatus = $"Solver complete for hand #{result.HandNumber}. " +
+                            $"HandId: {result.HandId}. Decisions reviewed: {result.DecisionCount}.";
+        }
+        catch (Exception ex)
+        {
+            _solverError = ex.ToString();
         }
     }
 

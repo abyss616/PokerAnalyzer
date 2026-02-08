@@ -38,6 +38,7 @@ public sealed partial class HandHistoryIngestService
         }
 
         // rounds => streets + actions + cards
+        var actionIndex = 0;
         foreach (var round in game.Elements("round"))
         {
             var street = DetectStreet(round);
@@ -82,6 +83,7 @@ public sealed partial class HandHistoryIngestService
 
                 hand.Actions.Add(new HandAction
                 {
+                    ActionIndex = actionIndex++,
                     Street = street,
                     Player = player,
                     Type = type,

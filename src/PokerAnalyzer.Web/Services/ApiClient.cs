@@ -16,6 +16,7 @@ public sealed class ApiClient
     public sealed record UploadHandHistoryResult(Guid SessionId);
     public sealed record PlayerStatPercent(string Name, decimal Percent);
     public sealed record PlayerStatsResult(string Player, int Hands, IReadOnlyList<PlayerStatPercent> Stats);
+    public sealed record HandSolverResponse(Guid HandId, int HandNumber, int DecisionCount);
 
     public async Task<UploadHandHistoryResult> UploadHandHistoryXmlAsync(
         IBrowserFile file,
@@ -84,5 +85,30 @@ public sealed class ApiClient
 
         var result = await resp.Content.ReadFromJsonAsync<IReadOnlyList<PlayerStatsResult>>(cancellationToken: ct);
         return result ?? Array.Empty<PlayerStatsResult>();
+    }
+
+    public async Task<HandSolverResponse> RunSolverAsync(
+        Guid sessionId,
+        int handNumber,
+        CancellationToken ct = default)
+    {
+        if (sessionId == Guid.Empty)
+            throw new ArgumentException("SessionId is required.", nameof(sessionId));
+        if (handNumber <= 0)
+            throw new ArgumentOutOfRangeException(nameof(handNumber), "Hand number must be greater than zero.");
+
+        using var resp = await _http.GetAsync($"api/analysis/session/{sessionId}/hand-number/{handNumber}", ct);
+        if (!resp.IsSuccessStatusCode)
+        {
+            var body = await resp.Content.ReadAsStringAsync(ct);
+            throw new InvalidOperationException(
+                $"Hand analysis request failed: {(int)resp.StatusCode} {resp.ReasonPhrase}. {body}");
+        }
+
+        var result = await resp.Content.ReadFromJsonAsync<HandSolverResponse>(cancellationToken: ct);
+        if (result is null)
+            throw new InvalidOperationException("Hand analysis response was empty.");
+
+        return result;
     }
 }
