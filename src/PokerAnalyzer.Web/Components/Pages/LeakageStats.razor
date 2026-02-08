@@ -1,7 +1,8 @@
 @page "/leakage-stats"
 @rendermode InteractiveServer
 @using PokerAnalyzer.Web.Models
-@inject PokerAnalyzer.Web.Services.ApiClient Api
+@using Microsoft.EntityFrameworkCore
+@inject PokerAnalyzer.Infrastructure.Persistence.PokerDbContext Db
 
 <h3>Leakage Stats</h3>
 
@@ -73,8 +74,25 @@
 
         try
         {
-            var stats = await Api.GetLatestPlayerStatsAsync();
-            _leakageStats = stats.Select(MapToLeakageGridModel).ToList();
+            var latestSessionId = await Db.Sessions
+                .AsNoTracking()
+                .OrderByDescending(s => s.UploadedAtUtc)
+                .Select(s => s.Id)
+                .FirstOrDefaultAsync();
+
+            if (latestSessionId == Guid.Empty)
+            {
+                _status = "No leakage stats found for the latest session.";
+                return;
+            }
+
+            var players = await Db.PlayerProfiles
+                .AsNoTracking()
+                .Where(p => p.SessionId == latestSessionId)
+                .OrderBy(p => p.Player)
+                .ToListAsync();
+
+            _leakageStats = players.Select(MapToLeakageGridModel).ToList();
             _status = _leakageStats.Count > 0 ? null : "No leakage stats found for the latest session.";
         }
         catch (Exception ex)
@@ -84,11 +102,12 @@
         }
     }
 
-    private static LeakageStatsGridModel MapToLeakageGridModel(PokerAnalyzer.Web.Services.ApiClient.PlayerStatsResult player)
+    private static LeakageStatsGridModel MapToLeakageGridModel(PlayerProfile player)
     {
-        var stats = player.Stats.ToDictionary(stat => stat.Name, StringComparer.OrdinalIgnoreCase);
-        decimal? GetValue(string name) =>
-            stats.TryGetValue(name, out var stat) ? stat.Percent : null;
+        var bb = player.PreflopModel.Positions.Bb;
+        var aggregatedNumber = bb.FacedLateOpenHands <= 0
+            ? 0m
+            : Math.Round((decimal)bb.FoldedVsLateOpenHands / bb.FacedLateOpenHands * 100m, 2);
 
         return new LeakageStatsGridModel
         {
