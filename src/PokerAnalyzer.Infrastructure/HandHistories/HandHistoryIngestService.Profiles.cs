@@ -72,6 +72,16 @@ public sealed partial class HandHistoryIngestService
             }
 
             var positionAssignments = GetSixMaxPositionAssignments(hand, activePlayers, preflopActions);
+
+            if (TryGetBbFoldVsLateOpen(preflopActions, positionAssignments, out var bbPlayer, out var bbFolded))
+            {
+                var profile = GetOrCreate(profiles, bbPlayer);
+                var bbStats = GetPositionPreflopStats(profile.PreflopModel, PositionStats.PositionEnum.BB);
+                bbStats.FacedLateOpenHands++;
+                if (bbFolded)
+                    bbStats.FoldedVsLateOpenHands++;
+            }
+
             foreach (var assignment in positionAssignments)
             {
                 var profile = GetOrCreate(profiles, assignment.Key);
@@ -484,7 +494,9 @@ public sealed partial class HandHistoryIngestService
             || stats.PfrHands > 0
             || stats.ThreeBetHands > 0
             || stats.FacedThreeBetHands > 0
-            || stats.FoldToThreeBetHands > 0;
+            || stats.FoldToThreeBetHands > 0
+            || stats.FacedLateOpenHands > 0
+            || stats.FoldedVsLateOpenHands > 0;
     }
 
     private static bool HasFlopStats(FlopStatsByPosition stats)
@@ -766,5 +778,63 @@ public sealed partial class HandHistoryIngestService
 
         profile.ByPosition.Add(created);
         return created;
+    }
+
+    private static bool TryGetBbFoldVsLateOpen(
+        IReadOnlyList<HandAction> preflopActions,
+        Dictionary<string, PositionStats.PositionEnum> positionAssignments,
+        out string bbPlayer,
+        out bool bbFolded)
+    {
+        bbPlayer = string.Empty;
+        bbFolded = false;
+
+        if (positionAssignments.Count == 0)
+            return false;
+
+        var bbEntry = positionAssignments.FirstOrDefault(p => p.Value == PositionStats.PositionEnum.BB);
+        if (string.IsNullOrWhiteSpace(bbEntry.Key))
+            return false;
+
+        var openActionIndex = -1;
+        HandAction? openAction = null;
+        for (var i = 0; i < preflopActions.Count; i++)
+        {
+            var action = preflopActions[i];
+            if (action.Type == ActionType.SitOut)
+                continue;
+
+            if (PreFlopOperations.IsPreflopAggressive(action.Type))
+            {
+                openActionIndex = i;
+                openAction = action;
+                break;
+            }
+        }
+
+        if (openAction == null)
+            return false;
+
+        if (!positionAssignments.TryGetValue(openAction.Player, out var openerPosition))
+            return false;
+
+        if (openerPosition is not (PositionStats.PositionEnum.CO or PositionStats.PositionEnum.BTN or PositionStats.PositionEnum.SB))
+            return false;
+
+        for (var i = openActionIndex + 1; i < preflopActions.Count; i++)
+        {
+            var action = preflopActions[i];
+            if (!string.Equals(action.Player, bbEntry.Key, StringComparison.Ordinal))
+                continue;
+
+            if (action.Type == ActionType.PostBigBlind || action.Type == ActionType.SitOut)
+                continue;
+
+            bbPlayer = bbEntry.Key;
+            bbFolded = action.Type == ActionType.Fold;
+            return true;
+        }
+
+        return false;
     }
 }

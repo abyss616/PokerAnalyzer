@@ -47,7 +47,7 @@
                                           Frozen="true"
                                           Width="220px" />
                     <RadzenDataGridColumn TItem="LeakageStatsGridModel"
-                                          Property="FoldBbVsSteal"
+                                          Property="AggregatedNumber"
                                           Title="Fold BB vs Steal"
                                           Width="160px"
                                           TextAlign="TextAlign.Right"
@@ -93,7 +93,7 @@
         return new LeakageStatsGridModel
         {
             PlayerName = player.Player,
-            FoldBbVsSteal = GetValue("Fold BB vs Steal")
+            AggregatedNumber = GetValue("Fold BB vs Steal")
         };
     }
 }
