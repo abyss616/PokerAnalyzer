@@ -3,6 +3,7 @@
 public sealed class Hand
 {
     public Guid Id { get; set; } = Guid.NewGuid();
+    public int? HandNumber { get; set; }
 
     public long GameCode { get; set; }                 // gamecode
     public DateTime? StartedAtUtc { get; set; }        // date
@@ -53,6 +54,7 @@ public sealed class HandPlayer
 public sealed class HandAction
 {
     public Guid Id { get; set; } = Guid.NewGuid();   // ✅ PK
+    public int ActionIndex { get; set; }
 
     public Guid HandId { get; set; }                 // ✅ FK
     public Hand Hand { get; set; } = null!;
