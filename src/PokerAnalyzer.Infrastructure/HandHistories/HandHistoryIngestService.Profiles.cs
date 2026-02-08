@@ -338,6 +338,7 @@ public sealed partial class HandHistoryIngestService
                 var riverAggressionByPlayer = new Dictionary<string, (int BetsRaises, int Calls)>(StringComparer.Ordinal);
                 var riverBetSizeTotals = new Dictionary<string, (decimal TotalPercent, int Count)>(StringComparer.Ordinal);
                 var betSeen = false;
+                var checkSeen = false;
 
                 foreach (var action in riverActions)
                 {
@@ -346,9 +347,12 @@ public sealed partial class HandHistoryIngestService
 
                     if (!betSeen && (action.Type == ActionType.Check || IsAggressivePostflopAction(action.Type)))
                     {
-                        IncrementProfiles(profiles, new[] { action.Player }, p => p.RiverModel.RiverBetOpportunities++);
+                        if (checkSeen)
+                        {
+                            IncrementProfiles(profiles, new[] { action.Player }, p => p.RiverModel.RiverBetOpportunities++);
+                        }
 
-                        if (IsAggressivePostflopAction(action.Type))
+                        if (checkSeen && IsAggressivePostflopAction(action.Type))
                         {
                             IncrementProfiles(profiles, new[] { action.Player }, p => p.RiverModel.RiverBetsWhenCheckedTo++);
                         }
@@ -398,6 +402,11 @@ public sealed partial class HandHistoryIngestService
                             ? value
                             : (0, 0);
                         riverAggressionByPlayer[action.Player] = (current.Item1, current.Item2 + 1);
+                    }
+
+                    if (!betSeen && action.Type == ActionType.Check)
+                    {
+                        checkSeen = true;
                     }
                 }
 
