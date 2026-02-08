@@ -52,6 +52,24 @@ public sealed class HandHistoriesController : ControllerBase
         return Ok(response);
     }
 
+    [HttpGet("grid-columns")]
+    public async Task<ActionResult<IReadOnlyList<GridColumnResponse>>> GetGridColumns(CancellationToken ct)
+    {
+        var columns = await _db.GridColumns
+            .AsNoTracking()
+            .OrderBy(c => c.SortOrder)
+            .ToListAsync(ct);
+
+        if (columns.Count == 0)
+            return NotFound();
+
+        var response = columns
+            .Select(c => new GridColumnResponse(c.StatName, c.DisplayName, c.SortOrder))
+            .ToList();
+
+        return Ok(response);
+    }
+
     private static PlayerStatsResponse BuildPlayerStats(PlayerProfile profile)
     {
         var hands = profile.Hands;
@@ -171,3 +189,5 @@ public sealed class HandHistoriesController : ControllerBase
 public sealed record PlayerStatPercent(string Name, decimal Percent);
 
 public sealed record PlayerStatsResponse(string Player, int Hands, IReadOnlyList<PlayerStatPercent> Stats);
+
+public sealed record GridColumnResponse(string StatName, string DisplayName, int SortOrder);
