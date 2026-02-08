@@ -1,0 +1,142 @@
+@page "/leakage-stats"
+@rendermode InteractiveServer
+@using Microsoft.AspNetCore.Components.Forms
+@using PokerAnalyzer.Web.Models
+@inject PokerAnalyzer.Web.Services.ApiClient Api
+
+<h3>Leakage Stats</h3>
+
+<p>Select an XML hand history file to view leakage stats.</p>
+
+<InputFile OnChange="OnFileSelected" accept=".xml" />
+
+@if (!string.IsNullOrWhiteSpace(_status))
+{
+    <div class="alert alert-info mt-3">
+        @_status
+    </div>
+}
+
+@if (!string.IsNullOrWhiteSpace(_error))
+{
+    <div class="alert alert-danger mt-3">
+        <pre style="white-space:pre-wrap">@_error</pre>
+    </div>
+}
+
+@if (_leakageStats.Count > 0)
+{
+    <div class="mt-4">
+        <h4>Leakage Stats</h4>
+
+        <div class="grid-wrap">
+            <RadzenDataGrid Data="@_leakageStats"
+                            TItem="LeakageStatsGridModel"
+                            AllowSorting="true"
+                            AllowPaging="true"
+                            PageSize="10"
+                            AllowFiltering="true"
+                            FilterMode="FilterMode.Simple"
+                            AllowColumnResize="true"
+                            ColumnResizeMode="DataGridColumnResizeMode.NextColumn"
+                            AllowColumnReorder="true"
+                            AllowColumnPicking="true"
+                            Style="width: 100%;"
+                            Class="player-stats-grid">
+                <Columns>
+                    <RadzenDataGridColumn TItem="LeakageStatsGridModel"
+                                          Property="PlayerName"
+                                          Title="Player"
+                                          Frozen="true"
+                                          Width="220px" />
+                    <RadzenDataGridColumn TItem="LeakageStatsGridModel"
+                                          Property="FoldBbVsSteal"
+                                          Title="Fold BB vs Steal"
+                                          Width="160px"
+                                          TextAlign="TextAlign.Right"
+                                          Filterable="false"
+                                          FormatString="{0:0.##}%">
+                    </RadzenDataGridColumn>
+                </Columns>
+            </RadzenDataGrid>
+        </div>
+    </div>
+}
+
+@code {
+    private string? _status;
+    private string? _error;
+    private IReadOnlyList<LeakageStatsGridModel> _leakageStats = Array.Empty<LeakageStatsGridModel>();
+
+    private async Task OnFileSelected(InputFileChangeEventArgs e)
+    {
+        _status = null;
+        _error = null;
+        _leakageStats = Array.Empty<LeakageStatsGridModel>();
+
+        try
+        {
+            var file = e.File;
+            if (file is null)
+            {
+                _error = "No file received from InputFile.";
+                return;
+            }
+
+            _status = $"Selected: {file.Name} ({file.Size} bytes). Uploading...";
+
+            var result = await Api.UploadHandHistoryXmlAsync(file);
+
+            _status = $"Upload successful. SessionId: {result.SessionId}";
+
+            var stats = await Api.GetPlayerStatsAsync(result.SessionId);
+            _leakageStats = stats.Select(MapToLeakageGridModel).ToList();
+        }
+        catch (Exception ex)
+        {
+            _error = ex.ToString();
+        }
+    }
+
+    private static LeakageStatsGridModel MapToLeakageGridModel(PokerAnalyzer.Web.Services.ApiClient.PlayerStatsResult player)
+    {
+        var stats = player.Stats.ToDictionary(stat => stat.Name, StringComparer.OrdinalIgnoreCase);
+        decimal? GetValue(string name) =>
+            stats.TryGetValue(name, out var stat) ? stat.Percent : null;
+
+        return new LeakageStatsGridModel
+        {
+            PlayerName = player.Player,
+            FoldBbVsSteal = GetValue("Fold BB vs Steal")
+        };
+    }
+}
+
+<style>
+    /* Wrapper enables horizontal scrolling for lots of columns */
+    .grid-wrap {
+        width: 200%;
+        overflow-x: auto;
+    }
+
+    /* Prevent the grid from trying to fit all columns into the viewport */
+    .player-stats-grid .rz-datatable {
+        table-layout: auto;
+    }
+
+    /* Critical: stop character-by-character wrapping */
+    .player-stats-grid .rz-cell,
+    .player-stats-grid .rz-column-title,
+    .player-stats-grid th,
+    .player-stats-grid td {
+        white-space: nowrap;
+    }
+
+    /* Optional: keep headers readable */
+    .player-stats-grid th {
+        position: sticky;
+        top: 0;
+        z-index: 2;
+        background: white;
+    }
+</style>
