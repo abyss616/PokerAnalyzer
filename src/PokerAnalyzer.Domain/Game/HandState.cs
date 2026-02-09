@@ -164,7 +164,7 @@ public sealed class HandState
     }
 
     /// <summary>
-    /// Applies a betting decision. Forced actions like PostSmallBlind/PostBigBlind MUST NOT be routed here.
+    /// Applies a betting decision. Forced blind posts may be routed here when actions are recorded explicitly.
     /// </summary>
     public HandState Apply(BettingAction action)
     {
@@ -176,16 +176,16 @@ public sealed class HandState
 
         return action.Type switch
         {
-            // NOTE: No PostSmallBlind/PostBigBlind here by design (Variant A).
             ActionType.Fold => ApplyFold(action.ActorId),
             ActionType.Check => ApplyCheck(action.ActorId),
             ActionType.Call => ApplyCall(action.ActorId),
             ActionType.Bet => ApplyBetOrRaise(action.ActorId, action.Amount, isRaise: false),
             ActionType.Raise => ApplyBetOrRaise(action.ActorId, action.Amount, isRaise: true),
             ActionType.AllIn => ApplyAllIn(action.ActorId, action.Amount),
+            ActionType.PostSmallBlind => ApplyPostBlind(action.ActorId, action.Amount, isBigBlind: false),
+            ActionType.PostBigBlind => ApplyPostBlind(action.ActorId, action.Amount, isBigBlind: true),
             _ => throw new ArgumentOutOfRangeException(nameof(action.Type),
-                $"Unsupported action type in HandState.Apply: {action.Type}. " +
-                "Forced posts must be handled during CreateNewHand (Variant A).")
+                $"Unsupported action type in HandState.Apply: {action.Type}.")
         };
     }
 
@@ -283,6 +283,31 @@ public sealed class HandState
         {
             st.BetToCall = target;
             st.LastAggressor = actor;
+        }
+
+        return st;
+    }
+
+    private HandState ApplyPostBlind(PlayerId actor, ChipAmount blind, bool isBigBlind)
+    {
+        if (blind.Value <= 0)
+            throw new InvalidOperationException("Blind amount must be > 0.");
+
+        var st = Clone();
+        var already = st._streetContrib[actor];
+        if (already.Value > 0)
+            throw new InvalidOperationException("Blind already posted for this player.");
+
+        var stack = st._stacks[actor];
+        var posted = blind.Value > stack.Value ? stack : blind; // allow short blind
+
+        st._stacks[actor] = new ChipAmount(stack.Value - posted.Value);
+        st._streetContrib[actor] = new ChipAmount(already.Value + posted.Value);
+        st.Pot = new ChipAmount(st.Pot.Value + posted.Value);
+
+        if (isBigBlind && posted.Value > st.BetToCall.Value)
+        {
+            st.BetToCall = posted;
         }
 
         return st;
