@@ -7,7 +7,7 @@ namespace PokerAnalyzer.Domain.Game;
 public sealed class HandState
 {
     public Street Street { get; private set; }
-    public Board Board { get;  set; }
+    public Board Board { get; set; }
     public ChipAmount Pot { get; private set; }
 
     /// <summary>Current bet size to call on this street (i.e. the highest street contribution among active players).</summary>
@@ -21,6 +21,9 @@ public sealed class HandState
 
     public IReadOnlySet<PlayerId> ActivePlayers => _activePlayers;
 
+    /// <summary>
+    /// Last voluntary aggressor on the current street (bet/raise). IMPORTANT: posting blinds does NOT set this.
+    /// </summary>
     public PlayerId? LastAggressor { get; private set; }
 
     private readonly Dictionary<PlayerId, ChipAmount> _streetContrib;
@@ -47,6 +50,9 @@ public sealed class HandState
         LastAggressor = lastAggressor;
     }
 
+    /// <summary>
+    /// Creates a new hand state and applies forced blinds as setup (NOT as actions).
+    /// </summary>
     public static HandState CreateNewHand(
         IEnumerable<PlayerSeat> seats,
         ChipAmount smallBlind,
@@ -54,31 +60,39 @@ public sealed class HandState
         Street street = Street.Preflop,
         Board? board = null)
     {
-        var stacks = seats.ToDictionary(s => s.Id, s => s.StartingStack);
-        var contrib = seats.ToDictionary(s => s.Id, _ => ChipAmount.Zero);
-        var active = seats.Select(s => s.Id).ToHashSet();
+        var seatList = seats.ToList();
+
+        var stacks = seatList.ToDictionary(s => s.Id, s => s.StartingStack);
+        var contrib = seatList.ToDictionary(s => s.Id, _ => ChipAmount.Zero);
+        var active = seatList.Select(s => s.Id).ToHashSet();
 
         var pot = ChipAmount.Zero;
-        var betToCall = ChipAmount.Zero;
-        PlayerId? lastAggressor = null;
 
-        var sbSeat = seats.FirstOrDefault(s => s.Position == Position.SB);
-        if (sbSeat is not null && smallBlind.Value > 0)
+        // Forced blinds are posted here. They do NOT imply aggression.
+        if (smallBlind.Value > 0)
         {
-            var posted = PostBlind(sbSeat.Id, smallBlind, stacks, contrib, ref pot);
-            betToCall = posted;
-        }
-
-        var bbSeat = seats.FirstOrDefault(s => s.Position == Position.BB);
-        if (bbSeat is not null && bigBlind.Value > 0)
-        {
-            var posted = PostBlind(bbSeat.Id, bigBlind, stacks, contrib, ref pot);
-            if (posted.Value >= betToCall.Value)
+            var sbSeat = seatList.FirstOrDefault(s => s.Position == Position.SB);
+            if (sbSeat is not null)
             {
-                betToCall = posted;
-                lastAggressor = bbSeat.Id;
+                PostBlind(sbSeat.Id, smallBlind, stacks, contrib, ref pot);
             }
         }
+
+        ChipAmount bbPosted = ChipAmount.Zero;
+        if (bigBlind.Value > 0)
+        {
+            var bbSeat = seatList.FirstOrDefault(s => s.Position == Position.BB);
+            if (bbSeat is not null)
+            {
+                bbPosted = PostBlind(bbSeat.Id, bigBlind, stacks, contrib, ref pot);
+            }
+        }
+
+        // BetToCall at start of preflop is the effective big blind (can be short/all-in).
+        var betToCall = bbPosted.Value > 0 ? bbPosted : ChipAmount.Zero;
+
+        // IMPORTANT: posting blinds does NOT set LastAggressor.
+        PlayerId? lastAggressor = null;
 
         return new HandState(street, board ?? new Board(), pot, betToCall, contrib, stacks, active, lastAggressor);
     }
@@ -91,7 +105,7 @@ public sealed class HandState
         ref ChipAmount pot)
     {
         var stack = stacks[playerId];
-        var posted = blind.Value > stack.Value ? stack : blind;
+        var posted = blind.Value > stack.Value ? stack : blind; // allow short blind
         stacks[playerId] = new ChipAmount(stack.Value - posted.Value);
         contrib[playerId] = new ChipAmount(contrib[playerId].Value + posted.Value);
         pot = new ChipAmount(pot.Value + posted.Value);
@@ -149,6 +163,9 @@ public sealed class HandState
         return actions;
     }
 
+    /// <summary>
+    /// Applies a betting decision. Forced actions like PostSmallBlind/PostBigBlind MUST NOT be routed here.
+    /// </summary>
     public HandState Apply(BettingAction action)
     {
         if (!_activePlayers.Contains(action.ActorId))
@@ -159,48 +176,28 @@ public sealed class HandState
 
         return action.Type switch
         {
-            ActionType.Fold => ApplyFold(action.ActorId, action.Amount),
-            ActionType.Check => ApplyCheck(action.ActorId, action.Amount),
-            ActionType.Call => ApplyCall(action.ActorId, action.Amount),
+            // NOTE: No PostSmallBlind/PostBigBlind here by design (Variant A).
+            ActionType.Fold => ApplyFold(action.ActorId),
+            ActionType.Check => ApplyCheck(action.ActorId),
+            ActionType.Call => ApplyCall(action.ActorId),
             ActionType.Bet => ApplyBetOrRaise(action.ActorId, action.Amount, isRaise: false),
             ActionType.Raise => ApplyBetOrRaise(action.ActorId, action.Amount, isRaise: true),
             ActionType.AllIn => ApplyAllIn(action.ActorId, action.Amount),
-            _ => throw new ArgumentOutOfRangeException(nameof(action.Type))
+            _ => throw new ArgumentOutOfRangeException(nameof(action.Type),
+                $"Unsupported action type in HandState.Apply: {action.Type}. " +
+                "Forced posts must be handled during CreateNewHand (Variant A).")
         };
     }
 
-    //public HandState AdvanceStreet(Street nextStreet, IEnumerable<Card>? newBoardCards = null)
-    //{
-    //    var st = Clone();
-    //    st.Street = nextStreet;
-    //    st.BetToCall = ChipAmount.Zero;
-    //    st.LastAggressor = null;
-
-    //    foreach (var k in st._streetContrib.Keys.ToList())
-    //        st._streetContrib[k] = ChipAmount.Zero;
-
-    //    if (newBoardCards is not null)
-    //        foreach (var c in newBoardCards)
-    //            //st.Board.Add(c);
-
-    //    return st;
-    //}
-
-    private HandState ApplyFold(PlayerId actor, ChipAmount amount)
+    private HandState ApplyFold(PlayerId actor)
     {
-        if (amount.Value != 0)
-            throw new InvalidOperationException("Fold amount must be zero.");
-
         var st = Clone();
         st._activePlayers.Remove(actor);
         return st;
     }
 
-    private HandState ApplyCheck(PlayerId actor, ChipAmount amount)
+    private HandState ApplyCheck(PlayerId actor)
     {
-        if (amount.Value != 0)
-            throw new InvalidOperationException("Check amount must be zero.");
-
         var toCall = GetToCall(actor);
         if (toCall.Value != 0)
             throw new InvalidOperationException("Cannot check when facing a bet.");
@@ -208,13 +205,8 @@ public sealed class HandState
         return Clone(); // no chip movement
     }
 
-    private HandState ApplyCall(PlayerId actor, ChipAmount amount)
+    private HandState ApplyCall(PlayerId actor)
     {
-        if (amount.Value != 0)
-        {
-            // For this domain model we ignore call amount; call size is implied by state.
-        }
-
         var st = Clone();
         var toCall = st.GetToCall(actor);
         if (toCall.Value <= 0)
@@ -230,6 +222,9 @@ public sealed class HandState
         return st;
     }
 
+    /// <summary>
+    /// Bet/Raise uses "toAmount" semantics: total contribution on this street AFTER the action.
+    /// </summary>
     private HandState ApplyBetOrRaise(PlayerId actor, ChipAmount toAmount, bool isRaise)
     {
         if (toAmount.Value <= 0)
@@ -255,6 +250,7 @@ public sealed class HandState
         st._stacks[actor] = new ChipAmount(stack.Value - delta.Value);
         st._streetContrib[actor] = new ChipAmount(already.Value + delta.Value);
         st.Pot = new ChipAmount(st.Pot.Value + delta.Value);
+
         st.BetToCall = toAmount;
         st.LastAggressor = actor;
 
@@ -263,12 +259,12 @@ public sealed class HandState
 
     private HandState ApplyAllIn(PlayerId actor, ChipAmount toAmount)
     {
-        // If toAmount is provided, treat it the same as Bet/Raise "to amount".
-        // If it is zero, we push the entire stack as an action.
         var st = Clone();
         var already = st._streetContrib[actor];
         var stack = st._stacks[actor];
 
+        // If toAmount is provided, treat it as "to contribution".
+        // If it is zero, push the entire remaining stack.
         var target = toAmount.Value > 0 ? toAmount : new ChipAmount(already.Value + stack.Value);
         var delta = new ChipAmount(target.Value - already.Value);
 
@@ -282,6 +278,7 @@ public sealed class HandState
         st._streetContrib[actor] = new ChipAmount(already.Value + delta.Value);
         st.Pot = new ChipAmount(st.Pot.Value + delta.Value);
 
+        // Only counts as aggression if it increases BetToCall.
         if (target.Value > st.BetToCall.Value)
         {
             st.BetToCall = target;

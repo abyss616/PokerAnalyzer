@@ -86,7 +86,7 @@ public sealed class HandAnalysisController : ControllerBase
                 playerIds[p.Name],
                 p.Name,
                 p.Seat,
-                MapPosition(p.Position),
+                MapPosition(p.PlayerPosition),
                 new ChipAmount(ToChipAmount(p.StackStart))
             ))
             .ToList();

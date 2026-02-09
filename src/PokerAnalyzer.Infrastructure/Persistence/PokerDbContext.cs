@@ -1,4 +1,5 @@
 ﻿using Microsoft.EntityFrameworkCore;
+using System.Reflection.Emit;
 
 namespace PokerAnalyzer.Infrastructure.Persistence
 {
@@ -117,6 +118,9 @@ namespace PokerAnalyzer.Infrastructure.Persistence
             b.Entity<HandPlayer>()
                 .HasIndex(x => new { x.HandId, x.Seat })
                 .IsUnique();
+            b.Entity<HandPlayer>()
+                .Property(p => p.PlayerPosition)
+                .HasConversion<string>();
 
             b.Entity<PlayerHandSummary>()
                 .HasKey(x => x.Id);
