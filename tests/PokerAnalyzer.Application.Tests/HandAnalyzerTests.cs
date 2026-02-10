@@ -48,4 +48,39 @@ public class HandAnalyzerTests
         Assert.Single(result.Decisions);
         Assert.Equal(DecisionSeverity.Ok, result.Decisions[0].Severity);
     }
+
+    [Fact]
+    public void Analyzer_IgnoresForcedBlindPosts()
+    {
+        var hero = PlayerId.New();
+        var villain = PlayerId.New();
+
+        var seats = new List<PlayerSeat>
+        {
+            new(hero, "Hero", 1, Position.SB, new ChipAmount(1000)),
+            new(villain, "Villain", 2, Position.BB, new ChipAmount(1000)),
+        };
+
+        var hand = new Domain.HandHistory.Hand(
+            HandId: Guid.NewGuid(),
+            SmallBlind: new ChipAmount(5),
+            BigBlind: new ChipAmount(10),
+            Seats: seats,
+            HeroId: hero,
+            HeroHoleCards: HoleCards.Parse("AsKh"),
+            Board: new Board(),
+            Actions: new List<BettingAction>
+            {
+                new(Street.Preflop, hero, ActionType.PostSmallBlind, new ChipAmount(5)),
+                new(Street.Preflop, villain, ActionType.PostBigBlind, new ChipAmount(10)),
+                new(Street.Preflop, hero, ActionType.Call, new ChipAmount(10))
+            }
+        );
+
+        var analyzer = new HandAnalyzer(new AlwaysCheckEngine());
+        var result = analyzer.Analyze(hand);
+
+        Assert.Single(result.Decisions);
+        Assert.Equal(ActionType.Call, result.Decisions[0].ActualAction.Type);
+    }
 }

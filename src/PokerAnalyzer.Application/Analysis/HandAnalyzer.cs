@@ -32,6 +32,10 @@ public sealed class HandAnalyzer
         {
             var a = hand.Actions[i];
 
+            // Variant A architecture: forced blinds are part of CreateNewHand setup, not runtime decisions.
+            if (a.Type is ActionType.PostSmallBlind or ActionType.PostBigBlind)
+                continue;
+
             // Hero decision point: compare action vs engine recommendation
             if (a.ActorId == hand.HeroId)
             {
