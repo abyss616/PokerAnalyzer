@@ -23,6 +23,7 @@ public sealed class HandAnalyzer
             throw new InvalidOperationException("Hand has no seats.");
 
         var heroCtx = new HeroContext(hand.HeroId, hand.SmallBlind, hand.BigBlind);
+        var positionMap = hand.Seats.ToDictionary(s => s.Id, s => s.Position);
 
         var state = HandState.CreateNewHand(hand.Seats, hand.SmallBlind, hand.BigBlind, Street.Preflop, hand.Board);
 
@@ -39,7 +40,14 @@ public sealed class HandAnalyzer
             // Hero decision point: compare action vs engine recommendation
             if (a.ActorId == hand.HeroId)
             {
-                var rec = _engine.Recommend(state, heroCtx);
+                var decisionCtx = heroCtx with
+                {
+                    HeroHoleCards = hand.HeroHoleCards,
+                    PlayerPositions = positionMap,
+                    ActionHistory = hand.Actions.Take(i).ToArray()
+                };
+
+                var rec = _engine.Recommend(state, decisionCtx);
                 var sev = Score(a, rec);
                 decisions.Add(new DecisionReview(
                     ActionIndex: i,
