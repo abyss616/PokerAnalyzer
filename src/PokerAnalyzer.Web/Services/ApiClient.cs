@@ -16,7 +16,24 @@ public sealed class ApiClient
     public sealed record UploadHandHistoryResult(Guid SessionId);
     public sealed record PlayerStatPercent(string Name, decimal Percent);
     public sealed record PlayerStatsResult(string Player, int Hands, IReadOnlyList<PlayerStatPercent> Stats);
-    public sealed record HandSolverResponse(Guid HandId, int HandNumber, int DecisionCount);
+    public sealed record HandSolverResponse(
+        Guid HandId,
+        int HandNumber,
+        int DecisionCount,
+        IReadOnlyList<EngineSolverResult> Engines);
+
+    public sealed record EngineSolverResult(
+        string Engine,
+        int DecisionCount,
+        IReadOnlyList<EngineDecisionSummary> Decisions);
+
+    public sealed record EngineDecisionSummary(
+        int ActionIndex,
+        string Street,
+        string HeroAction,
+        string RecommendedAction,
+        decimal? RecommendedEv,
+        string? Explanation);
 
     public async Task<UploadHandHistoryResult> UploadHandHistoryXmlAsync(
         IBrowserFile file,
