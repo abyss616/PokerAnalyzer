@@ -12,7 +12,7 @@ public static class ServiceCollectionExtensions
 {
     public static IServiceCollection AddPokerAnalyzer(this IServiceCollection services)
     {
-        services.AddSingleton<IStrategyEngine, DummyStrategyEngine>();
+        services.AddSingleton<IStrategyEngine, MonteCarloStrategyEngine>();
         services.AddTransient<HandAnalyzer>();
         services.AddPokerAnalyzerDb();
         services.AddScoped<IHandHistoryRepository, HandHistoryRepository>();
