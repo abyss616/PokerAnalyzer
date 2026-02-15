@@ -209,11 +209,17 @@ public sealed class HandState
     {
         var st = Clone();
         var toCall = st.GetToCall(actor);
-        if (toCall.Value <= 0)
-            throw new InvalidOperationException("Nothing to call.");
+
+        // If nothing to call, calling is the same as checking.
+        if (toCall.Value == 0)
+            return st; // or: return st.ApplyCheck(actor);
+
+        // (optional) defensive: negative should never happen
+        if (toCall.Value < 0)
+            throw new InvalidOperationException("Invalid to-call amount.");
 
         var stack = st._stacks[actor];
-        var pay = toCall.Value > stack.Value ? stack : toCall; // calling all-in is allowed
+        var pay = toCall.Value > stack.Value ? stack : toCall; // all-in call allowed
 
         st._stacks[actor] = new ChipAmount(stack.Value - pay.Value);
         st._streetContrib[actor] = new ChipAmount(st._streetContrib[actor].Value + pay.Value);
@@ -221,6 +227,7 @@ public sealed class HandState
 
         return st;
     }
+
 
     /// <summary>
     /// Bet/Raise uses "toAmount" semantics: total contribution on this street AFTER the action.

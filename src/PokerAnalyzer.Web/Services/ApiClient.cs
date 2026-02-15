@@ -25,7 +25,6 @@ public sealed class ApiClient
     public sealed record EngineSolverResult(
         string Engine,
         int DecisionCount,
-        string? Explanation,
         IReadOnlyList<EngineDecisionSummary> Decisions);
 
     public sealed record EngineDecisionSummary(
