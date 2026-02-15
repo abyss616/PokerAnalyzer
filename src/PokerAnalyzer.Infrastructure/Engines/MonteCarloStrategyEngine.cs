@@ -1,7 +1,6 @@
 using PokerAnalyzer.Application.Engines;
 using PokerAnalyzer.Domain.Cards;
 using PokerAnalyzer.Domain.Game;
-using EvalCard = PokerAnalyzer.Domain.Cards.Card;
 
 namespace PokerAnalyzer.Infrastructure.Engines;
 
@@ -60,7 +59,7 @@ public sealed class MonteCarloStrategyEngine : IStrategyEngine
             };
 
         var boardCards = GetBoardCards(state.Board);
-        var deadCards = new HashSet<EvalCard>(boardCards) { hero.HeroHoleCards.Value.First, hero.HeroHoleCards.Value.Second };
+        var deadCards = new HashSet<Card>(boardCards) { hero.HeroHoleCards.Value.First, hero.HeroHoleCards.Value.Second };
         var deck = BuildDeck(deadCards);
 
         if (deck.Count < opponents.Length * 2)
@@ -94,8 +93,8 @@ public sealed class MonteCarloStrategyEngine : IStrategyEngine
         ActionType action,
         ChipAmount? toAmount,
         IReadOnlyList<PlayerId> opponents,
-        IReadOnlyList<EvalCard> boardCards,
-        IReadOnlyList<EvalCard> baseDeck)
+        IReadOnlyList<Card> boardCards,
+        IReadOnlyList<Card> baseDeck)
     {
         var heroAlready = state.StreetContrib[hero.HeroId].Value;
         var callCost = state.GetToCall(hero.HeroId).Value;
@@ -135,8 +134,8 @@ public sealed class MonteCarloStrategyEngine : IStrategyEngine
         HoleCards heroCards,
         HeroContext hero,
         IReadOnlyList<PlayerId> opponents,
-        IReadOnlyList<EvalCard> boardCards,
-        IReadOnlyList<EvalCard> baseDeck,
+        IReadOnlyList<Card> boardCards,
+        IReadOnlyList<Card> baseDeck,
         out decimal winShare)
     {
         var deck = baseDeck.ToList();
@@ -185,7 +184,7 @@ public sealed class MonteCarloStrategyEngine : IStrategyEngine
     }
 
     private bool TryDrawOpponentHand(
-        IReadOnlyList<EvalCard> deck,
+        IReadOnlyList<Card> deck,
         PlayerId opponent,
         HeroContext hero,
         out HoleCards hand)
@@ -275,7 +274,7 @@ public sealed class MonteCarloStrategyEngine : IStrategyEngine
         return Math.Min(1m, calls / 4m);
     }
 
-    private static decimal PreflopHandScore(EvalCard a, EvalCard b)
+    private static decimal PreflopHandScore(Card a, Card b)
     {
         var ar = (int)a.Rank;
         var br = (int)b.Rank;
@@ -289,14 +288,14 @@ public sealed class MonteCarloStrategyEngine : IStrategyEngine
         return Math.Clamp(normalized + suited + pair + connected, 0m, 1m);
     }
 
-    private static IReadOnlyList<EvalCard> BuildDeck(ISet<EvalCard> deadCards)
+    private static IReadOnlyList<Card> BuildDeck(ISet<Card> deadCards)
     {
-        var deck = new List<EvalCard>(52);
+        var deck = new List<Card>(52);
 
         foreach (var rank in Enum.GetValues<Rank>())
         foreach (var suit in Enum.GetValues<Suit>())
         {
-            var c = new EvalCard(rank, suit);
+            var c = new Card(rank, suit);
             if (!deadCards.Contains(c))
                 deck.Add(c);
         }
@@ -304,25 +303,22 @@ public sealed class MonteCarloStrategyEngine : IStrategyEngine
         return deck;
     }
 
-    private static IReadOnlyList<EvalCard> GetBoardCards(global::Board board)
+    private static IReadOnlyList<Card> GetBoardCards(Board board)
     {
-        var cards = new List<EvalCard>(5);
+        var cards = new List<Card>(5);
 
-        cards.AddRange(board.Flop.Select(ToEvalCard));
+        cards.AddRange(board.Flop.Select(c => new Card(c.Rank, c.Suit)));
         if (board.Turn is not null)
-            cards.Add(ToEvalCard(board.Turn!));
+            cards.Add(new Card(board.Turn.Rank, board.Turn.Suit));
         if (board.River is not null)
-            cards.Add(ToEvalCard(board.River!));
+            cards.Add(new Card(board.River.Rank, board.River.Suit));
 
         return cards;
     }
 
-    private static EvalCard ToEvalCard(global::Card card)
-        => new(card.Rank, card.Suit);
-
     private static class HandRankEvaluator
     {
-        public static long Evaluate(HoleCards hole, IReadOnlyList<EvalCard> board)
+        public static long Evaluate(HoleCards hole, IReadOnlyList<Card> board)
         {
             var cards = new[]
             {
@@ -350,7 +346,7 @@ public sealed class MonteCarloStrategyEngine : IStrategyEngine
             return best;
         }
 
-        private static long EvaluateFive(EvalCard c1, EvalCard c2, EvalCard c3, EvalCard c4, EvalCard c5)
+        private static long EvaluateFive(Card c1, Card c2, Card c3, Card c4, Card c5)
         {
             var ranks = new[] { (int)c1.Rank, (int)c2.Rank, (int)c3.Rank, (int)c4.Rank, (int)c5.Rank };
             Array.Sort(ranks);
