@@ -178,52 +178,27 @@ public sealed class HandAnalysisController : ControllerBase
 
     private static EngineSolverResult BuildEngineResult(string engineName, HandAnalysisResult result)
     {
-        var explanations = result.Decisions
-            .Select(d => d.Recommendation.Explanation)
-            .Where(e => !string.IsNullOrWhiteSpace(e))
-            .Distinct(StringComparer.Ordinal)
-            .ToArray();
-
-        var engineExplanation = explanations.Length == 1 ? explanations[0] : null;
-
         var decisionSummaries = result.Decisions
             .Select(decision =>
             {
                 var topRecommendation = decision.Recommendation.RankedActions.FirstOrDefault();
-                var perDecisionExplanation = explanations.Length > 1
-                    ? decision.Recommendation.Explanation
-                    : null;
-
                 return new EngineDecisionSummary(
                     decision.ActionIndex,
                     decision.Street.ToString(),
-                    FormatHeroAction(decision.ActualAction),
+                    FormatAction(decision.ActualAction.Type, decision.ActualAction.Amount),
                     topRecommendation is null
                         ? "N/A"
-                        : FormatRecommendedAction(topRecommendation.Type, topRecommendation.ToAmount),
+                        : FormatAction(topRecommendation.Type, topRecommendation.ToAmount),
                     topRecommendation?.EstimatedEv,
-                    perDecisionExplanation
+                    decision.Recommendation.Explanation
                 );
             })
             .ToList();
 
-        return new EngineSolverResult(engineName, result.Decisions.Count, engineExplanation, decisionSummaries);
+        return new EngineSolverResult(engineName, result.Decisions.Count, decisionSummaries);
     }
 
-    private static string FormatHeroAction(BettingAction action)
-    {
-        var amount = action.Amount.Value / 100m;
-
-        return action.Type switch
-        {
-            ActionType.Call when action.Amount.Value <= 0 => "Check-equivalent (Call 0)",
-            ActionType.Call => $"Call {amount:0.##}",
-            ActionType.Bet or ActionType.Raise or ActionType.AllIn => $"{action.Type} to {amount:0.##}",
-            _ => action.Type.ToString()
-        };
-    }
-
-    private static string FormatRecommendedAction(ActionType actionType, ChipAmount? toAmount)
+    private static string FormatAction(ActionType actionType, ChipAmount? toAmount)
     {
         if (toAmount is null || actionType is ActionType.Call or ActionType.Check or ActionType.Fold)
             return actionType.ToString();
@@ -240,7 +215,6 @@ public sealed class HandAnalysisController : ControllerBase
     public sealed record EngineSolverResult(
         string Engine,
         int DecisionCount,
-        string? Explanation,
         IReadOnlyList<EngineDecisionSummary> Decisions);
 
     public sealed record EngineDecisionSummary(
