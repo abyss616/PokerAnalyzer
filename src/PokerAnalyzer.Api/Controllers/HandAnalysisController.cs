@@ -3,6 +3,7 @@ using Microsoft.EntityFrameworkCore;
 using PokerAnalyzer.Application.Analysis;
 using PokerAnalyzer.Domain.Cards;
 using PokerAnalyzer.Domain.Game;
+using PokerAnalyzer.Infrastructure.Engines;
 using PokerAnalyzer.Infrastructure.Persistence;
 
 [ApiController]
@@ -10,12 +11,17 @@ using PokerAnalyzer.Infrastructure.Persistence;
 public sealed class HandAnalysisController : ControllerBase
 {
     private readonly PokerDbContext _db;
-    private readonly HandAnalyzer _analyzer;
+    private readonly DummyStrategyEngine _dummyEngine;
+    private readonly MonteCarloStrategyEngine _monteCarloEngine;
 
-    public HandAnalysisController(PokerDbContext db, HandAnalyzer analyzer)
+    public HandAnalysisController(
+        PokerDbContext db,
+        DummyStrategyEngine dummyEngine,
+        MonteCarloStrategyEngine monteCarloEngine)
     {
         _db = db;
-        _analyzer = analyzer;
+        _dummyEngine = dummyEngine;
+        _monteCarloEngine = monteCarloEngine;
     }
 
     [HttpGet("hand/{handId:guid}")]
@@ -55,9 +61,16 @@ public sealed class HandAnalysisController : ControllerBase
             return NotFound("Hand not found in session.");
 
         var domainHand = MapToDomainHand(hand, session);
-        var result = _analyzer.Analyze(domainHand);
+        var dummyResult = new HandAnalyzer(_dummyEngine).Analyze(domainHand);
+        var monteCarloResult = new HandAnalyzer(_monteCarloEngine).Analyze(domainHand);
 
-        return Ok(new HandSolverResponse(result.HandId, handNumber, result.Decisions.Count));
+        var engineSummaries = new[]
+        {
+            BuildEngineResult("Dummy", dummyResult),
+            BuildEngineResult("Monte Carlo", monteCarloResult)
+        };
+
+        return Ok(new HandSolverResponse(domainHand.Id, handNumber, engineSummaries.Max(e => e.DecisionCount), engineSummaries));
     }
 
     [HttpGet("session/{sessionId:guid}")]
@@ -163,5 +176,78 @@ public sealed class HandAnalysisController : ControllerBase
         }
     }
 
-    public sealed record HandSolverResponse(Guid HandId, int HandNumber, int DecisionCount);
+    private static EngineSolverResult BuildEngineResult(string engineName, HandAnalysisResult result)
+    {
+        var explanations = result.Decisions
+            .Select(d => d.Recommendation.Explanation)
+            .Where(e => !string.IsNullOrWhiteSpace(e))
+            .Distinct(StringComparer.Ordinal)
+            .ToArray();
+
+        var engineExplanation = explanations.Length == 1 ? explanations[0] : null;
+
+        var decisionSummaries = result.Decisions
+            .Select(decision =>
+            {
+                var topRecommendation = decision.Recommendation.RankedActions.FirstOrDefault();
+                var perDecisionExplanation = explanations.Length > 1
+                    ? decision.Recommendation.Explanation
+                    : null;
+
+                return new EngineDecisionSummary(
+                    decision.ActionIndex,
+                    decision.Street.ToString(),
+                    FormatHeroAction(decision.ActualAction),
+                    topRecommendation is null
+                        ? "N/A"
+                        : FormatRecommendedAction(topRecommendation.Type, topRecommendation.ToAmount),
+                    topRecommendation?.EstimatedEv,
+                    perDecisionExplanation
+                );
+            })
+            .ToList();
+
+        return new EngineSolverResult(engineName, result.Decisions.Count, engineExplanation, decisionSummaries);
+    }
+
+    private static string FormatHeroAction(BettingAction action)
+    {
+        var amount = action.Amount.Value / 100m;
+
+        return action.Type switch
+        {
+            ActionType.Call when action.Amount.Value <= 0 => "Check-equivalent (Call 0)",
+            ActionType.Call => $"Call {amount:0.##}",
+            ActionType.Bet or ActionType.Raise or ActionType.AllIn => $"{action.Type} to {amount:0.##}",
+            _ => action.Type.ToString()
+        };
+    }
+
+    private static string FormatRecommendedAction(ActionType actionType, ChipAmount? toAmount)
+    {
+        if (toAmount is null || actionType is ActionType.Call or ActionType.Check or ActionType.Fold)
+            return actionType.ToString();
+
+        return $"{actionType} to {toAmount.Value.Value / 100m:0.##}";
+    }
+
+    public sealed record HandSolverResponse(
+        Guid HandId,
+        int HandNumber,
+        int DecisionCount,
+        IReadOnlyList<EngineSolverResult> Engines);
+
+    public sealed record EngineSolverResult(
+        string Engine,
+        int DecisionCount,
+        string? Explanation,
+        IReadOnlyList<EngineDecisionSummary> Decisions);
+
+    public sealed record EngineDecisionSummary(
+        int ActionIndex,
+        string Street,
+        string HeroAction,
+        string RecommendedAction,
+        decimal? RecommendedEv,
+        string? Explanation);
 }
