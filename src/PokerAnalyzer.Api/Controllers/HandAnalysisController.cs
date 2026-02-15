@@ -70,7 +70,7 @@ public sealed class HandAnalysisController : ControllerBase
             BuildEngineResult("Monte Carlo", monteCarloResult)
         };
 
-        return Ok(new HandSolverResponse(domainHand.Id, handNumber, engineSummaries.Max(e => e.DecisionCount), engineSummaries));
+        return Ok(new HandSolverResponse(domainHand.HandId, handNumber, engineSummaries.Max(e => e.DecisionCount), engineSummaries));
     }
 
     [HttpGet("session/{sessionId:guid}")]
