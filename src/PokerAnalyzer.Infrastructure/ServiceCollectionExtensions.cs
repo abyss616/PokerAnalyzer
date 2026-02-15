@@ -12,6 +12,8 @@ public static class ServiceCollectionExtensions
 {
     public static IServiceCollection AddPokerAnalyzer(this IServiceCollection services)
     {
+        services.AddSingleton<DummyStrategyEngine>();
+        services.AddSingleton<MonteCarloStrategyEngine>();
         services.AddSingleton<IStrategyEngine, MonteCarloStrategyEngine>();
         services.AddTransient<HandAnalyzer>();
         services.AddPokerAnalyzerDb();
