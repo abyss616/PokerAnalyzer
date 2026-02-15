@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using PokerAnalyzer.Application.Engines;
 using PokerAnalyzer.Domain.Cards;
 using PokerAnalyzer.Domain.Game;
@@ -68,23 +69,79 @@ public sealed class MonteCarloStrategyEngine : IStrategyEngine
                 Explanation = "Monte Carlo fallback: insufficient remaining deck cards."
             };
 
-        var ranked = new List<RecommendedAction>();
+        if (state.Street == Street.Preflop)
+            return RecommendPreflopPolicy(state, hero, legal, opponents, boardCards, deck);
+
+        var ranked = BuildMonteCarloRanking(state, hero, legal, opponents, boardCards, deck, ResolveToAmount);
+
+        return new Recommendation(
+            ranked,
+            "Monte Carlo engine: EV-ranked actions using position + action-history opponent ranges. Solver export lookup can be layered later."
+        );
+    }
+
+    private Recommendation RecommendPreflopPolicy(
+        HandState state,
+        HeroContext hero,
+        IReadOnlyList<ActionType> legal,
+        IReadOnlyList<PlayerId> opponents,
+        IReadOnlyList<Card> boardCards,
+        IReadOnlyList<Card> deck)
+    {
+        var spot = ResolvePreflopSpot(state, hero);
+        var handClass = ResolvePreflopHandClass(hero.HeroHoleCards!.Value);
+        var frequencies = GetPreflopFrequencies(spot, handClass);
+
+        var ranked = BuildMonteCarloRanking(
+            state,
+            hero,
+            legal,
+            opponents,
+            boardCards,
+            deck,
+            (s, heroId, action) => ResolvePreflopToAmount(s, heroId, action, spot),
+            frequencies);
+
+        var top = ranked.FirstOrDefault();
+        PreflopCalibrationLog.Record(new PreflopCalibrationSample(
+            DateTimeOffset.UtcNow,
+            spot,
+            handClass,
+            legal,
+            top?.Type,
+            top?.EstimatedEv,
+            top is null ? 0m : (frequencies.TryGetValue(top.Type, out var f) ? f : 0m)));
+
+        return new Recommendation(
+            ranked,
+            $"Monte Carlo preflop policy: spot={spot}, class={handClass}. Range-frequency policy with MC EV tie-break + spot sizing."
+        );
+    }
+
+    private List<RecommendedAction> BuildMonteCarloRanking(
+        HandState state,
+        HeroContext hero,
+        IReadOnlyList<ActionType> legal,
+        IReadOnlyList<PlayerId> opponents,
+        IReadOnlyList<Card> boardCards,
+        IReadOnlyList<Card> deck,
+        Func<HandState, PlayerId, ActionType, ChipAmount?> toAmountResolver,
+        IReadOnlyDictionary<ActionType, decimal>? policyFrequencies = null)
+    {
+        var ranked = new List<RecommendedAction>(legal.Count);
+        var policy = policyFrequencies ?? new Dictionary<ActionType, decimal>();
 
         foreach (var action in legal)
         {
-            var candidateTo = ResolveToAmount(state, hero.HeroId, action);
+            var candidateTo = toAmountResolver(state, hero.HeroId, action);
             var ev = EstimateActionEv(state, hero, action, candidateTo, opponents, boardCards, deck);
             ranked.Add(new RecommendedAction(action, candidateTo, ev));
         }
 
-        var sorted = ranked
-            .OrderByDescending(r => r.EstimatedEv ?? decimal.MinValue)
+        return ranked
+            .OrderByDescending(r => policy.TryGetValue(r.Type, out var f) ? f : 0m)
+            .ThenByDescending(r => r.EstimatedEv ?? decimal.MinValue)
             .ToList();
-
-        return new Recommendation(
-            sorted,
-            "Monte Carlo engine: EV-ranked actions using position + action-history opponent ranges. Solver export lookup can be layered later."
-        );
     }
 
     private decimal EstimateActionEv(
@@ -272,6 +329,155 @@ public sealed class MonteCarloStrategyEngine : IStrategyEngine
 
         var calls = history.Count(a => a.ActorId == opponent && a.Type == ActionType.Call);
         return Math.Min(1m, calls / 4m);
+    }
+
+
+    private static PreflopSpot ResolvePreflopSpot(HandState state, HeroContext hero)
+    {
+        var history = hero.ActionHistory?.Where(a => a.Street == Street.Preflop).ToArray() ?? Array.Empty<BettingAction>();
+        var aggressiveCount = history.Count(a => a.Type is ActionType.Bet or ActionType.Raise or ActionType.AllIn);
+        var limpers = history.Count(a => a.Type == ActionType.Call);
+        var toCall = state.GetToCall(hero.HeroId).Value;
+        var heroPosition = hero.PlayerPositions is not null && hero.PlayerPositions.TryGetValue(hero.HeroId, out var pos)
+            ? pos
+            : Position.Unknown;
+
+        if (heroPosition == Position.BB && toCall == 0 && limpers > 0 && aggressiveCount == 0)
+            return PreflopSpot.BigBlindOptionVsLimp;
+
+        if (aggressiveCount == 0)
+            return PreflopSpot.UnopenedPot;
+
+        if (aggressiveCount == 1)
+            return PreflopSpot.FacingOpenRaise;
+
+        return PreflopSpot.FacingThreeBetOrMore;
+    }
+
+    private static PreflopHandClass ResolvePreflopHandClass(HoleCards hand)
+    {
+        var score = PreflopHandScore(hand.First, hand.Second);
+        if (score >= 0.92m) return PreflopHandClass.Premium;
+        if (score >= 0.78m) return PreflopHandClass.Strong;
+        if (score >= 0.60m) return PreflopHandClass.Medium;
+        if (score >= 0.46m) return PreflopHandClass.Speculative;
+        return PreflopHandClass.Weak;
+    }
+
+    private static IReadOnlyDictionary<ActionType, decimal> GetPreflopFrequencies(PreflopSpot spot, PreflopHandClass handClass)
+    {
+        var aggressiveAction = spot == PreflopSpot.UnopenedPot || spot == PreflopSpot.BigBlindOptionVsLimp
+            ? ActionType.Bet
+            : ActionType.Raise;
+
+        return handClass switch
+        {
+            PreflopHandClass.Premium => new Dictionary<ActionType, decimal>
+            {
+                [aggressiveAction] = 0.70m,
+                [ActionType.Check] = 0.15m,
+                [ActionType.Call] = 0.10m,
+                [ActionType.AllIn] = 0.05m
+            },
+            PreflopHandClass.Strong => new Dictionary<ActionType, decimal>
+            {
+                [aggressiveAction] = 0.62m,
+                [ActionType.Call] = 0.24m,
+                [ActionType.Check] = 0.10m,
+                [ActionType.AllIn] = 0.04m
+            },
+            PreflopHandClass.Medium => new Dictionary<ActionType, decimal>
+            {
+                [ActionType.Call] = 0.44m,
+                [aggressiveAction] = 0.34m,
+                [ActionType.Check] = 0.18m,
+                [ActionType.Fold] = 0.04m
+            },
+            PreflopHandClass.Speculative => new Dictionary<ActionType, decimal>
+            {
+                [ActionType.Call] = 0.40m,
+                [ActionType.Check] = 0.36m,
+                [aggressiveAction] = 0.16m,
+                [ActionType.Fold] = 0.08m
+            },
+            _ => new Dictionary<ActionType, decimal>
+            {
+                [ActionType.Check] = 0.48m,
+                [ActionType.Fold] = 0.32m,
+                [ActionType.Call] = 0.16m,
+                [aggressiveAction] = 0.04m
+            }
+        };
+    }
+
+    private static ChipAmount? ResolvePreflopToAmount(HandState state, PlayerId heroId, ActionType action, PreflopSpot spot)
+    {
+        var already = state.StreetContrib[heroId].Value;
+        var stack = state.Stacks[heroId].Value;
+        var toCall = state.GetToCall(heroId).Value;
+
+        if (action == ActionType.AllIn)
+            return new ChipAmount(already + stack);
+
+        if (action is ActionType.Bet or ActionType.Raise)
+        {
+            var target = spot switch
+            {
+                PreflopSpot.UnopenedPot => state.BetToCall.Value * 2,
+                PreflopSpot.BigBlindOptionVsLimp => state.BetToCall.Value * 4,
+                PreflopSpot.FacingOpenRaise => state.BetToCall.Value * 3,
+                PreflopSpot.FacingThreeBetOrMore => state.BetToCall.Value * 2,
+                _ => state.BetToCall.Value * 3
+            };
+
+            var minTo = already + toCall;
+            var toAmount = Math.Max(target, minTo + Math.Max(1, state.BetToCall.Value / 2));
+            return new ChipAmount(already + Math.Min(stack, toAmount - already));
+        }
+
+        return null;
+    }
+
+    public static class PreflopCalibrationLog
+    {
+        private static readonly ConcurrentQueue<PreflopCalibrationSample> Samples = new();
+        private const int MaxSamples = 500;
+
+        public static void Record(PreflopCalibrationSample sample)
+        {
+            Samples.Enqueue(sample);
+            while (Samples.Count > MaxSamples && Samples.TryDequeue(out _))
+            {
+            }
+        }
+
+        public static IReadOnlyList<PreflopCalibrationSample> Snapshot() => Samples.ToArray();
+    }
+
+    public sealed record PreflopCalibrationSample(
+        DateTimeOffset Timestamp,
+        PreflopSpot Spot,
+        PreflopHandClass HandClass,
+        IReadOnlyList<ActionType> LegalActions,
+        ActionType? RecommendedAction,
+        decimal? EstimatedEv,
+        decimal Frequency);
+
+    public enum PreflopSpot
+    {
+        UnopenedPot,
+        FacingOpenRaise,
+        FacingThreeBetOrMore,
+        BigBlindOptionVsLimp
+    }
+
+    public enum PreflopHandClass
+    {
+        Premium,
+        Strong,
+        Medium,
+        Speculative,
+        Weak
     }
 
     private static decimal PreflopHandScore(Card a, Card b)
