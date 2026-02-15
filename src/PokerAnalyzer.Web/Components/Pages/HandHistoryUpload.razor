@@ -57,6 +57,52 @@
                 <pre style="white-space:pre-wrap">@_solverError</pre>
             </div>
         }
+
+        @if (_solverResult is not null)
+        {
+            <div class="mt-3">
+                @foreach (var engine in _solverResult.Engines)
+                {
+                    <div class="card mt-2 p-3">
+                        <h5 class="mb-2">@engine.Engine engine</h5>
+                        <p class="text-muted mb-1">Decisions reviewed: @engine.DecisionCount</p>
+                        @if (!string.IsNullOrWhiteSpace(engine.Explanation))
+                        {
+                            <p class="text-muted small mb-2">@engine.Explanation</p>
+                        }
+
+                        @if (engine.Decisions.Count == 0)
+                        {
+                            <div class="text-muted">No hero decisions were found for this hand.</div>
+                        }
+                        else
+                        {
+                            <table class="table table-sm table-striped">
+                                <thead>
+                                <tr>
+                                    <th>Street</th>
+                                    <th>Hero Action</th>
+                                    <th>Recommended</th>
+                                    <th>EV</th>
+                                </tr>
+                                </thead>
+                                <tbody>
+                                @foreach (var decision in engine.Decisions)
+                                {
+                                    <tr>
+                                        <td>@decision.Street</td>
+                                        <td>@decision.HeroAction</td>
+                                        <td>@decision.RecommendedAction</td>
+                                        <td>@(decision.RecommendedEv?.ToString("0.###") ?? "N/A")</td>
+                                    </tr>
+                                }
+                                </tbody>
+                            </table>
+                        }
+                    </div>
+                }
+            </div>
+        }
     </div>
 }
 
@@ -117,6 +163,7 @@
     private string? _error;
     private string? _solverStatus;
     private string? _solverError;
+    private ApiClient.HandSolverResponse? _solverResult;
     private Guid _sessionId;
     private int? _handNumber;
     private IReadOnlyList<PokerStatsGridModel> _playerStats = Array.Empty<PokerStatsGridModel>();
@@ -186,6 +233,7 @@
         _error = null;
         _solverStatus = null;
         _solverError = null;
+        _solverResult = null;
         _handNumber = null;
         _sessionId = Guid.Empty;
         _playerStats = Array.Empty<PokerStatsGridModel>();
@@ -219,6 +267,7 @@
     {
         _solverStatus = null;
         _solverError = null;
+        _solverResult = null;
 
         if (_sessionId == Guid.Empty)
         {
@@ -235,8 +284,8 @@
         try
         {
             var result = await Api.RunSolverAsync(_sessionId, _handNumber.Value);
-            _solverStatus = $"Solver complete for hand #{result.HandNumber}. " +
-                            $"HandId: {result.HandId}. Decisions reviewed: {result.DecisionCount}.";
+            _solverResult = result;
+            _solverStatus = $"Solver complete for hand #{result.HandNumber}. HandId: {result.HandId}.";
         }
         catch (Exception ex)
         {
