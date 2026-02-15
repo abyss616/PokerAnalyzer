@@ -37,20 +37,19 @@ public sealed class HandAnalysisController : ControllerBase
 
         var session = await _db.Sessions
             .AsNoTracking()
-            .Include(s => s.Hands)
+            .Where(s => s.Id == sessionId)
+            .Include(s => s.Hands.Where(h => h.HandNumber == handNumber))
                 .ThenInclude(h => h.Players)
-            .Include(s => s.Hands)
+            .Include(s => s.Hands.Where(h => h.HandNumber == handNumber))
                 .ThenInclude(h => h.Actions)
-            .Include(s => s.Hands)
+            .Include(s => s.Hands.Where(h => h.HandNumber == handNumber))
                 .ThenInclude(h => h.Board)
-            .FirstOrDefaultAsync(s => s.Id == sessionId, ct);
+            .FirstOrDefaultAsync(ct);
 
         if (session is null)
             return NotFound("Session not found.");
 
-        var hand = session.Hands
-            .OrderBy(h => h.HandNumber ?? int.MaxValue)
-            .FirstOrDefault(h => h.HandNumber == handNumber);
+        var hand = session.Hands.FirstOrDefault();
 
         if (hand is null)
             return NotFound("Hand not found in session.");

@@ -17,19 +17,19 @@ public sealed partial class HandHistoryIngestService : IHandHistoryIngestService
 
     public async Task<Guid> IngestAsync(string originalFileName, string xml, CancellationToken ct)
     {
-        var sha = Sha256Hex(xml);
-
+        var doc = XDocument.Parse(xml);
+        var root = doc.Root ?? throw new InvalidOperationException("Missing <session> root.");
+        var sessionCode = ParseLong(root.Attribute("sessioncode")?.Value);
         // dedupe
-        var existing = await _db.Sessions.SingleOrDefaultAsync(x => x.ContentSha256 == sha, ct);
+        var existing = await _db.Sessions.SingleOrDefaultAsync(x => x.SessionCode == sessionCode, ct);
         if (existing != null)
             return existing.Id;
 
-        var doc = XDocument.Parse(xml);
-        var root = doc.Root ?? throw new InvalidOperationException("Missing <session> root.");
+       
 
         var session = new HandHistorySession
         {
-            SessionCode = ParseLong(root.Attribute("sessioncode")?.Value),
+            SessionCode = sessionCode,
             RawXml = xml
         };
 
