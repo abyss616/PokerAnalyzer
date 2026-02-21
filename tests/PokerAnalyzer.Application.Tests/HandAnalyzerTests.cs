@@ -83,4 +83,41 @@ public class HandAnalyzerTests
         Assert.Single(result.Decisions);
         Assert.Equal(ActionType.Call, result.Decisions[0].ActualAction.Type);
     }
+
+    [Fact]
+    public void Analyzer_TransitionsStreetBeforePostflopDecision()
+    {
+        var hero = PlayerId.New();
+        var villain = PlayerId.New();
+
+        var seats = new List<PlayerSeat>
+        {
+            new(hero, "Hero", 1, Position.BB, new ChipAmount(1000)),
+            new(villain, "Villain", 2, Position.BTN, new ChipAmount(1000)),
+        };
+
+        var hand = new Domain.HandHistory.Hand(
+            HandId: Guid.NewGuid(),
+            SmallBlind: new ChipAmount(5),
+            BigBlind: new ChipAmount(10),
+            Seats: seats,
+            HeroId: hero,
+            HeroHoleCards: HoleCards.Parse("AsKh"),
+            Board: new Board(),
+            Actions: new List<BettingAction>
+            {
+                new(Street.Preflop, villain, ActionType.Call, ChipAmount.Zero),
+                new(Street.Preflop, hero, ActionType.Check, ChipAmount.Zero),
+                new(Street.Flop, villain, ActionType.Check, ChipAmount.Zero),
+                new(Street.Flop, hero, ActionType.Check, ChipAmount.Zero)
+            }
+        );
+
+        var analyzer = new HandAnalyzer(new AlwaysCheckEngine());
+        var result = analyzer.Analyze(hand);
+
+        Assert.Equal(2, result.Decisions.Count);
+        Assert.Equal(Street.Flop, result.Decisions[1].Street);
+    }
+
 }

@@ -112,6 +112,24 @@ public sealed class HandState
         return posted;
     }
 
+
+    public HandState TransitionToStreet(Street nextStreet)
+    {
+        if (nextStreet == Street)
+            return this;
+
+        var st = Clone();
+        st.Street = nextStreet;
+        st.BetToCall = ChipAmount.Zero;
+        st.LastAggressor = null;
+
+        var keys = st._streetContrib.Keys.ToArray();
+        foreach (var key in keys)
+            st._streetContrib[key] = ChipAmount.Zero;
+
+        return st;
+    }
+
     public HandState Clone()
         => new HandState(
             Street,
