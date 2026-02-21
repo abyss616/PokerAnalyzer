@@ -20,7 +20,7 @@ public sealed class ApproxMonteCarloContinuationValueProvider : IContinuationVal
         for (var i = 0; i < iterations; i++)
         {
             var villain = SampleClass(villainRange);
-            var villainStrength = Strength(villain);
+            var villainStrength = Strength(HandClass.Parse(villain));
             var equity = heroStrength > villainStrength ? 0.62m : heroStrength < villainStrength ? 0.38m : 0.5m;
             equitySum += equity;
         }
