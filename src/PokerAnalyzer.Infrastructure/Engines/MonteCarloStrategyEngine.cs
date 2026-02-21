@@ -12,6 +12,7 @@ namespace PokerAnalyzer.Infrastructure.Engines;
 /// </summary>
 public sealed class MonteCarloStrategyEngine : IStrategyEngine
 {
+    private const decimal EvTieBreakEpsilon = 0.0001m;
     private static readonly IReadOnlyDictionary<Position, decimal> BaseRangeByPosition = new Dictionary<Position, decimal>
     {
         [Position.UTG] = 0.20m,
@@ -138,10 +139,25 @@ public sealed class MonteCarloStrategyEngine : IStrategyEngine
             ranked.Add(new RecommendedAction(action, candidateTo, ev));
         }
 
-        return ranked
-            .OrderByDescending(r => policy.TryGetValue(r.Type, out var f) ? f : 0m)
-            .ThenByDescending(r => r.EstimatedEv ?? decimal.MinValue)
-            .ToList();
+        ranked.Sort((left, right) => CompareRankedActions(left, right, policy));
+        return ranked;
+    }
+
+    private static int CompareRankedActions(
+        RecommendedAction left,
+        RecommendedAction right,
+        IReadOnlyDictionary<ActionType, decimal> policy)
+    {
+        var leftEv = left.EstimatedEv ?? decimal.MinValue;
+        var rightEv = right.EstimatedEv ?? decimal.MinValue;
+        var evDelta = leftEv - rightEv;
+
+        if (Math.Abs(evDelta) > EvTieBreakEpsilon)
+            return rightEv.CompareTo(leftEv);
+
+        var leftFrequency = policy.TryGetValue(left.Type, out var leftPolicyFrequency) ? leftPolicyFrequency : 0m;
+        var rightFrequency = policy.TryGetValue(right.Type, out var rightPolicyFrequency) ? rightPolicyFrequency : 0m;
+        return rightFrequency.CompareTo(leftFrequency);
     }
 
     private decimal EstimateActionEv(
@@ -181,10 +197,49 @@ public sealed class MonteCarloStrategyEngine : IStrategyEngine
 
         var avgEquity = equitySum / _iterations;
 
-        var potIfCalled = state.Pot.Value + risk;
-        var calledEv = (avgEquity * potIfCalled) - risk;
+        var potAfterCall = ComputePotAfterCall(state, hero.HeroId, action, toAmount, opponents);
+        return ComputeTotalEv(state.Pot.Value, foldEquity, avgEquity, risk, potAfterCall);
+    }
 
-        return (foldEquity * state.Pot.Value) + ((1m - foldEquity) * calledEv);
+    private static decimal ComputeTotalEv(decimal currentPot, decimal foldEquity, decimal averageEquity, decimal heroRisk, decimal potAfterCall)
+    {
+        var calledEv = (averageEquity * potAfterCall) - heroRisk;
+        return (foldEquity * currentPot) + ((1m - foldEquity) * calledEv);
+    }
+
+    private static decimal ComputePotAfterCall(
+        HandState state,
+        PlayerId heroId,
+        ActionType action,
+        ChipAmount? toAmount,
+        IReadOnlyList<PlayerId> opponents)
+    {
+        if (action is ActionType.Fold or ActionType.Check)
+            return state.Pot.Value;
+
+        var heroAlready = state.StreetContrib[heroId].Value;
+        var heroTargetContribution = action switch
+        {
+            ActionType.Call => heroAlready + state.GetToCall(heroId).Value,
+            ActionType.Bet or ActionType.Raise or ActionType.AllIn => Math.Max(heroAlready, toAmount?.Value ?? heroAlready),
+            _ => heroAlready
+        };
+
+        var heroContribution = Math.Max(0, heroTargetContribution - heroAlready);
+
+        decimal callersMatchingContribution = 0;
+        foreach (var opponent in opponents)
+        {
+            if (!state.ActivePlayers.Contains(opponent))
+                continue;
+
+            var opponentAlready = state.StreetContrib[opponent].Value;
+            var opponentToCall = Math.Max(0, heroTargetContribution - opponentAlready);
+            var opponentStack = state.Stacks[opponent].Value;
+            callersMatchingContribution += Math.Min(opponentToCall, opponentStack);
+        }
+
+        return state.Pot.Value + heroContribution + callersMatchingContribution;
     }
 
     private bool TryRunSingleSimulation(
