@@ -14,7 +14,7 @@ public sealed class CfrPlusPreflopStrategyEngine : IStrategyEngine
     public CfrPlusPreflopStrategyEngine(MonteCarloStrategyEngine legacy)
     {
         _legacy = legacy;
-        _config = new PreflopSolverConfig(220, 100m, new RakeConfig(0.05m, 1.0m, NoFlopNoDrop: true));
+        _config = new PreflopSolverConfig(220, 100m, new RakeConfig(0.05m, 1.0m, noFlopNoDrop: true));
         _solver = new CfrPlusPreflopSolver(new PreflopTerminalEvaluator(new ApproxMonteCarloContinuationValueProvider()));
         _solved = _solver.SolvePreflop(_config);
     }
