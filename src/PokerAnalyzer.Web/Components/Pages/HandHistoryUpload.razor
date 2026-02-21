@@ -78,6 +78,8 @@
                                 <tr>
                                     <th>Street</th>
                                     <th>Hero Cards</th>
+                                    <th>Hero Position</th>
+                                    <th>Villain Position</th>
                                     <th>Villain Action</th>
                                     <th>Hero Action</th>
                                     <th>Recommended</th>
@@ -90,6 +92,8 @@
                                     <tr>
                                         <td>@decision.Street</td>
                                         <td>@(decision.HeroCards ?? "Unknown")</td>
+                                        <td>@(decision.HeroPosition ?? "Unknown")</td>
+                                        <td>@(decision.VillainPosition ?? "Unknown")</td>
                                         <td>@(decision.VillainAction ?? "N/A")</td>
                                         <td>@decision.HeroAction</td>
                                         <td>@decision.RecommendedAction</td>
@@ -98,7 +102,7 @@
                                     @if (!string.IsNullOrWhiteSpace(decision.Explanation))
                                     {
                                         <tr>
-                                            <td colspan="6" class="text-muted small">@decision.Explanation</td>
+                                            <td colspan="8" class="text-muted small">@decision.Explanation</td>
                                         </tr>
                                     }
                                 }
