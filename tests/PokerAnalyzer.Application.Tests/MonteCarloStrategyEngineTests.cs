@@ -219,7 +219,7 @@ public class MonteCarloStrategyEngineTests
     }
 
     [Fact]
-    public void ComputePotAfterCall_UnopenedPot_BetIncludesHeroAndCallerMatch()
+    public void ComputePotAfterCall_UnopenedPot_BetAddsOnlyHeroContribution()
     {
         var hero = PlayerId.New();
         var villain = PlayerId.New();
@@ -235,7 +235,7 @@ public class MonteCarloStrategyEngineTests
 
         var potAfterCall = InvokeComputePotAfterCall(state, hero, ActionType.Bet, new ChipAmount(30), [villain]);
 
-        Assert.Equal(60m, potAfterCall);
+        Assert.Equal(30m, potAfterCall);
     }
 
     [Fact]
@@ -261,7 +261,7 @@ public class MonteCarloStrategyEngineTests
     }
 
     [Fact]
-    public void ComputePotAfterCall_MultiwayRaise_IncludesAllCallerMatches()
+    public void ComputePotAfterCall_MultiwayRaise_DoesNotAssumeAllOpponentsCall()
     {
         var hero = PlayerId.New();
         var villainA = PlayerId.New();
@@ -281,7 +281,7 @@ public class MonteCarloStrategyEngineTests
 
         var potAfterCall = InvokeComputePotAfterCall(state, hero, ActionType.Raise, new ChipAmount(40), [villainA, villainB]);
 
-        Assert.Equal(120m, potAfterCall);
+        Assert.Equal(55m, potAfterCall);
     }
 
     private static decimal InvokeComputePotAfterCall(

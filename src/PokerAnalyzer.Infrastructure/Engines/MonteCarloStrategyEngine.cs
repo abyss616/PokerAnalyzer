@@ -227,19 +227,10 @@ public sealed class MonteCarloStrategyEngine : IStrategyEngine
 
         var heroContribution = Math.Max(0, heroTargetContribution - heroAlready);
 
-        decimal callersMatchingContribution = 0;
-        foreach (var opponent in opponents)
-        {
-            if (!state.ActivePlayers.Contains(opponent))
-                continue;
-
-            var opponentAlready = state.StreetContrib[opponent].Value;
-            var opponentToCall = Math.Max(0, heroTargetContribution - opponentAlready);
-            var opponentStack = state.Stacks[opponent].Value;
-            callersMatchingContribution += Math.Min(opponentToCall, opponentStack);
-        }
-
-        return state.Pot.Value + heroContribution + callersMatchingContribution;
+        // Keep the called-pot estimate conservative by adding only hero's incremental
+        // contribution. Including every active opponent's full matching amount here can
+        // massively overstate shove/raise EV in multiway spots.
+        return state.Pot.Value + heroContribution;
     }
 
     private bool TryRunSingleSimulation(
