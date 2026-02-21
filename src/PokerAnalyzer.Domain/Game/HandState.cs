@@ -1,3 +1,5 @@
+using System.Linq;
+
 namespace PokerAnalyzer.Domain.Game;
 
 /// <summary>
@@ -169,22 +171,17 @@ public sealed class HandState
         };
     }
 
-    //public HandState AdvanceStreet(Street nextStreet, IEnumerable<Card>? newBoardCards = null)
-    //{
-    //    var st = Clone();
-    //    st.Street = nextStreet;
-    //    st.BetToCall = ChipAmount.Zero;
-    //    st.LastAggressor = null;
 
-    //    foreach (var k in st._streetContrib.Keys.ToList())
-    //        st._streetContrib[k] = ChipAmount.Zero;
-
-    //    if (newBoardCards is not null)
-    //        foreach (var c in newBoardCards)
-    //            //st.Board.Add(c);
-
-    //    return st;
-    //}
+    public HandState AdvanceStreet(Street nextStreet)
+    {
+        var st = Clone();
+        st.Street = nextStreet;
+        st.BetToCall = ChipAmount.Zero;
+        st.LastAggressor = null;
+        foreach (var k in st._streetContrib.Keys.ToList())
+            st._streetContrib[k] = ChipAmount.Zero;
+        return st;
+    }
 
     private HandState ApplyFold(PlayerId actor, ChipAmount amount)
     {

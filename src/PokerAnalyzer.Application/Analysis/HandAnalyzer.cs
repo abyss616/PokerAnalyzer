@@ -32,6 +32,9 @@ public sealed class HandAnalyzer
         {
             var a = hand.Actions[i];
 
+            if (a.Street != state.Street)
+                state = state.AdvanceStreet(a.Street);
+
             // Hero decision point: compare action vs engine recommendation
             if (a.ActorId == hand.HeroId)
             {
