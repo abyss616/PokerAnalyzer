@@ -215,3 +215,48 @@ When a new chat starts, do the following in order:
 5. List any newly added folders or engine implementations that are not documented here.
 
 This checklist is designed to reconstruct full working context in minutes.
+
+---
+
+## CFR+ Preflop Solver (Approximate, 6-max NLHE)
+
+A compact preflop solver is now integrated and used by default for preflop recommendations.
+
+### Entry points
+- `CfrPlusPreflopSolver.SolvePreflop(config)` returns strategy tables by node.
+- `CfrPlusPreflopSolver.QueryStrategy(...)` returns mixed action frequencies and best action.
+- `CfrPlusPreflopStrategyEngine` wires this into `IStrategyEngine` for `HandAnalyzer`.
+
+### Tree and sizing model (kept intentionally small)
+- Open sizes:
+  - UTG/HJ/CO/BTN: **2.5bb**
+  - SB first-in: **3.0bb** or limp
+- Open-limp:
+  - SB: allowed
+  - other positions: not modeled as open-limp
+- 3-bets:
+  - IP vs open: **9.0bb**
+  - OOP vs open: **10.0bb**
+  - SB vs BTN: **10.5bb**
+- 4-bet: **22bb** non-all-in when stack allows, otherwise jam
+- Jam: allowed if effective stack ≤ 30bb or 4-bet would commit ≥ 60%
+
+### Rake and stacks
+- Configure with `PreflopSolverConfig`:
+  - `EffectiveStackBb`
+  - `RakeConfig(Percent, CapBb, NoFlopNoDrop)`
+
+### Continuation model
+- No full postflop solving is performed.
+- Flop-reaching call branches are evaluated through `IContinuationValueProvider`.
+- Default: `ApproxMonteCarloContinuationValueProvider` (explicitly approximate).
+
+### Legacy heuristic toggle
+- Set environment variable `POKER_ANALYZER_USE_LEGACY_MONTECARLO=1` to use `MonteCarloStrategyEngine` instead of CFR+ preflop lookup.
+
+### Hand log output
+`CfrPlusPreflopStrategyEngine` explanation includes:
+- node id
+- hero hand
+- mixed strategy best action
+- approximate EV in bb

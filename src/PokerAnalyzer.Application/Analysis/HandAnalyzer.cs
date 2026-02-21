@@ -33,6 +33,9 @@ public sealed class HandAnalyzer
         {
             var a = hand.Actions[i];
 
+            if (state.Street != a.Street)
+                state = state.TransitionToStreet(a.Street);
+
             // Variant A architecture: forced blinds are part of CreateNewHand setup, not runtime decisions.
             if (a.Type is ActionType.PostSmallBlind or ActionType.PostBigBlind)
                 continue;
