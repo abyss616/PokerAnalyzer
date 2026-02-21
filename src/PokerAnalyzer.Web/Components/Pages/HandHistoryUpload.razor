@@ -77,6 +77,8 @@
                                 <thead>
                                 <tr>
                                     <th>Street</th>
+                                    <th>Hero Cards</th>
+                                    <th>Villain Action</th>
                                     <th>Hero Action</th>
                                     <th>Recommended</th>
                                     <th>EV</th>
@@ -87,6 +89,8 @@
                                 {
                                     <tr>
                                         <td>@decision.Street</td>
+                                        <td>@(decision.HeroCards ?? "Unknown")</td>
+                                        <td>@(decision.VillainAction ?? "N/A")</td>
                                         <td>@decision.HeroAction</td>
                                         <td>@decision.RecommendedAction</td>
                                         <td>@(decision.RecommendedEv?.ToString("0.###") ?? "N/A")</td>
@@ -94,7 +98,7 @@
                                     @if (!string.IsNullOrWhiteSpace(decision.Explanation))
                                     {
                                         <tr>
-                                            <td colspan="4" class="text-muted small">@decision.Explanation</td>
+                                            <td colspan="6" class="text-muted small">@decision.Explanation</td>
                                         </tr>
                                     }
                                 }

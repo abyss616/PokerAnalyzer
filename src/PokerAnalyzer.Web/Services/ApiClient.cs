@@ -30,6 +30,8 @@ public sealed class ApiClient
     public sealed record EngineDecisionSummary(
         int ActionIndex,
         string Street,
+        string? HeroCards,
+        string? VillainAction,
         string HeroAction,
         string RecommendedAction,
         decimal? RecommendedEv,
