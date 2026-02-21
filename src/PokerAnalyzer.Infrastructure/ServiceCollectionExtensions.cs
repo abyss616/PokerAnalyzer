@@ -5,6 +5,7 @@ using PokerAnalyzer.Application.Engines;
 using PokerAnalyzer.Infrastructure.Engines;
 using PokerAnalyzer.Infrastructure.HandHistories;
 using PokerAnalyzer.Infrastructure.Persistence;
+using System;
 
 namespace PokerAnalyzer.Infrastructure;
 
@@ -14,7 +15,14 @@ public static class ServiceCollectionExtensions
     {
         services.AddSingleton<DummyStrategyEngine>();
         services.AddSingleton<MonteCarloStrategyEngine>();
-        services.AddSingleton<IStrategyEngine, MonteCarloStrategyEngine>();
+        services.AddSingleton<CfrPlusPreflopStrategyEngine>();
+        services.AddSingleton<IStrategyEngine>(sp =>
+        {
+            var useLegacy = Environment.GetEnvironmentVariable("POKER_ANALYZER_USE_LEGACY_MONTECARLO");
+            return string.Equals(useLegacy, "1", StringComparison.OrdinalIgnoreCase)
+                ? sp.GetRequiredService<MonteCarloStrategyEngine>()
+                : sp.GetRequiredService<CfrPlusPreflopStrategyEngine>();
+        });
         services.AddTransient<HandAnalyzer>();
         services.AddPokerAnalyzerDb();
         services.AddScoped<IHandHistoryRepository, HandHistoryRepository>();

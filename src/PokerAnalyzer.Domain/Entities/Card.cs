@@ -1,6 +1,6 @@
 ﻿using PokerAnalyzer.Domain.Cards;
 
-public class Card
+public class Card : IEquatable<Card>
 {
     public Rank Rank { get; private set; }
     public Suit Suit { get; private set; }
@@ -13,6 +13,19 @@ public class Card
         Suit = suit;
     }
     public override string ToString() => $"{RankToChar(Rank)}{SuitToChar(Suit)}";
+
+    public bool Equals(Card? other) => other is not null && Rank == other.Rank && Suit == other.Suit;
+    public override bool Equals(object? obj) => obj is Card other && Equals(other);
+    public override int GetHashCode() => HashCode.Combine((int)Rank, (int)Suit);
+
+    public static bool operator ==(Card? left, Card? right)
+    {
+        if (ReferenceEquals(left, right)) return true;
+        if (left is null || right is null) return false;
+        return left.Equals(right);
+    }
+
+    public static bool operator !=(Card? left, Card? right) => !(left == right);
 
     public static Card Parse(string text)
     {
@@ -77,5 +90,3 @@ public class Card
         _ => throw new FormatException($"Invalid suit value '{suit}'.")
     };
 }
-
-
