@@ -182,12 +182,15 @@ public sealed class HandAnalysisController : ControllerBase
             .Select(decision =>
             {
                 var topRecommendation = decision.Recommendation.RankedActions.FirstOrDefault();
-                var villainAction = TryGetLatestVillainAction(hand, decision.ActionIndex);
+                var villainContext = TryGetLatestVillainContext(hand, decision.ActionIndex);
+                var heroSeat = hand.Seats.FirstOrDefault(seat => seat.PlayerId == hand.HeroId);
                 return new EngineDecisionSummary(
                     decision.ActionIndex,
                     decision.Street.ToString(),
                     hand.HeroHoleCards?.ToString(),
-                    villainAction,
+                    heroSeat?.Position.ToString(),
+                    villainContext?.Position,
+                    villainContext?.Action,
                     FormatAction(decision.ActualAction.Type, decision.ActualAction.Amount),
                     topRecommendation is null
                         ? "N/A"
@@ -201,7 +204,7 @@ public sealed class HandAnalysisController : ControllerBase
         return new EngineSolverResult(engineName, result.Decisions.Count, decisionSummaries);
     }
 
-    private static string? TryGetLatestVillainAction(PokerAnalyzer.Domain.HandHistory.Hand hand, int actionIndex)
+    private static VillainActionContext? TryGetLatestVillainContext(PokerAnalyzer.Domain.HandHistory.Hand hand, int actionIndex)
     {
         if (actionIndex < 0 || actionIndex >= hand.Actions.Count)
             return null;
@@ -217,11 +220,16 @@ public sealed class HandAnalysisController : ControllerBase
             if (action.ActorId == hand.HeroId)
                 continue;
 
-            return FormatAction(action.Type, action.Amount);
+            var seat = hand.Seats.FirstOrDefault(playerSeat => playerSeat.PlayerId == action.ActorId);
+            return new VillainActionContext(
+                seat?.Position.ToString(),
+                FormatAction(action.Type, action.Amount));
         }
 
         return null;
     }
+
+    private sealed record VillainActionContext(string? Position, string Action);
 
     private static string FormatAction(ActionType actionType, ChipAmount? toAmount)
     {
@@ -246,6 +254,8 @@ public sealed class HandAnalysisController : ControllerBase
         int ActionIndex,
         string Street,
         string? HeroCards,
+        string? HeroPosition,
+        string? VillainPosition,
         string? VillainAction,
         string HeroAction,
         string RecommendedAction,

@@ -31,6 +31,8 @@ public sealed class ApiClient
         int ActionIndex,
         string Street,
         string? HeroCards,
+        string? HeroPosition,
+        string? VillainPosition,
         string? VillainAction,
         string HeroAction,
         string RecommendedAction,
