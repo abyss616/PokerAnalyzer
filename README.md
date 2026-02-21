@@ -215,3 +215,39 @@ When a new chat starts, do the following in order:
 5. List any newly added folders or engine implementations that are not documented here.
 
 This checklist is designed to reconstruct full working context in minutes.
+
+---
+
+## Preflop CFR+ Solver (Approximate, 6-max-oriented abstraction)
+
+A preflop-only CFR+ module is now available in `PokerAnalyzer.Application/PreflopSolver`.
+
+### What it does
+- Builds a compact preflop game tree with the configured microstakes sizing set:
+  - Opens: 2.5bb (UTG/HJ/CO/BTN), SB first-in 3.0bb or limp
+  - 3bet: 9bb IP / 10bb OOP / 10.5bb SB vs BTN
+  - 4bet: 22bb or jam when stack-commit rules apply
+- Solves mixed strategies using CFR+ (regret-matching+ and averaged strategy output).
+- Uses pluggable continuation EV for call-to-flop nodes (`IContinuationValueProvider`).
+- Evaluates all-in terminals with an approximate equity model and utility caching.
+
+### API
+- `IPreflopSolverService.SolvePreflop(PreflopSolverConfig config)`
+  - Returns node/hand mixed strategies and per-node EV table.
+- `IPreflopSolverService.QueryStrategy(PreflopNodeState state, HoleCards heroHand)`
+  - Returns `{ action -> frequency }`, best action, and EV estimate.
+
+### Rake / stacks / sizing controls
+- Rake is configured through `RakeConfig(percent, capBb, noFlopNoDrop)` in `PreflopSolverConfig`.
+- Effective stack is configured via `PreflopSolverConfig.StartingStackBb` and query node state.
+- Sizing set is implemented in `PreflopGameTreeBuilder` and can be edited there.
+
+### Engine selection
+- Default strategy engine now uses the solver-backed engine.
+- Set environment variable `POKER_ANALYZER_USE_LEGACY_HEURISTIC=1` to use the old dummy heuristic engine.
+
+### Single-hand output
+The strategy engine explanation includes a readable preflop log string with:
+- node id
+- chosen best action
+- EV estimate
