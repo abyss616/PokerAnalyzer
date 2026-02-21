@@ -66,8 +66,8 @@ public sealed class HandAnalysisController : ControllerBase
 
         var engineSummaries = new[]
         {
-            BuildEngineResult("Dummy", dummyResult),
-            BuildEngineResult("Monte Carlo", monteCarloResult)
+            BuildEngineResult("Dummy", dummyResult, domainHand),
+            BuildEngineResult("Monte Carlo", monteCarloResult, domainHand)
         };
 
         return Ok(new HandSolverResponse(domainHand.HandId, handNumber, engineSummaries.Max(e => e.DecisionCount), engineSummaries));
@@ -176,15 +176,18 @@ public sealed class HandAnalysisController : ControllerBase
         }
     }
 
-    private static EngineSolverResult BuildEngineResult(string engineName, HandAnalysisResult result)
+    private static EngineSolverResult BuildEngineResult(string engineName, HandAnalysisResult result, PokerAnalyzer.Domain.HandHistory.Hand hand)
     {
         var decisionSummaries = result.Decisions
             .Select(decision =>
             {
                 var topRecommendation = decision.Recommendation.RankedActions.FirstOrDefault();
+                var villainAction = TryGetLatestVillainAction(hand, decision.ActionIndex);
                 return new EngineDecisionSummary(
                     decision.ActionIndex,
                     decision.Street.ToString(),
+                    hand.HeroHoleCards?.ToString(),
+                    villainAction,
                     FormatAction(decision.ActualAction.Type, decision.ActualAction.Amount),
                     topRecommendation is null
                         ? "N/A"
@@ -196,6 +199,28 @@ public sealed class HandAnalysisController : ControllerBase
             .ToList();
 
         return new EngineSolverResult(engineName, result.Decisions.Count, decisionSummaries);
+    }
+
+    private static string? TryGetLatestVillainAction(PokerAnalyzer.Domain.HandHistory.Hand hand, int actionIndex)
+    {
+        if (actionIndex < 0 || actionIndex >= hand.Actions.Count)
+            return null;
+
+        var heroStreet = hand.Actions[actionIndex].Street;
+
+        for (var i = actionIndex - 1; i >= 0; i--)
+        {
+            var action = hand.Actions[i];
+            if (action.Street != heroStreet)
+                continue;
+
+            if (action.ActorId == hand.HeroId)
+                continue;
+
+            return FormatAction(action.Type, action.Amount);
+        }
+
+        return null;
     }
 
     private static string FormatAction(ActionType actionType, ChipAmount? toAmount)
@@ -220,6 +245,8 @@ public sealed class HandAnalysisController : ControllerBase
     public sealed record EngineDecisionSummary(
         int ActionIndex,
         string Street,
+        string? HeroCards,
+        string? VillainAction,
         string HeroAction,
         string RecommendedAction,
         decimal? RecommendedEv,
