@@ -92,9 +92,15 @@ public static class PreflopStateExtractor
 
         var history = hero.ActionHistory?.Where(a => a.Street == Street.Preflop).Select(a => a.Type).ToList() ?? [];
         var playerCount = hero.PlayerPositions.Count;
-        var toCallBb = hero.BigBlind.Value <= 0 ? 0 : (int)Math.Round(state.GetToCall(hero.HeroId).Value / (decimal)hero.BigBlind.Value);
+        var normalizedHeroPos = playerCount == 2 && heroPos == Position.SB ? Position.BTN : heroPos;
+        var toCallBb = hero.BigBlind.Value <= 0
+            ? 0
+            : (int)Math.Round(
+                state.GetToCall(hero.HeroId).Value / (decimal)hero.BigBlind.Value,
+                0,
+                MidpointRounding.AwayFromZero);
         var eff = (int)Math.Round(state.Stacks[hero.HeroId].Value / (decimal)hero.BigBlind.Value);
 
-        return new PreflopInfoSetKey(playerCount, heroPos, PreflopHistorySignature.Build(history), toCallBb, eff);
+        return new PreflopInfoSetKey(playerCount, normalizedHeroPos, PreflopHistorySignature.Build(history), toCallBb, eff);
     }
 }
