@@ -122,11 +122,37 @@ public sealed class HandAnalysisController : ControllerBase
 
         var holeCards = ParseHoleCards(hand.HeroHoleCards);
 
+        var seatsByPlayerId = seats.ToDictionary(seat => seat.Id);
+        var sbSeat = seats.FirstOrDefault(seat => seat.Position == Position.SB);
+        var bbSeat = seats.FirstOrDefault(seat => seat.Position == Position.BB);
+
         var actions = hand.Actions
             .OrderBy(a => a.ActionIndex)
             .Select(a =>
             {
-                var actorId = playerIds.TryGetValue(a.Player, out var id) ? id : heroId;
+                if (!playerIds.TryGetValue(a.Player, out var actorId))
+                    throw new InvalidOperationException($"Invalid action mapping: unknown player '{a.Player}' at actionIndex={a.ActionIndex}.");
+
+                var actorSeat = seatsByPlayerId[actorId].SeatNumber;
+
+                if (a.Type == ActionType.PostSmallBlind)
+                {
+                    if (sbSeat is null)
+                        throw new InvalidOperationException("Invalid action mapping: no SB seat found for PostSmallBlind.");
+
+                    if (actorSeat != sbSeat.SeatNumber)
+                        throw new InvalidOperationException($"Invalid action mapping: PostSmallBlind actorSeat={actorSeat} must equal sbSeat={sbSeat.SeatNumber}.");
+                }
+
+                if (a.Type == ActionType.PostBigBlind)
+                {
+                    if (bbSeat is null)
+                        throw new InvalidOperationException("Invalid action mapping: no BB seat found for PostBigBlind.");
+
+                    if (actorSeat != bbSeat.SeatNumber)
+                        throw new InvalidOperationException($"Invalid action mapping: PostBigBlind actorSeat={actorSeat} must equal bbSeat={bbSeat.SeatNumber}.");
+                }
+
                 return new BettingAction(
                     a.Street,
                     actorId,

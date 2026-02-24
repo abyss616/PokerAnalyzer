@@ -44,6 +44,10 @@ public sealed class HandAnalyzer
             // Hero decision point: compare action vs engine recommendation
             if (a.ActorId == hand.HeroId)
             {
+                var villainId = ResolveVillainId(hand.HeroId, state, hand.Actions.Take(i));
+                if (hand.HeroId == villainId)
+                    throw new InvalidOperationException("Invalid decision context: hero and villain must be different PlayerIds.");
+
                 var decisionCtx = heroCtx with
                 {
                     HeroHoleCards = hand.HeroHoleCards,
@@ -51,7 +55,7 @@ public sealed class HandAnalyzer
                     ActionHistory = hand.Actions.Take(i).ToArray()
                 };
 
-                var rec = _engine.Recommend(state, decisionCtx);
+                var rec = EnsureLegalRecommendation(state, hand.HeroId, _engine.Recommend(state, decisionCtx));
                 var sev = Score(a, rec);
                 decisions.Add(new DecisionReview(
                     ActionIndex: i,
@@ -68,6 +72,33 @@ public sealed class HandAnalyzer
         }
 
         return new HandAnalysisResult(hand.HandId, decisions);
+    }
+
+    private static Recommendation EnsureLegalRecommendation(HandState handState, PlayerId heroId, Recommendation recommendation)
+    {
+        var recommendedAction = recommendation.EffectivePrimaryAction;
+        if (recommendedAction is null)
+            return recommendation;
+
+        var legal = handState.GetLegalActions(heroId);
+        if (!legal.Contains(recommendedAction.Type))
+        {
+            return Recommendation.Invalid(
+                $"Illegal recommendation: {recommendedAction.Type} when toCall={handState.GetToCall(heroId).Value}. Legal=[{string.Join(",", legal)}]");
+        }
+
+        return recommendation;
+    }
+
+    private static PlayerId ResolveVillainId(PlayerId heroId, HandState state, IEnumerable<BettingAction> actionHistory)
+    {
+        foreach (var action in actionHistory.Reverse())
+        {
+            if (action.ActorId != heroId)
+                return action.ActorId;
+        }
+
+        return state.ActivePlayers.First(id => id != heroId);
     }
 
 

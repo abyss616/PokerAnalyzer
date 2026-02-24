@@ -187,6 +187,69 @@ public class HandAnalyzerTests
     }
 
     [Fact]
+    public void Preflop_UtgFacingBigBlind_CannotCheck()
+    {
+        var utg = PlayerId.New();
+        var hj = PlayerId.New();
+        var co = PlayerId.New();
+        var btn = PlayerId.New();
+        var sb = PlayerId.New();
+        var bb = PlayerId.New();
+
+        var seats = new List<PlayerSeat>
+        {
+            new(utg, "UTG", 1, Position.UTG, new ChipAmount(1000)),
+            new(hj, "HJ", 2, Position.HJ, new ChipAmount(1000)),
+            new(co, "CO", 3, Position.CO, new ChipAmount(1000)),
+            new(btn, "BTN", 4, Position.BTN, new ChipAmount(1000)),
+            new(sb, "SB", 5, Position.SB, new ChipAmount(1000)),
+            new(bb, "BB", 6, Position.BB, new ChipAmount(1000))
+        };
+
+        var state = HandState.CreateNewHand(seats, new ChipAmount(1), new ChipAmount(2));
+        var toCall = state.GetToCall(utg);
+        var legal = state.GetLegalActions(utg);
+
+        Assert.Equal(new ChipAmount(2), toCall);
+        Assert.Contains(ActionType.Call, legal);
+        Assert.Contains(ActionType.Fold, legal);
+        Assert.Contains(ActionType.Raise, legal);
+        Assert.Contains(ActionType.AllIn, legal);
+        Assert.DoesNotContain(ActionType.Check, legal);
+    }
+
+    [Fact]
+    public void Analyzer_RejectsIllegalCheckRecommendation_WhenFacingBet()
+    {
+        var hero = PlayerId.New();
+        var villain = PlayerId.New();
+
+        var hand = new Domain.HandHistory.Hand(
+            Guid.NewGuid(),
+            new ChipAmount(5),
+            new ChipAmount(10),
+            new List<PlayerSeat>
+            {
+                new(hero, "Hero", 1, Position.SB, new ChipAmount(1000)),
+                new(villain, "Villain", 2, Position.BB, new ChipAmount(1000))
+            },
+            hero,
+            HoleCards.Parse("AsKh"),
+            new Board(),
+            new List<BettingAction>
+            {
+                new(Street.Preflop, hero, ActionType.Call, new ChipAmount(10))
+            });
+
+        var analyzer = new HandAnalyzer(new AlwaysCheckEngine());
+        var result = analyzer.Analyze(hand);
+
+        var recommendation = Assert.Single(result.Decisions).Recommendation;
+        Assert.Empty(recommendation.RankedActions);
+        Assert.Contains("Illegal recommendation: Check", recommendation.Explanation);
+    }
+
+    [Fact]
     public void Analyzer_ThrowsWhenHeroAndVillainSharePosition()
     {
         var hero = PlayerId.New();

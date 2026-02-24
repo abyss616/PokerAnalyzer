@@ -14,6 +14,9 @@ public sealed record Recommendation(
 {
     public RecommendedAction? EffectivePrimaryAction => PrimaryAction ?? RankedActions.FirstOrDefault();
     public string? EffectivePrimaryExplanation => PrimaryExplanation ?? Explanation;
+
+    public static Recommendation Invalid(string message)
+        => new(Array.Empty<RecommendedAction>(), message, PrimaryExplanation: message);
 }
 
 public sealed record RecommendedAction(
