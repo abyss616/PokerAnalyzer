@@ -1,5 +1,6 @@
 using System.Runtime.CompilerServices;
 using PokerAnalyzer.Domain.Game;
+using PokerAnalyzer.Domain.PreflopTree;
 using PokerAnalyzer.Infrastructure.PreflopSolver;
 using Xunit;
 
