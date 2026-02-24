@@ -183,7 +183,7 @@ public sealed class HandAnalysisController : ControllerBase
             {
                 var topRecommendation = decision.Recommendation.RankedActions.FirstOrDefault();
                 var villainContext = TryGetLatestVillainContext(hand, decision.ActionIndex);
-                var heroSeat = hand.Seats.FirstOrDefault(seat => seat.PlayerId == hand.HeroId);
+                var heroSeat = hand.Seats.FirstOrDefault(seat => seat.Id == hand.HeroId);
                 return new EngineDecisionSummary(
                     decision.ActionIndex,
                     decision.Street.ToString(),
@@ -220,7 +220,7 @@ public sealed class HandAnalysisController : ControllerBase
             if (action.ActorId == hand.HeroId)
                 continue;
 
-            var seat = hand.Seats.FirstOrDefault(playerSeat => playerSeat.PlayerId == action.ActorId);
+            var seat = hand.Seats.FirstOrDefault(playerSeat => playerSeat.Id == action.ActorId);
             return new VillainActionContext(
                 seat?.Position.ToString(),
                 FormatAction(action.Type, action.Amount));
