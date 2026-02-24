@@ -39,15 +39,15 @@ public sealed class CfrPlusPreflopSolver
 
         for (var iter = 1; iter <= config.Iterations; iter++)
         {
-            foreach (var hand in hands)
+            if (config.EnableParallelSolve)
             {
-                var strat = RegretMatchingPlus(regrets[hand]);
-                foreach (var action in node.LegalActions)
-                    strategySum[hand][action] += strat[action];
-                var actionUtil = node.LegalActions.ToDictionary(a => a, a => (double)EvaluateAction(node, hand, a, config));
-                var nodeUtil = node.LegalActions.Sum(a => strat[a] * actionUtil[a]);
-                foreach (var action in node.LegalActions)
-                    regrets[hand][action] = Math.Max(0, regrets[hand][action] + (actionUtil[action] - nodeUtil));
+                var options = new ParallelOptions { MaxDegreeOfParallelism = config.ResolveMaxDegreeOfParallelism() };
+                Parallel.ForEach(hands, options, hand => UpdateHandRegrets(node, hand, config, regrets[hand], strategySum[hand]));
+            }
+            else
+            {
+                foreach (var hand in hands)
+                    UpdateHandRegrets(node, hand, config, regrets[hand], strategySum[hand]);
             }
         }
 
@@ -63,6 +63,23 @@ public sealed class CfrPlusPreflopSolver
         var popMix = node.LegalActions.ToDictionary(a => a, a => handMix.Values.Average(m => m[a]));
         var ev = (decimal)hands.Average(h => node.LegalActions.Sum(a => handMix[h][a] * (double)EvaluateAction(node, h, a, config)));
         return new NodeStrategyResult(node.InfoSet, handMix, popMix, ev);
+    }
+
+    private void UpdateHandRegrets(
+        PreflopNode node,
+        string hand,
+        PreflopSolverConfig config,
+        Dictionary<ActionType, double> regrets,
+        Dictionary<ActionType, double> strategySum)
+    {
+        var strat = RegretMatchingPlus(regrets);
+        foreach (var action in node.LegalActions)
+            strategySum[action] += strat[action];
+
+        var actionUtil = node.LegalActions.ToDictionary(a => a, a => (double)EvaluateAction(node, hand, a, config));
+        var nodeUtil = node.LegalActions.Sum(a => strat[a] * actionUtil[a]);
+        foreach (var action in node.LegalActions)
+            regrets[action] = Math.Max(0, regrets[action] + (actionUtil[action] - nodeUtil));
     }
 
     private decimal EvaluateAction(PreflopNode node, string hand, ActionType action, PreflopSolverConfig config)
