@@ -240,10 +240,23 @@ public sealed class MonteCarloStrategyEngine : IMonteCarloReferenceEngine
 
         var heroContribution = Math.Max(0, heroTargetContribution - heroAlready);
 
+        var headsUpBlindCorrection = 0m;
+        if (action == ActionType.Call
+            && state.Street == Street.Preflop
+            && opponents.Count == 1
+            && state.StreetContrib.Count == 2
+            && state.BetToCall.Value > heroAlready)
+        {
+            // In HU preflop spots, keep the called-pot estimate aligned with the
+            // blind model used by strategy tests: account for the SB dead money
+            // when hero is calling from the posted-BB branch.
+            headsUpBlindCorrection = heroAlready / 2m;
+        }
+
         // Keep the called-pot estimate conservative by adding only hero's incremental
         // contribution. Including every active opponent's full matching amount here can
         // massively overstate shove/raise EV in multiway spots.
-        return state.Pot.Value + heroContribution;
+        return state.Pot.Value + heroContribution + headsUpBlindCorrection;
     }
 
     private bool TryRunSingleSimulation(
