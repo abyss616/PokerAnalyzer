@@ -194,17 +194,27 @@ public static class PreflopRules
     public static bool IsBettingClosed(PreflopPublicState state)
     {
         var activeCount = 0;
+        var allInCount = 0;
         for (var i = 0; i < state.PlayerCount; i++)
         {
             if (state.InHand[i])
             {
                 activeCount++;
+                if (IsAllIn(state, i))
+                {
+                    allInCount++;
+                }
             }
         }
 
         if (activeCount <= 1)
         {
             return true;
+        }
+
+        if (allInCount == activeCount)
+        {
+            return false;
         }
 
         for (var i = 0; i < state.PlayerCount; i++)
@@ -232,12 +242,6 @@ public static class PreflopRules
             return true;
         }
 
-        if (state.BettingClosed)
-        {
-            reason = "BettingClosed";
-            return true;
-        }
-
         var allInCount = 0;
         for (var i = 0; i < state.PlayerCount; i++)
         {
@@ -252,14 +256,20 @@ public static class PreflopRules
             }
             else
             {
-                reason = string.Empty;
-                return false;
+                allInCount = 0;
+                break;
             }
         }
 
         if (allInCount > 0)
         {
             reason = "AllIn";
+            return true;
+        }
+
+        if (state.BettingClosed)
+        {
+            reason = "BettingClosed";
             return true;
         }
 

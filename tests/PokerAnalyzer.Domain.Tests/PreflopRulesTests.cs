@@ -172,4 +172,23 @@ public class PreflopRulesTests
         Assert.True(PreflopRules.IsTerminal(state, out var reason));
         Assert.Equal("AllIn", reason);
     }
+
+    [Fact]
+    public void IsTerminal_AllRemainingPlayersAllIn_NeverReturnsBettingClosed()
+    {
+        var state = new PreflopPublicState
+        {
+            PlayerCount = 3,
+            InHand = [true, false, true],
+            ContribBb = [10, 0, 10],
+            StackBb = [0, 0, 0],
+            PotBb = 20,
+            CurrentToCallBb = 10,
+            BettingClosed = true,
+            ActingIndex = 0
+        };
+
+        Assert.True(PreflopRules.IsTerminal(state, out var reason));
+        Assert.Equal("AllIn", reason);
+    }
 }
