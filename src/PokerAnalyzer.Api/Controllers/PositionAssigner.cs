@@ -70,8 +70,8 @@ internal static class PositionAssigner
     {
         2 => [Position.SB, Position.BB],
         3 => [Position.BTN, Position.SB, Position.BB],
-        4 => [Position.BTN, Position.SB, Position.BB, Position.CO],
-        5 => [Position.BTN, Position.SB, Position.BB, Position.HJ, Position.CO],
+        4 => [Position.BTN, Position.SB, Position.BB, Position.UTG],
+        5 => [Position.BTN, Position.SB, Position.BB, Position.UTG, Position.CO],
         6 => [Position.BTN, Position.SB, Position.BB, Position.UTG, Position.HJ, Position.CO],
         7 => [Position.BTN, Position.SB, Position.BB, Position.UTG, Position.UTG1, Position.HJ, Position.CO],
         8 => [Position.BTN, Position.SB, Position.BB, Position.UTG, Position.UTG1, Position.UTG2, Position.HJ, Position.CO],

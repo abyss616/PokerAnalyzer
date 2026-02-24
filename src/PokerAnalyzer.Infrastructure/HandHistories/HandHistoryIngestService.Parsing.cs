@@ -251,8 +251,8 @@ public sealed partial class HandHistoryIngestService
         {
             2 => [HandPlayer.Position.SB, HandPlayer.Position.BB],
             3 => [HandPlayer.Position.BTN, HandPlayer.Position.SB, HandPlayer.Position.BB],
-            4 => [HandPlayer.Position.CO, HandPlayer.Position.BTN, HandPlayer.Position.SB, HandPlayer.Position.BB],
-            5 => [HandPlayer.Position.HJ, HandPlayer.Position.CO, HandPlayer.Position.BTN, HandPlayer.Position.SB, HandPlayer.Position.BB],
+            4 => [HandPlayer.Position.UTG, HandPlayer.Position.BTN, HandPlayer.Position.SB, HandPlayer.Position.BB],
+            5 => [HandPlayer.Position.UTG, HandPlayer.Position.CO, HandPlayer.Position.BTN, HandPlayer.Position.SB, HandPlayer.Position.BB],
             6 => [HandPlayer.Position.UTG, HandPlayer.Position.HJ, HandPlayer.Position.CO, HandPlayer.Position.BTN, HandPlayer.Position.SB, HandPlayer.Position.BB],
             7 => [HandPlayer.Position.UTG, HandPlayer.Position.UTG1, HandPlayer.Position.HJ, HandPlayer.Position.CO, HandPlayer.Position.BTN, HandPlayer.Position.SB, HandPlayer.Position.BB],
             8 => [HandPlayer.Position.UTG, HandPlayer.Position.UTG1, HandPlayer.Position.UTG2, HandPlayer.Position.HJ, HandPlayer.Position.CO, HandPlayer.Position.BTN, HandPlayer.Position.SB, HandPlayer.Position.BB],
