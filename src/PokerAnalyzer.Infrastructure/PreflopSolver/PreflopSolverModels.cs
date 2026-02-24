@@ -21,7 +21,13 @@ public sealed record PreflopSolverConfig(
     decimal EffectiveStackBb,
     RakeConfig Rake,
     int PlayerCount = 2,
-    RaiseSizingAbstraction? Sizing = null);
+    RaiseSizingAbstraction? Sizing = null,
+    bool EnableParallelSolve = false,
+    int MaxDegreeOfParallelism = 0)
+{
+    public int ResolveMaxDegreeOfParallelism()
+        => MaxDegreeOfParallelism <= 0 ? Environment.ProcessorCount : MaxDegreeOfParallelism;
+}
 
 public sealed record PreflopInfoSetKey(
     int PlayerCount,

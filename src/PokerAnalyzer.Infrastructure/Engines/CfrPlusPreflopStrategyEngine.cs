@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Logging;
 using PokerAnalyzer.Application.Engines;
 using PokerAnalyzer.Domain.Game;
 using PokerAnalyzer.Infrastructure.PreflopSolver;
@@ -7,16 +8,33 @@ namespace PokerAnalyzer.Infrastructure.Engines;
 public sealed class CfrPlusPreflopStrategyEngine : IStrategyEngine
 {
     private readonly IMonteCarloReferenceEngine _monteCarloReference;
-    private readonly PreflopSolverCache _store;
     private readonly CfrPlusPreflopSolver _solver;
     private readonly PreflopSolverConfig _config;
+    private readonly ILogger<CfrPlusPreflopStrategyEngine> _logger;
+
+    private readonly object _solveLock = new();
+    private Task<PreflopSolveResult>? _solveTask;
+
 
     public CfrPlusPreflopStrategyEngine(IMonteCarloReferenceEngine monteCarloReference)
+        : this(
+            monteCarloReference,
+            new CfrPlusPreflopSolver(new PreflopTerminalEvaluator(new ApproxMonteCarloContinuationValueProvider())),
+            new PreflopSolverConfig(140, 100m, new RakeConfig(0.05m, 1.0m, NoFlopNoDrop: true), 2, RaiseSizingAbstraction.Default),
+            Microsoft.Extensions.Logging.Abstractions.NullLogger<CfrPlusPreflopStrategyEngine>.Instance)
+    {
+    }
+
+    public CfrPlusPreflopStrategyEngine(
+        IMonteCarloReferenceEngine monteCarloReference,
+        CfrPlusPreflopSolver solver,
+        PreflopSolverConfig config,
+        ILogger<CfrPlusPreflopStrategyEngine> logger)
     {
         _monteCarloReference = monteCarloReference;
-        _solver = new CfrPlusPreflopSolver(new PreflopTerminalEvaluator(new ApproxMonteCarloContinuationValueProvider()));
-        _store = new PreflopSolverCache(_solver);
-        _config = new PreflopSolverConfig(140, 100m, new RakeConfig(0.05m, 1.0m, NoFlopNoDrop: true), 2, RaiseSizingAbstraction.Default);
+        _solver = solver;
+        _config = config;
+        _logger = logger;
     }
 
     public Recommendation Recommend(HandState state, HeroContext hero)
@@ -29,28 +47,52 @@ public sealed class CfrPlusPreflopStrategyEngine : IStrategyEngine
         if (key is null)
             return BuildUnsupportedRecommendation(reference, "Unsupported preflop state for solver abstraction");
 
-        var playerCount = hero.PlayerPositions?.Count ?? state.ActivePlayers.Count;
-        var solved = _store.GetOrSolve(_config with { PlayerCount = playerCount });
+        var solved = GetOrStartSolveAsync(CancellationToken.None).GetAwaiter().GetResult();
         var query = _solver.QueryStrategy(solved, key, hero.HeroHoleCards.Value.ToString());
 
         var ranked = query.ActionFrequencies.OrderByDescending(k => k.Value)
             .Select(k => new RecommendedAction(k.Key, null, (decimal)k.Value)).ToList();
 
         return new Recommendation(
-            ranked,
-            ranked.FirstOrDefault(),
-            query.EstimatedEvBb,
-            reference.ReferenceEV,
-            $"CFR+ preflop solver key={query.InfoSet.HistorySig}/{query.InfoSet.ActingPosition}, best={query.BestAction}, ev={query.EstimatedEvBb:0.###}bb",
-            reference.ReferenceExplanation);
+            RankedActions: ranked,
+            PrimaryAction: ranked.FirstOrDefault(),
+            PrimaryEV: query.EstimatedEvBb,
+            ReferenceEV: reference.ReferenceEV,
+            PrimaryExplanation: $"CFR+ preflop solver key={query.InfoSet.HistorySig}/{query.InfoSet.ActingPosition}, best={query.BestAction}, ev={query.EstimatedEvBb:0.###}bb",
+            ReferenceExplanation: reference.ReferenceExplanation);
     }
 
-    public PreflopSolveResult SolvePreflop(PreflopSolverConfig config) => _store.GetOrSolve(config);
+    public PreflopSolveResult SolvePreflop(PreflopSolverConfig config) => _solver.SolvePreflop(config);
 
-    public StrategyQueryResult QueryStrategy(PreflopInfoSetKey key, string heroHand) => _store.Lookup(key, heroHand);
+    public StrategyQueryResult QueryStrategy(PreflopInfoSetKey key, string heroHand)
+    {
+        var solved = GetOrStartSolveAsync(CancellationToken.None).GetAwaiter().GetResult();
+        return _solver.QueryStrategy(solved, key, heroHand);
+    }
+
+    private Task<PreflopSolveResult> GetOrStartSolveAsync(CancellationToken ct)
+    {
+        lock (_solveLock)
+        {
+            _solveTask ??= Task.Run(() =>
+            {
+                _logger.LogInformation("Starting preflop solve...");
+                var start = Environment.TickCount64;
+                var solved = _solver.SolvePreflop(_config);
+                _logger.LogInformation("Preflop solve completed in {DurationMs} ms", Environment.TickCount64 - start);
+                return solved;
+            }, CancellationToken.None);
+
+            return _solveTask.WaitAsync(ct);
+        }
+    }
 
     private static Recommendation BuildUnsupportedRecommendation(Recommendation reference, string reason)
-        => new([], null, null, reference.ReferenceEV, reason, reference.ReferenceExplanation);
+        => new(
+            RankedActions: [],
+            ReferenceEV: reference.ReferenceEV,
+            PrimaryExplanation: reason,
+            ReferenceExplanation: reference.ReferenceExplanation);
 }
 
 public static class PreflopLiveStateMapper
