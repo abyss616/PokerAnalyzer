@@ -7,6 +7,8 @@ namespace PokerAnalyzer.Infrastructure.PreflopSolver;
 public sealed class CfrPlusPreflopSolver
 {
     private const string DefaultHeroHandClass = "AKO";
+    private static readonly IReadOnlyDictionary<string, decimal> HandStrengthByClass =
+        PreflopRange.AllClasses.ToDictionary(h => h.Label, h => EvaluateHandClassStrength(h.Label));
     private readonly PreflopTerminalEvaluator _terminal;
 
     public CfrPlusPreflopSolver(PreflopTerminalEvaluator terminal)
@@ -43,10 +45,16 @@ public sealed class CfrPlusPreflopSolver
             kvp =>
             {
                 var average = NormalizeAverageStrategy(kvp.Value.LegalActions, kvp.Value.StrategySum);
+                var conditionedByHand = BuildHandConditionedMixes(kvp.Value.LegalActions, average);
+                var estimatedEv = kvp.Value.VisitCount <= 0
+                    ? 0m
+                    : (decimal)(kvp.Value.HeroUtilitySum / kvp.Value.VisitCount);
                 var handMix = handClasses.ToDictionary(
                     hand => hand,
-                    _ => (IReadOnlyDictionary<ActionType, double>)new Dictionary<ActionType, double>(average));
-                return new NodeStrategyResult(kvp.Key, handMix, average, 0m);
+                    hand => conditionedByHand.TryGetValue(hand, out var conditioned)
+                        ? (IReadOnlyDictionary<ActionType, double>)conditioned
+                        : new Dictionary<ActionType, double>(average));
+                return new NodeStrategyResult(kvp.Key, handMix, average, estimatedEv);
             });
 
         return new PreflopSolveResult(nodeResults);
@@ -106,6 +114,9 @@ public sealed class CfrPlusPreflopSolver
             actionUtilities[action] = utility;
             nodeUtility += strategy[action] * utility;
         }
+
+        data.HeroUtilitySum += nodeUtility;
+        data.VisitCount++;
 
         var actorViewNodeUtility = actor == 0 ? nodeUtility : -nodeUtility;
         var otherReach = 1d;
@@ -181,6 +192,60 @@ public sealed class CfrPlusPreflopSolver
         return legalActions.ToDictionary(action => action, action => strategySum.GetValueOrDefault(action) / total);
     }
 
+    private static Dictionary<string, Dictionary<ActionType, double>> BuildHandConditionedMixes(
+        IReadOnlyList<ActionType> legalActions,
+        IReadOnlyDictionary<ActionType, double> populationAverage)
+    {
+        var aggressiveActions = new HashSet<ActionType> { ActionType.Raise, ActionType.AllIn, ActionType.Bet };
+        var passiveActions = new HashSet<ActionType> { ActionType.Check, ActionType.Call };
+        var foldPresent = legalActions.Contains(ActionType.Fold);
+        var maxStrength = HandStrengthByClass.Values.Max();
+        var minStrength = HandStrengthByClass.Values.Min();
+        var span = Math.Max(0.001m, maxStrength - minStrength);
+
+        var result = new Dictionary<string, Dictionary<ActionType, double>>(HandStrengthByClass.Count);
+        foreach (var (hand, strength) in HandStrengthByClass)
+        {
+            var normalizedStrength = (double)((strength - minStrength) / span);
+            var mix = legalActions.ToDictionary(action => action, action => populationAverage.GetValueOrDefault(action));
+
+            foreach (var action in legalActions)
+            {
+                if (aggressiveActions.Contains(action))
+                    mix[action] *= 0.70 + (normalizedStrength * 0.90);
+                else if (passiveActions.Contains(action))
+                    mix[action] *= 0.85 + ((1d - normalizedStrength) * 0.30);
+                else if (foldPresent && action == ActionType.Fold)
+                    mix[action] *= 0.55 + ((1d - normalizedStrength) * 1.10);
+            }
+
+            var sum = mix.Values.Sum();
+            if (sum <= 0)
+            {
+                var uniform = 1d / legalActions.Count;
+                mix = legalActions.ToDictionary(action => action, _ => uniform);
+            }
+            else
+            {
+                mix = mix.ToDictionary(kvp => kvp.Key, kvp => kvp.Value / sum);
+            }
+
+            result[hand] = mix;
+        }
+
+        return result;
+    }
+
+    private static decimal EvaluateHandClassStrength(string handClass)
+    {
+        var hc = HandClass.Parse(handClass);
+        var high = (int)hc.High;
+        var low = (int)hc.Low;
+        var pair = hc.High == hc.Low ? 16 : 0;
+        var suited = hc.Suited == true ? 2 : 0;
+        return high + (low * 0.35m) + pair + suited;
+    }
+
     private static Dictionary<ActionType, double> RegretMatchingPlus(
         IReadOnlyList<ActionType> legalActions,
         IReadOnlyDictionary<ActionType, double> regrets)
@@ -252,5 +317,9 @@ public sealed class CfrPlusPreflopSolver
         public Dictionary<ActionType, double> RegretSum { get; }
 
         public Dictionary<ActionType, double> StrategySum { get; }
+
+        public double HeroUtilitySum { get; set; }
+
+        public int VisitCount { get; set; }
     }
 }
