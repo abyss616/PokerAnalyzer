@@ -154,7 +154,107 @@ public sealed partial class HandHistoryIngestService
         var flopAggressor = FlopOperations.CalculateFlopAggressor(hand.Actions);
         hand.FlopAggressor = flopAggressor;
 
+        AssignPlayerPositions(hand, game);
+
         return hand;
+    }
+
+    private static void AssignPlayerPositions(Hand hand, XElement game)
+    {
+        if (hand.Players.Count == 0)
+            return;
+
+        var occupiedSeats = hand.Players
+            .Where(p => p.Seat > 0)
+            .OrderBy(p => p.Seat)
+            .ToList();
+
+        if (occupiedSeats.Count == 0)
+            occupiedSeats = hand.Players.OrderBy(p => p.Name, StringComparer.OrdinalIgnoreCase).ToList();
+
+        var sbPlayer = hand.Actions
+            .Where(a => a.Street == Street.Preflop && a.Type == ActionType.PostSmallBlind)
+            .Select(a => a.Player)
+            .FirstOrDefault(name => hand.Players.Any(p => string.Equals(p.Name, name, StringComparison.Ordinal)));
+
+        var explicitButton = game
+            .Element("general")?
+            .Element("players")?
+            .Elements("player")
+            .FirstOrDefault(p =>
+                string.Equals(p.Attribute("dealer")?.Value, "1", StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(p.Attribute("button")?.Value, "1", StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(p.Attribute("isdealer")?.Value, "1", StringComparison.OrdinalIgnoreCase))?
+            .Attribute("name")?
+            .Value
+            ?.Trim();
+
+        var buttonPlayer = ResolveButtonPlayer(hand.Players, occupiedSeats, explicitButton, sbPlayer);
+        hand.ButtonPlayer = buttonPlayer;
+
+        var clockwise = BuildClockwiseOrderFromButton(occupiedSeats, buttonPlayer);
+        if (clockwise.Count == 0)
+            return;
+
+        var positions = GetPositionsForTableSize(clockwise.Count);
+
+        for (var i = 0; i < clockwise.Count && i < positions.Length; i++)
+            clockwise[i].PlayerPosition = positions[i];
+    }
+
+    private static string? ResolveButtonPlayer(
+        IReadOnlyList<HandPlayer> players,
+        List<HandPlayer> occupiedSeats,
+        string? explicitButton,
+        string? smallBlindPlayer)
+    {
+        if (!string.IsNullOrWhiteSpace(explicitButton) && players.Any(p => string.Equals(p.Name, explicitButton, StringComparison.Ordinal)))
+            return explicitButton;
+
+        if (occupiedSeats.Count == 2 && !string.IsNullOrWhiteSpace(smallBlindPlayer))
+            return smallBlindPlayer;
+
+        if (string.IsNullOrWhiteSpace(smallBlindPlayer))
+            return occupiedSeats.FirstOrDefault()?.Name;
+
+        var sbIndex = occupiedSeats.FindIndex(p => string.Equals(p.Name, smallBlindPlayer, StringComparison.Ordinal));
+        if (sbIndex < 0)
+            return occupiedSeats.FirstOrDefault()?.Name;
+
+        var buttonIndex = (sbIndex - 1 + occupiedSeats.Count) % occupiedSeats.Count;
+        return occupiedSeats[buttonIndex].Name;
+    }
+
+    private static List<HandPlayer> BuildClockwiseOrderFromButton(
+        List<HandPlayer> occupiedSeats,
+        string? buttonPlayer)
+    {
+        if (occupiedSeats.Count == 0)
+            return new List<HandPlayer>();
+
+        var buttonIndex = occupiedSeats.FindIndex(p => string.Equals(p.Name, buttonPlayer, StringComparison.Ordinal));
+        if (buttonIndex < 0)
+            buttonIndex = 0;
+
+        return occupiedSeats
+            .Skip(buttonIndex)
+            .Concat(occupiedSeats.Take(buttonIndex))
+            .ToList();
+    }
+
+    private static HandPlayer.Position[] GetPositionsForTableSize(int playerCount)
+    {
+        return playerCount switch
+        {
+            2 => [HandPlayer.Position.SB, HandPlayer.Position.BB],
+            3 => [HandPlayer.Position.BTN, HandPlayer.Position.SB, HandPlayer.Position.BB],
+            4 => [HandPlayer.Position.CO, HandPlayer.Position.BTN, HandPlayer.Position.SB, HandPlayer.Position.BB],
+            5 => [HandPlayer.Position.HJ, HandPlayer.Position.CO, HandPlayer.Position.BTN, HandPlayer.Position.SB, HandPlayer.Position.BB],
+            6 => [HandPlayer.Position.UTG, HandPlayer.Position.HJ, HandPlayer.Position.CO, HandPlayer.Position.BTN, HandPlayer.Position.SB, HandPlayer.Position.BB],
+            7 => [HandPlayer.Position.UTG, HandPlayer.Position.UTG1, HandPlayer.Position.HJ, HandPlayer.Position.CO, HandPlayer.Position.BTN, HandPlayer.Position.SB, HandPlayer.Position.BB],
+            8 => [HandPlayer.Position.UTG, HandPlayer.Position.UTG1, HandPlayer.Position.UTG2, HandPlayer.Position.HJ, HandPlayer.Position.CO, HandPlayer.Position.BTN, HandPlayer.Position.SB, HandPlayer.Position.BB],
+            _ => [HandPlayer.Position.UTG, HandPlayer.Position.UTG1, HandPlayer.Position.UTG2, HandPlayer.Position.LJ, HandPlayer.Position.HJ, HandPlayer.Position.CO, HandPlayer.Position.BTN, HandPlayer.Position.SB, HandPlayer.Position.BB]
+        };
     }
 
     private static Street DetectStreet(XElement round)

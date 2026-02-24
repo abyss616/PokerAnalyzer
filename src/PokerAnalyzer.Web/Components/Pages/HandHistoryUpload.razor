@@ -90,24 +90,28 @@
                                 <tbody>
                                 @foreach (var decision in engine.Decisions)
                                 {
+                                    var invalidPositionMapping = !string.IsNullOrWhiteSpace(decision.HeroPosition)
+                                        && !string.IsNullOrWhiteSpace(decision.VillainPosition)
+                                        && string.Equals(decision.HeroPosition, decision.VillainPosition, StringComparison.OrdinalIgnoreCase);
+
                                     <tr>
                                         <td>@decision.Street</td>
                                         <td>@(decision.HeroCards ?? "Unknown")</td>
                                         <td>@(decision.HeroPosition ?? "Unknown")</td>
                                         <td>@(decision.VillainPosition ?? "Unknown")</td>
-                                        <td>@(decision.VillainAction ?? "N/A")</td>
+                                        <td>@(invalidPositionMapping ? "Invalid Position Mapping" : decision.VillainAction ?? "N/A")</td>
                                         <td>@decision.HeroAction</td>
-                                        <td>@decision.RecommendedAction</td>
-                                        <td>@(decision.PrimaryEv?.ToString("0.###") ?? "N/A")</td>
-                                        <td>@(decision.ReferenceEv?.ToString("0.###") ?? "N/A")</td>
+                                        <td>@(invalidPositionMapping ? "Invalid Position Mapping" : decision.RecommendedAction)</td>
+                                        <td>@(invalidPositionMapping ? "Invalid Position Mapping" : decision.PrimaryEv?.ToString("0.###") ?? "N/A")</td>
+                                        <td>@(invalidPositionMapping ? "Invalid Position Mapping" : decision.ReferenceEv?.ToString("0.###") ?? "N/A")</td>
                                     </tr>
-                                    @if (!string.IsNullOrWhiteSpace(decision.PrimaryExplanation))
+                                    @if (!invalidPositionMapping && !string.IsNullOrWhiteSpace(decision.PrimaryExplanation))
                                     {
                                         <tr>
                                             <td colspan="9" class="text-muted small"><strong>Solver:</strong> @decision.PrimaryExplanation</td>
                                         </tr>
                                     }
-                                    @if (!string.IsNullOrWhiteSpace(decision.ReferenceExplanation))
+                                    @if (!invalidPositionMapping && !string.IsNullOrWhiteSpace(decision.ReferenceExplanation))
                                     {
                                         <tr>
                                             <td colspan="9" class="text-muted small"><strong>Monte Carlo Reference (non-decision):</strong> @decision.ReferenceExplanation</td>
