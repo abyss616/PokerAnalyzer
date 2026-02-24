@@ -59,9 +59,10 @@ public sealed class HandAnalysisController : ControllerBase
 
         var domainHand = MapToDomainHand(hand, session);
         var solverResult = _handAnalyzer.Analyze(domainHand);
+        var preflopSummary = BuildPreflopSummary(hand);
 
         var engineSummary = BuildEngineResult("CFR+ Solver", solverResult, domainHand);
-        return Ok(new HandSolverResponse(domainHand.HandId, handNumber, engineSummary.DecisionCount, new[] { engineSummary }));
+        return Ok(new HandSolverResponse(domainHand.HandId, handNumber, engineSummary.DecisionCount, preflopSummary, new[] { engineSummary }));
     }
 
     [HttpGet("session/{sessionId:guid}")]
@@ -257,6 +258,83 @@ public sealed class HandAnalysisController : ControllerBase
 
     private sealed record VillainActionContext(string? Position, string Action);
 
+    private static PreflopSummary BuildPreflopSummary(Hand hand)
+    {
+        var playersBySeat = hand.Players
+            .Where(p => p.Seat > 0)
+            .ToDictionary(p => p.Seat);
+
+        var preflopActions = hand.Actions
+            .Where(a => a.Street == Street.Preflop)
+            .OrderBy(a => a.ActionIndex)
+            .ToList();
+
+        var lines = new List<PlayerPreflopLine>(capacity: 6);
+
+        for (var seatNumber = 1; seatNumber <= 6; seatNumber++)
+        {
+            playersBySeat.TryGetValue(seatNumber, out var player);
+            var playerActions = player is null
+                ? new List<PreflopActionItem>()
+                : preflopActions
+                    .Where(a => string.Equals(a.Player, player.Name, StringComparison.Ordinal))
+                    .Select((action, index) => new PreflopActionItem(
+                        index + 1,
+                        action.Type.ToString(),
+                        action.Amount,
+                        action.ToAmount,
+                        FormatPreflopAction(action.Type, action.Amount, action.ToAmount)))
+                    .ToList();
+
+            var totalPutIn = playerActions.Sum(a => a.Amount ?? 0m);
+            var foldedPreflop = playerActions.Any(a => string.Equals(a.ActionType, ActionType.Fold.ToString(), StringComparison.Ordinal));
+
+            lines.Add(new PlayerPreflopLine(
+                seatNumber,
+                player?.Name,
+                ToUiPosition(player?.PlayerPosition),
+                player?.StackStart,
+                playerActions,
+                totalPutIn,
+                foldedPreflop,
+                player is not null));
+        }
+
+        return new PreflopSummary(hand.Id, hand.GameCode, lines);
+    }
+
+    private static string? ToUiPosition(HandPlayer.Position? position)
+    {
+        if (!position.HasValue)
+            return null;
+
+        return position.Value switch
+        {
+            HandPlayer.Position.HJ or HandPlayer.Position.LJ => "MP",
+            HandPlayer.Position.UTG1 or HandPlayer.Position.UTG2 => "UTG",
+            _ => position.Value.ToString()
+        };
+    }
+
+    private static string FormatPreflopAction(ActionType type, decimal? amount, decimal? toAmount)
+    {
+        return type switch
+        {
+            ActionType.PostSmallBlind => $"Post SB {FormatCurrency(amount)}",
+            ActionType.PostBigBlind => $"Post BB {FormatCurrency(amount)}",
+            ActionType.Raise when toAmount.HasValue => $"Raise to {FormatCurrency(toAmount)}",
+            ActionType.Raise => $"Raise {FormatCurrency(amount)}",
+            ActionType.AllIn => $"All-in {FormatCurrency(amount)}",
+            ActionType.Call => $"Call {FormatCurrency(amount)}",
+            ActionType.Bet => $"Bet {FormatCurrency(amount)}",
+            ActionType.Check => "Check",
+            ActionType.Fold => "Fold",
+            _ => type.ToString()
+        };
+    }
+
+    private static string FormatCurrency(decimal? value) => $"€{(value ?? 0m):0.00}";
+
     private static string FormatAction(ActionType actionType, ChipAmount? toAmount)
     {
         if (toAmount is null || actionType is ActionType.Call or ActionType.Check or ActionType.Fold)
@@ -269,7 +347,30 @@ public sealed class HandAnalysisController : ControllerBase
         Guid HandId,
         int HandNumber,
         int DecisionCount,
+        PreflopSummary PreflopSummary,
         IReadOnlyList<EngineSolverResult> Engines);
+
+    public sealed record PreflopSummary(
+        Guid HandId,
+        long GameCode,
+        IReadOnlyList<PlayerPreflopLine> Players);
+
+    public sealed record PlayerPreflopLine(
+        int Seat,
+        string? Name,
+        string? Position,
+        decimal? StartingStack,
+        IReadOnlyList<PreflopActionItem> Actions,
+        decimal TotalPutIn,
+        bool FoldedPreflop,
+        bool Occupied);
+
+    public sealed record PreflopActionItem(
+        int Order,
+        string ActionType,
+        decimal? Amount,
+        decimal? ToAmount,
+        string Display);
 
     public sealed record EngineSolverResult(
         string Engine,

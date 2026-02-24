@@ -20,7 +20,30 @@ public sealed class ApiClient
         Guid HandId,
         int HandNumber,
         int DecisionCount,
+        PreflopSummary PreflopSummary,
         IReadOnlyList<EngineSolverResult> Engines);
+
+    public sealed record PreflopSummary(
+        Guid HandId,
+        long GameCode,
+        IReadOnlyList<PlayerPreflopLine> Players);
+
+    public sealed record PlayerPreflopLine(
+        int Seat,
+        string? Name,
+        string? Position,
+        decimal? StartingStack,
+        IReadOnlyList<PreflopActionItem> Actions,
+        decimal TotalPutIn,
+        bool FoldedPreflop,
+        bool Occupied);
+
+    public sealed record PreflopActionItem(
+        int Order,
+        string ActionType,
+        decimal? Amount,
+        decimal? ToAmount,
+        string Display);
 
     public sealed record EngineSolverResult(
         string Engine,
