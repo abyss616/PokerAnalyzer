@@ -90,9 +90,51 @@ public class CfrPlusPreflopSolverTests
             ActionHistory = []
         });
 
+        var extracted = PreflopStateExtractor.TryExtract(state, new HeroContext(hero, new ChipAmount(5), new ChipAmount(10))
+        {
+            HeroHoleCards = HoleCards.Parse("AsAh"),
+            PlayerPositions = new Dictionary<PlayerId, Position> { [hero] = Position.BTN, [villain] = Position.BB },
+            ActionHistory = []
+        });
+
+        Assert.NotNull(extracted);
+        Assert.Equal(2, extracted!.PlayerCount);
+        Assert.Equal(Position.BTN, extracted.ActingPosition);
+        Assert.Equal("UNOPENED", extracted.HistorySignature);
+        Assert.Equal(1, extracted.ToCallBb);
+
+        var normalized = extracted with { PlayerCount = 2, EffectiveStackBb = 100 };
+        var query = engine.QueryStrategy(normalized, "AsAh");
+        Assert.NotEmpty(query.ActionFrequencies);
+
         Assert.NotNull(rec.PrimaryEV);
         Assert.NotNull(rec.ReferenceEV);
         Assert.NotEmpty(rec.RankedActions);
+    }
+
+    [Fact]
+    public void StateExtractor_HeadsUpSmallBlindAlias_MapsToButtonAndRoundsToCallUp()
+    {
+        var hero = PlayerId.New();
+        var villain = PlayerId.New();
+
+        var state = HandState.CreateNewHand(
+            [
+                new PlayerSeat(hero, "Hero", 1, Position.BTN, new ChipAmount(10000)),
+                new PlayerSeat(villain, "Villain", 2, Position.BB, new ChipAmount(10000))
+            ],
+            new ChipAmount(5),
+            new ChipAmount(10));
+
+        var key = PreflopStateExtractor.TryExtract(state, new HeroContext(hero, new ChipAmount(5), new ChipAmount(10))
+        {
+            PlayerPositions = new Dictionary<PlayerId, Position> { [hero] = Position.SB, [villain] = Position.BB },
+            ActionHistory = []
+        });
+
+        Assert.NotNull(key);
+        Assert.Equal(Position.BTN, key!.ActingPosition);
+        Assert.Equal(1, key.ToCallBb);
     }
 
     [Fact]
