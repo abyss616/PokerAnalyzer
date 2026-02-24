@@ -160,4 +160,29 @@ public class CfrPlusPreflopSolverTests
         Assert.NotNull(key);
         Assert.Equal("UNOPENED", key!.HistorySignature);
     }
+
+    [Fact]
+    public void Solver_ProducesNormalizedStrategies_OnTinyDepthTree()
+    {
+        var solver = new CfrPlusPreflopSolver(new PreflopTerminalEvaluator(new ApproxMonteCarloContinuationValueProvider()));
+        var config = new PreflopSolverConfig(
+            Iterations: 50,
+            EffectiveStackBb: 20m,
+            Rake: Rake,
+            PlayerCount: 2,
+            Sizing: new RaiseSizingAbstraction([2m], [6m], [14m], 20m),
+            MaxTreeDepth: 3);
+
+        var solved = solver.SolvePreflop(config);
+
+        Assert.NotEmpty(solved.NodeStrategies);
+        Assert.Contains(solved.NodeStrategies.Values, node => node.PopulationMix.Count > 0);
+
+        foreach (var node in solved.NodeStrategies.Values.Where(n => n.PopulationMix.Count > 0))
+        {
+            var sum = node.PopulationMix.Values.Sum();
+            Assert.InRange(sum, 0.999, 1.001);
+        }
+    }
+
 }

@@ -36,7 +36,8 @@ public sealed record PreflopSolverConfig(
     int PlayerCount = 2,
     RaiseSizingAbstraction? Sizing = null,
     bool EnableParallelSolve = false,
-    int MaxDegreeOfParallelism = 0)
+    int MaxDegreeOfParallelism = 0,
+    int MaxTreeDepth = 24)
 {
     public int ResolveMaxDegreeOfParallelism()
         => MaxDegreeOfParallelism <= 0 ? Environment.ProcessorCount : MaxDegreeOfParallelism;
