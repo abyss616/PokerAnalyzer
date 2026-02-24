@@ -52,7 +52,8 @@ public sealed class MonteCarloStrategyEngine : IMonteCarloReferenceEngine
         if (hero.HeroHoleCards is null)
             return BuildReference(_fallback.Recommend(state, hero)) with
             {
-                Explanation = "Monte Carlo Reference (non-decision): hero hole cards unavailable."
+                Explanation = "Monte Carlo Reference (non-decision): hero hole cards unavailable.",
+                ReferenceExplanation = "Reference: unavailable (hero hole cards missing); using dummy legality-based baseline."
             };
 
         var opponents = state.ActivePlayers.Where(id => id != hero.HeroId).ToArray();
