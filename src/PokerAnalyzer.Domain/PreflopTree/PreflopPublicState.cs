@@ -20,6 +20,12 @@ public sealed class PreflopPublicState
 
     public int PotBb { get; set; }
 
+    public int LastAggressorIndex { get; set; }
+
+    public int? LastActionWasRaiseByIndex { get; set; }
+
+    public bool BettingClosed { get; set; }
+
     public PreflopPublicState Clone()
     {
         return new PreflopPublicState
@@ -32,7 +38,10 @@ public sealed class PreflopPublicState
             CurrentToCallBb = CurrentToCallBb,
             LastRaiseToBb = LastRaiseToBb,
             RaisesCount = RaisesCount,
-            PotBb = PotBb
+            PotBb = PotBb,
+            LastAggressorIndex = LastAggressorIndex,
+            LastActionWasRaiseByIndex = LastActionWasRaiseByIndex,
+            BettingClosed = BettingClosed
         };
     }
 }

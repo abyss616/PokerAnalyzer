@@ -16,6 +16,8 @@ public class PreflopRulesTests
         Assert.Equal(98, state.StackBb[1]);
         Assert.Equal(3, state.PotBb);
         Assert.Equal(0, state.ActingIndex);
+        Assert.Equal(1, state.LastAggressorIndex);
+        Assert.False(state.BettingClosed);
     }
 
     [Fact]
@@ -59,14 +61,17 @@ public class PreflopRulesTests
     }
 
     [Fact]
-    public void GetLegalActions_UtgFacingBigBlind_ContainsFoldAndCallOnly()
+    public void GetLegalActions_UtgFacingBigBlind_ContainsFoldCallRaiseAndAllIn()
     {
         var state = PreflopRules.CreateInitialState(playerCount: 4, stackBb: 100, smallBlindBb: 1, bigBlindBb: 2);
 
-        var legal = PreflopRules.GetLegalActions(state);
+        var legal = PreflopRules.GetLegalActions(state, PreflopSizingConfig.Default);
 
         Assert.Contains(legal, a => a.Type == PreflopActionType.Fold);
         Assert.Contains(legal, a => a.Type == PreflopActionType.Call);
+        Assert.Contains(legal, a => a.Type == PreflopActionType.RaiseTo && a.RaiseToBb == 9);
+        Assert.Contains(legal, a => a.Type == PreflopActionType.RaiseTo && a.RaiseToBb == 11);
+        Assert.Contains(legal, a => a.Type == PreflopActionType.AllIn);
         Assert.DoesNotContain(legal, a => a.Type == PreflopActionType.Check);
     }
 
@@ -79,7 +84,7 @@ public class PreflopRulesTests
         state = PreflopRules.ApplyAction(state, new PreflopAction(PreflopActionType.Fold));
 
         var toCall = PreflopRules.GetToCall(state, state.ActingIndex);
-        var legal = PreflopRules.GetLegalActions(state);
+        var legal = PreflopRules.GetLegalActions(state, PreflopSizingConfig.Default);
 
         Assert.Equal(1, toCall);
         Assert.Contains(legal, a => a.Type == PreflopActionType.Fold);
@@ -97,7 +102,7 @@ public class PreflopRulesTests
         state = PreflopRules.ApplyAction(state, new PreflopAction(PreflopActionType.Call));
 
         var toCall = PreflopRules.GetToCall(state, state.ActingIndex);
-        var legal = PreflopRules.GetLegalActions(state);
+        var legal = PreflopRules.GetLegalActions(state, PreflopSizingConfig.Default);
 
         Assert.Equal(0, toCall);
         Assert.Contains(legal, a => a.Type == PreflopActionType.Check);
@@ -124,5 +129,47 @@ public class PreflopRulesTests
         Assert.Equal(98, next.StackBb[3]);
         Assert.Equal(5, next.PotBb);
         Assert.Equal(0, next.ActingIndex);
+    }
+
+    [Fact]
+    public void OpenCallClose_BettingClosedAndTerminal()
+    {
+        var state = PreflopRules.CreateInitialState(playerCount: 4, stackBb: 100, smallBlindBb: 1, bigBlindBb: 2);
+
+        state = PreflopRules.ApplyAction(state, new PreflopAction(PreflopActionType.RaiseTo, 2)); // UTG
+        state = PreflopRules.ApplyAction(state, new PreflopAction(PreflopActionType.Fold)); // BTN
+        state = PreflopRules.ApplyAction(state, new PreflopAction(PreflopActionType.Call)); // SB
+        state = PreflopRules.ApplyAction(state, new PreflopAction(PreflopActionType.Call)); // BB
+
+        Assert.True(state.BettingClosed);
+        Assert.True(PreflopRules.IsTerminal(state, out var reason));
+        Assert.Equal("BettingClosed", reason);
+    }
+
+    [Fact]
+    public void ThreeBetSpot_ClosesAfterOriginalRaiserCalls()
+    {
+        var state = PreflopRules.CreateInitialState(playerCount: 4, stackBb: 100, smallBlindBb: 1, bigBlindBb: 2);
+
+        state = PreflopRules.ApplyAction(state, new PreflopAction(PreflopActionType.RaiseTo, 2)); // UTG
+        state = PreflopRules.ApplyAction(state, new PreflopAction(PreflopActionType.RaiseTo, 9)); // BTN
+        state = PreflopRules.ApplyAction(state, new PreflopAction(PreflopActionType.Fold)); // SB
+        state = PreflopRules.ApplyAction(state, new PreflopAction(PreflopActionType.Fold)); // BB
+        state = PreflopRules.ApplyAction(state, new PreflopAction(PreflopActionType.Call)); // UTG
+
+        Assert.True(PreflopRules.IsTerminal(state, out var reason));
+        Assert.Equal("BettingClosed", reason);
+    }
+
+    [Fact]
+    public void HeadsUp_AllInThenCall_TerminalAllIn()
+    {
+        var state = PreflopRules.CreateInitialState(playerCount: 2, stackBb: 10, smallBlindBb: 1, bigBlindBb: 2);
+
+        state = PreflopRules.ApplyAction(state, new PreflopAction(PreflopActionType.AllIn)); // SB
+        state = PreflopRules.ApplyAction(state, new PreflopAction(PreflopActionType.Call)); // BB
+
+        Assert.True(PreflopRules.IsTerminal(state, out var reason));
+        Assert.Equal("AllIn", reason);
     }
 }
