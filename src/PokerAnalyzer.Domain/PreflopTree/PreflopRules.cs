@@ -51,6 +51,9 @@ public static class PreflopRules
         state.CurrentToCallBb = bigBlindBb;
         state.LastRaiseToBb = bigBlindBb;
         state.RaisesCount = 1;
+        state.LastAggressorIndex = bigBlindIndex;
+        state.LastActionWasRaiseByIndex = null;
+        state.BettingClosed = false;
         state.ActingIndex = (bigBlindIndex + 1) % playerCount;
 
         return state;
@@ -61,36 +64,67 @@ public static class PreflopRules
         return Math.Max(0, state.CurrentToCallBb - state.ContribBb[playerIndex]);
     }
 
-    public static List<PreflopAction> GetLegalActions(PreflopPublicState state)
+    public static List<PreflopAction> GetLegalActions(PreflopPublicState state, PreflopSizingConfig sizing)
     {
         var i = state.ActingIndex;
-        var toCall = GetToCall(state, i);
-        var stack = state.StackBb[i];
-
-        if (!state.InHand[i] || stack == 0)
+        if (!state.InHand[i] || state.StackBb[i] == 0)
         {
             return [];
         }
 
+        var toCall = GetToCall(state, i);
+        var maxRaiseTo = state.ContribBb[i] + state.StackBb[i];
+        var legal = new List<PreflopAction>
+        {
+            new(PreflopActionType.Fold)
+        };
+
         if (toCall == 0)
         {
-            return
-            [
-                new PreflopAction(PreflopActionType.Check),
-                new PreflopAction(PreflopActionType.Fold)
-            ];
+            legal.Add(new PreflopAction(PreflopActionType.Check));
+
+            foreach (var raiseTo in sizing.OpenRaiseToBb)
+            {
+                if (raiseTo > state.CurrentToCallBb && raiseTo <= maxRaiseTo)
+                {
+                    legal.Add(new PreflopAction(PreflopActionType.RaiseTo, raiseTo));
+                }
+            }
+
+            if (sizing.AllowAllInAlways && maxRaiseTo > state.CurrentToCallBb)
+            {
+                legal.Add(new PreflopAction(PreflopActionType.AllIn));
+            }
+
+            return legal;
         }
 
-        if (stack >= toCall)
+        if (toCall <= state.StackBb[i])
         {
-            return
-            [
-                new PreflopAction(PreflopActionType.Fold),
-                new PreflopAction(PreflopActionType.Call)
-            ];
+            legal.Add(new PreflopAction(PreflopActionType.Call));
         }
 
-        return [new PreflopAction(PreflopActionType.Fold)];
+        var raiseSizes = state.RaisesCount switch
+        {
+            1 => sizing.ThreeBetToBb,
+            2 => sizing.FourBetToBb,
+            _ => Array.Empty<int>()
+        };
+
+        foreach (var raiseTo in raiseSizes)
+        {
+            if (raiseTo > state.CurrentToCallBb && raiseTo <= maxRaiseTo)
+            {
+                legal.Add(new PreflopAction(PreflopActionType.RaiseTo, raiseTo));
+            }
+        }
+
+        if (sizing.AllowAllInAlways && maxRaiseTo > state.CurrentToCallBb)
+        {
+            legal.Add(new PreflopAction(PreflopActionType.AllIn));
+        }
+
+        return legal;
     }
 
     public static PreflopPublicState ApplyAction(PreflopPublicState state, PreflopAction action)
@@ -126,12 +160,34 @@ public static class PreflopRules
                 newState.StackBb[i] -= toCall;
                 newState.PotBb += toCall;
                 break;
+            case PreflopActionType.RaiseTo:
+                ApplyRaiseTo(state, newState, i, action.RaiseToBb);
+                break;
+            case PreflopActionType.AllIn:
+                ApplyAllIn(state, newState, i);
+                break;
             default:
                 throw new InvalidOperationException($"Unsupported action type: {action.Type}.");
         }
 
-        newState.ActingIndex = GetNextActingIndex(newState);
+        if (IsBettingClosed(newState))
+        {
+            newState.BettingClosed = true;
+        }
 
+        if (IsTerminal(newState, out _))
+        {
+            return newState;
+        }
+
+        var nextActing = GetNextActingIndex(newState);
+        if (nextActing == i)
+        {
+            newState.BettingClosed = true;
+            return newState;
+        }
+
+        newState.ActingIndex = nextActing;
         return newState;
     }
 
@@ -167,6 +223,50 @@ public static class PreflopRules
         return true;
     }
 
+    public static bool IsTerminal(PreflopPublicState state, out string reason)
+    {
+        var inHandCount = state.InHand.Count(x => x);
+        if (inHandCount <= 1)
+        {
+            reason = "AllFolded";
+            return true;
+        }
+
+        if (state.BettingClosed)
+        {
+            reason = "BettingClosed";
+            return true;
+        }
+
+        var allInCount = 0;
+        for (var i = 0; i < state.PlayerCount; i++)
+        {
+            if (!state.InHand[i])
+            {
+                continue;
+            }
+
+            if (state.StackBb[i] == 0)
+            {
+                allInCount++;
+            }
+            else
+            {
+                reason = string.Empty;
+                return false;
+            }
+        }
+
+        if (allInCount > 0)
+        {
+            reason = "AllIn";
+            return true;
+        }
+
+        reason = string.Empty;
+        return false;
+    }
+
     public static int GetNextActingIndex(PreflopPublicState state)
     {
         for (var offset = 1; offset <= state.PlayerCount; offset++)
@@ -189,5 +289,55 @@ public static class PreflopRules
     public static bool IsAllIn(PreflopPublicState state, int playerIndex)
     {
         return state.StackBb[playerIndex] == 0;
+    }
+
+    private static void ApplyRaiseTo(PreflopPublicState previousState, PreflopPublicState state, int playerIndex, int raiseTo)
+    {
+        if (raiseTo <= previousState.CurrentToCallBb)
+        {
+            throw new InvalidOperationException("RaiseTo must be greater than current amount to call.");
+        }
+
+        var maxRaiseTo = previousState.ContribBb[playerIndex] + previousState.StackBb[playerIndex];
+        if (raiseTo > maxRaiseTo)
+        {
+            throw new InvalidOperationException("RaiseTo cannot exceed player all-in amount.");
+        }
+
+        var delta = raiseTo - previousState.ContribBb[playerIndex];
+        state.ContribBb[playerIndex] = raiseTo;
+        state.StackBb[playerIndex] -= delta;
+        state.PotBb += delta;
+        state.CurrentToCallBb = raiseTo;
+        state.LastRaiseToBb = raiseTo;
+        state.RaisesCount += 1;
+        state.LastAggressorIndex = playerIndex;
+        state.LastActionWasRaiseByIndex = playerIndex;
+        state.BettingClosed = false;
+    }
+
+    private static void ApplyAllIn(PreflopPublicState previousState, PreflopPublicState state, int playerIndex)
+    {
+        var raiseTo = previousState.ContribBb[playerIndex] + previousState.StackBb[playerIndex];
+        if (raiseTo <= previousState.ContribBb[playerIndex])
+        {
+            throw new InvalidOperationException("AllIn is only legal when player has chips remaining.");
+        }
+
+        if (raiseTo == previousState.CurrentToCallBb)
+        {
+            var toCall = GetToCall(previousState, playerIndex);
+            state.ContribBb[playerIndex] += toCall;
+            state.StackBb[playerIndex] -= toCall;
+            state.PotBb += toCall;
+            return;
+        }
+
+        if (raiseTo < previousState.CurrentToCallBb)
+        {
+            throw new InvalidOperationException("AllIn below the amount to call is not supported in this abstraction.");
+        }
+
+        ApplyRaiseTo(previousState, state, playerIndex, raiseTo);
     }
 }
