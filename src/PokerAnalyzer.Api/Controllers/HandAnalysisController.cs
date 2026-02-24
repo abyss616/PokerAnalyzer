@@ -57,9 +57,6 @@ public sealed class HandAnalysisController : ControllerBase
         if (hand is null)
             return NotFound("Hand not found in session.");
 
-        if (HasInvalidHeroVillainPosition(hand))
-            return BadRequest("Invalid hand data: Hero and Villain positions cannot be identical.");
-
         var domainHand = MapToDomainHand(hand, session);
         var solverResult = _handAnalyzer.Analyze(domainHand);
 
@@ -75,15 +72,6 @@ public sealed class HandAnalysisController : ControllerBase
         return null!;
     }
 
-
-    private static bool HasInvalidHeroVillainPosition(Hand hand)
-    {
-        if (hand.Players.Count == 0)
-            return false;
-
-        var hero = hand.Players.FirstOrDefault(p => p.IsHero) ?? hand.Players[0];
-        return hand.Players.Any(p => p.Id != hero.Id && p.PlayerPosition == hero.PlayerPosition);
-    }
 
     private static PokerAnalyzer.Domain.HandHistory.Hand MapToDomainHand(
         Hand hand,
@@ -102,23 +90,32 @@ public sealed class HandAnalysisController : ControllerBase
                 playerIds[p.Name],
                 p.Name,
                 p.Seat,
-                MapPosition(p.PlayerPosition),
+                Position.Unknown,
                 new ChipAmount(ToChipAmount(p.StackStart))
             ))
             .ToList();
 
+        var dealerSeatNumber = hand.Players.FirstOrDefault(p => p.Dealer)?.Seat;
+        var positionsBySeat = PositionAssigner.Assign(hand.Players, hand.Actions, dealerSeatNumber);
+        seats = seats
+            .Select(seat => seat with
+            {
+                Position = positionsBySeat.TryGetValue(seat.SeatNumber, out var position)
+                    ? position
+                    : Position.Unknown
+            })
+            .ToList();
+
         var hero = hand.Players.FirstOrDefault(p => p.IsHero) ?? hand.Players[0];
         var heroId = playerIds[hero.Name];
-        var heroPosition = MapPosition(hero.PlayerPosition);
-        var hasDuplicateVillainPosition = hand.Players.Any(p =>
-            !string.Equals(p.Name, hero.Name, StringComparison.OrdinalIgnoreCase) &&
-            MapPosition(p.PlayerPosition) == heroPosition);
+        var heroSeat = seats.First(seat => seat.Id == heroId);
+        var hasDuplicateVillainPosition = seats.Any(seat =>
+            seat.Id != heroId &&
+            seat.Position == heroSeat.Position &&
+            seat.Position != Position.Unknown);
 
         if (hasDuplicateVillainPosition)
-        {
-            throw new InvalidOperationException(
-                $"Invalid hand state: Hero and Villain cannot have the same position ({heroPosition}).");
-        }
+            throw new InvalidOperationException($"Invalid hand state: Hero and Villain cannot have the same position ({heroSeat.Position}).");
 
         var holeCards = ParseHoleCards(hand.HeroHoleCards);
 
@@ -141,7 +138,7 @@ public sealed class HandAnalysisController : ControllerBase
                         throw new InvalidOperationException("Invalid action mapping: no SB seat found for PostSmallBlind.");
 
                     if (actorSeat != sbSeat.SeatNumber)
-                        throw new InvalidOperationException($"Invalid action mapping: PostSmallBlind actorSeat={actorSeat} must equal sbSeat={sbSeat.SeatNumber}.");
+                        throw new InvalidOperationException($"Invalid action mapping: dealerSeat={dealerSeatNumber?.ToString() ?? "none"}, computedSbSeat={sbSeat.SeatNumber}, computedBbSeat={bbSeat?.SeatNumber.ToString() ?? "none"}, actorSeat={actorSeat}, actionIndex={a.ActionIndex}.");
                 }
 
                 if (a.Type == ActionType.PostBigBlind)
@@ -150,7 +147,7 @@ public sealed class HandAnalysisController : ControllerBase
                         throw new InvalidOperationException("Invalid action mapping: no BB seat found for PostBigBlind.");
 
                     if (actorSeat != bbSeat.SeatNumber)
-                        throw new InvalidOperationException($"Invalid action mapping: PostBigBlind actorSeat={actorSeat} must equal bbSeat={bbSeat.SeatNumber}.");
+                        throw new InvalidOperationException($"Invalid action mapping: dealerSeat={dealerSeatNumber?.ToString() ?? "none"}, computedSbSeat={sbSeat?.SeatNumber.ToString() ?? "none"}, computedBbSeat={bbSeat.SeatNumber}, actorSeat={actorSeat}, actionIndex={a.ActionIndex}.");
                 }
 
                 return new BettingAction(
@@ -183,20 +180,6 @@ public sealed class HandAnalysisController : ControllerBase
 
         return (long)Math.Round(value.Value * 100m, MidpointRounding.AwayFromZero);
     }
-
-    private static Position MapPosition(HandPlayer.Position position) => position switch
-    {
-        HandPlayer.Position.UTG => Position.UTG,
-        HandPlayer.Position.UTG1 => Position.UTG1,
-        HandPlayer.Position.UTG2 => Position.UTG2,
-        HandPlayer.Position.LJ => Position.LJ,
-        HandPlayer.Position.HJ => Position.HJ,
-        HandPlayer.Position.CO => Position.CO,
-        HandPlayer.Position.BTN => Position.BTN,
-        HandPlayer.Position.SB => Position.SB,
-        HandPlayer.Position.BB => Position.BB,
-        _ => Position.Unknown
-    };
 
     private static HoleCards? ParseHoleCards(string? value)
     {

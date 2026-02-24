@@ -27,6 +27,9 @@ public sealed partial class HandHistoryIngestService
                     Name = name,
                     Seat = ParseInt(p.Attribute("seat")?.Value) ?? 0,
                     StackStart = ParseMoney(p.Attribute("chips")?.Value),
+                    Dealer = string.Equals(p.Attribute("dealer")?.Value, "1", StringComparison.OrdinalIgnoreCase)
+                        || string.Equals(p.Attribute("button")?.Value, "1", StringComparison.OrdinalIgnoreCase)
+                        || string.Equals(p.Attribute("isdealer")?.Value, "1", StringComparison.OrdinalIgnoreCase),
                     IsHero = heroName != null && string.Equals(name, heroName, StringComparison.Ordinal)
                 });
             }
