@@ -8,18 +8,14 @@ namespace PokerAnalyzer.Infrastructure.Engines;
 public sealed class CfrPlusPreflopStrategyEngine : IStrategyEngine
 {
     private readonly IMonteCarloReferenceEngine _monteCarloReference;
-    private readonly CfrPlusPreflopSolver _solver;
+    private readonly PreflopSolverCache _cache;
     private readonly PreflopSolverConfig _config;
     private readonly ILogger<CfrPlusPreflopStrategyEngine> _logger;
-
-    private readonly object _solveLock = new();
-    private Task<PreflopSolveResult>? _solveTask;
-
 
     public CfrPlusPreflopStrategyEngine(IMonteCarloReferenceEngine monteCarloReference)
         : this(
             monteCarloReference,
-            new CfrPlusPreflopSolver(new PreflopTerminalEvaluator(new ApproxMonteCarloContinuationValueProvider())),
+            new PreflopSolverCache(new CfrPlusPreflopSolver(new PreflopTerminalEvaluator(new ApproxMonteCarloContinuationValueProvider()))),
             new PreflopSolverConfig(140, 100m, new RakeConfig(0.05m, 1.0m, NoFlopNoDrop: true), 2, RaiseSizingAbstraction.Default),
             Microsoft.Extensions.Logging.Abstractions.NullLogger<CfrPlusPreflopStrategyEngine>.Instance)
     {
@@ -27,12 +23,12 @@ public sealed class CfrPlusPreflopStrategyEngine : IStrategyEngine
 
     public CfrPlusPreflopStrategyEngine(
         IMonteCarloReferenceEngine monteCarloReference,
-        CfrPlusPreflopSolver solver,
+        PreflopSolverCache cache,
         PreflopSolverConfig config,
         ILogger<CfrPlusPreflopStrategyEngine> logger)
     {
         _monteCarloReference = monteCarloReference;
-        _solver = solver;
+        _cache = cache;
         _config = config;
         _logger = logger;
     }
@@ -43,12 +39,15 @@ public sealed class CfrPlusPreflopStrategyEngine : IStrategyEngine
         if (state.Street != Street.Preflop || hero.HeroHoleCards is null)
             return BuildUnsupportedRecommendation(reference, "Unsupported preflop state for solver abstraction");
 
-        var key = PreflopLiveStateMapper.TryMap(state, hero);
+        var key = PreflopStateExtractor.TryExtract(state, hero);
         if (key is null)
             return BuildUnsupportedRecommendation(reference, "Unsupported preflop state for solver abstraction");
 
-        var solved = GetOrStartSolveAsync(CancellationToken.None).GetAwaiter().GetResult();
-        var query = _solver.QueryStrategy(solved, key, hero.HeroHoleCards.Value.ToString());
+        _logger.LogInformation("Ensuring preflop strategy solved for {Players} players", _config.PlayerCount);
+        _cache.GetOrSolve(_config);
+        var query = _cache.Lookup(key, hero.HeroHoleCards.Value.ToString());
+        if (query.ActionFrequencies.Count == 0)
+            return BuildUnsupportedRecommendation(reference, "Unsupported preflop state for solver abstraction");
 
         var ranked = query.ActionFrequencies.OrderByDescending(k => k.Value)
             .Select(k => new RecommendedAction(k.Key, null, (decimal)k.Value)).ToList();
@@ -58,33 +57,16 @@ public sealed class CfrPlusPreflopStrategyEngine : IStrategyEngine
             PrimaryAction: ranked.FirstOrDefault(),
             PrimaryEV: query.EstimatedEvBb,
             ReferenceEV: reference.ReferenceEV,
-            PrimaryExplanation: $"CFR+ preflop solver key={query.InfoSet.HistorySig}/{query.InfoSet.ActingPosition}, best={query.BestAction}, ev={query.EstimatedEvBb:0.###}bb",
+            PrimaryExplanation: $"CFR+ preflop solver key={query.InfoSet.HistorySignature}/{query.InfoSet.ActingPosition}, best={query.BestAction}, ev={query.EstimatedEvBb:0.###}bb",
             ReferenceExplanation: reference.ReferenceExplanation);
     }
 
-    public PreflopSolveResult SolvePreflop(PreflopSolverConfig config) => _solver.SolvePreflop(config);
+    public PreflopSolveResult SolvePreflop(PreflopSolverConfig config) => _cache.GetOrSolve(config);
 
     public StrategyQueryResult QueryStrategy(PreflopInfoSetKey key, string heroHand)
     {
-        var solved = GetOrStartSolveAsync(CancellationToken.None).GetAwaiter().GetResult();
-        return _solver.QueryStrategy(solved, key, heroHand);
-    }
-
-    private Task<PreflopSolveResult> GetOrStartSolveAsync(CancellationToken ct)
-    {
-        lock (_solveLock)
-        {
-            _solveTask ??= Task.Run(() =>
-            {
-                _logger.LogInformation("Starting preflop solve...");
-                var start = Environment.TickCount64;
-                var solved = _solver.SolvePreflop(_config);
-                _logger.LogInformation("Preflop solve completed in {DurationMs} ms", Environment.TickCount64 - start);
-                return solved;
-            }, CancellationToken.None);
-
-            return _solveTask.WaitAsync(ct);
-        }
+        _cache.GetOrSolve(_config);
+        return _cache.Lookup(key, heroHand);
     }
 
     private static Recommendation BuildUnsupportedRecommendation(Recommendation reference, string reason)
@@ -95,9 +77,9 @@ public sealed class CfrPlusPreflopStrategyEngine : IStrategyEngine
             ReferenceExplanation: reference.ReferenceExplanation);
 }
 
-public static class PreflopLiveStateMapper
+public static class PreflopStateExtractor
 {
-    public static PreflopInfoSetKey? TryMap(HandState state, HeroContext hero)
+    public static PreflopInfoSetKey? TryExtract(HandState state, HeroContext hero)
     {
         if (hero.PlayerPositions is null || !hero.PlayerPositions.TryGetValue(hero.HeroId, out var heroPos))
             return null;
@@ -105,10 +87,8 @@ public static class PreflopLiveStateMapper
         var history = hero.ActionHistory?.Where(a => a.Street == Street.Preflop).Select(a => a.Type).ToList() ?? [];
         var playerCount = hero.PlayerPositions.Count;
         var toCallBb = hero.BigBlind.Value <= 0 ? 0 : (int)Math.Round(state.GetToCall(hero.HeroId).Value / (decimal)hero.BigBlind.Value);
-        var raises = history.Count(a => a is ActionType.Raise or ActionType.Bet or ActionType.AllIn);
-        var lastRaiseBb = raises == 0 ? 0 : Math.Max(2, toCallBb);
         var eff = (int)Math.Round(state.Stacks[hero.HeroId].Value / (decimal)hero.BigBlind.Value);
 
-        return new PreflopInfoSetKey(playerCount, heroPos, PreflopHistorySignature.Build(history), toCallBb, lastRaiseBb, eff);
+        return new PreflopInfoSetKey(playerCount, heroPos, PreflopHistorySignature.Build(history), toCallBb, eff);
     }
 }

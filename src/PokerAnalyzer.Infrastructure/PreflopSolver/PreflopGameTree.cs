@@ -10,24 +10,34 @@ public sealed record PreflopNode(
 
 public sealed class PreflopGameTreeBuilder
 {
-    public IReadOnlyList<PreflopNode> Build(PreflopSolverConfig config)
+    private readonly int _playerCount;
+    private readonly decimal _effectiveStackBb;
+    private readonly decimal _smallBlindBb;
+    private readonly decimal _bigBlindBb;
+    private readonly PreflopSizingConfig _sizing;
+
+    public PreflopGameTreeBuilder(int playerCount, decimal effectiveStackBb, decimal smallBlindBb, decimal bigBlindBb, RakeConfig rake, PreflopSizingConfig sizing)
     {
-        var sizing = config.Sizing ?? RaiseSizingAbstraction.Default;
-        var positions = GetTablePositions(config.PlayerCount);
-        var firstActor = config.PlayerCount == 2 ? Position.BTN : positions[0];
+        if (playerCount is < 2 or > 6)
+            throw new ArgumentOutOfRangeException(nameof(playerCount), "Supported player count is 2-6.");
+        _playerCount = playerCount;
+        _effectiveStackBb = effectiveStackBb;
+        _smallBlindBb = smallBlindBb;
+        _bigBlindBb = bigBlindBb;
+        _sizing = sizing;
+    }
 
-        var root = new BuildState(
-            positions,
-            firstActor,
-            new Dictionary<Position, decimal> { [Position.SB] = 0.5m, [Position.BB] = 1m },
-            new HashSet<Position>(),
-            [],
-            1m,
-            0m,
-            config.EffectiveStackBb);
+    public IReadOnlyList<PreflopNode> Build()
+    {
+        var positions = GetTablePositions(_playerCount);
+        var contrib = positions.ToDictionary(p => p, _ => 0m);
+        contrib[Position.BB] = _bigBlindBb;
+        if (positions.Contains(Position.SB))
+            contrib[Position.SB] = _smallBlindBb;
 
+        var root = new BuildState(positions, positions[0], contrib, [], new HashSet<Position>(), _bigBlindBb, 0, new HashSet<Position>(positions.Skip(1)));
         var nodes = new Dictionary<PreflopInfoSetKey, PreflopNode>();
-        Expand(root, config.PlayerCount, sizing, nodes);
+        Expand(root, nodes);
         return nodes.Values.ToList();
     }
 
@@ -41,70 +51,73 @@ public sealed class PreflopGameTreeBuilder
         _ => throw new ArgumentOutOfRangeException(nameof(playerCount), "Supported player count is 2-6.")
     };
 
-    private static void Expand(BuildState state, int playerCount, RaiseSizingAbstraction sizing, IDictionary<PreflopInfoSetKey, PreflopNode> nodes)
+    private void Expand(BuildState state, IDictionary<PreflopInfoSetKey, PreflopNode> nodes)
     {
-        if (state.IsTerminal)
+        if (state.IsTerminal(_effectiveStackBb))
             return;
 
         var actor = state.NextActor;
         var toCall = Math.Max(0m, state.BetToCall - state.Contrib.GetValueOrDefault(actor));
-        var legal = toCall > 0 ? new List<ActionType> { ActionType.Fold, ActionType.Call, ActionType.Raise } : new List<ActionType> { ActionType.Check, ActionType.Raise };
-        if (state.EffectiveStackBb <= sizing.JamThresholdStackBb || state.RaiseCount >= 3)
+        var legal = toCall > 0 ? new List<ActionType> { ActionType.Fold, ActionType.Call } : [ActionType.Check];
+
+        var raiseTo = BuildRaiseTo(state);
+        if (raiseTo > state.BetToCall)
+            legal.Add(ActionType.Raise);
+
+        if ((_sizing.AllowExplicitJam || _effectiveStackBb <= _sizing.JamThresholdStackBb) && state.Contrib.GetValueOrDefault(actor) < _effectiveStackBb)
             legal.Add(ActionType.AllIn);
 
-        var raiseTo = new Dictionary<ActionType, decimal>();
-        if (legal.Contains(ActionType.Raise))
-        {
-            var size = state.RaiseCount switch
-            {
-                0 => sizing.OpenSizesBb.First(),
-                1 => sizing.ThreeBetSizesBb.First(),
-                _ => sizing.FourBetSizesBb.First()
-            };
-            raiseTo[ActionType.Raise] = Math.Min(size, state.EffectiveStackBb);
-        }
-
-        var key = new PreflopInfoSetKey(playerCount, actor, PreflopHistorySignature.Build(state.Actions), (int)Math.Round(toCall), (int)Math.Round(state.LastRaiseBb), (int)Math.Round(state.EffectiveStackBb));
+        var key = new PreflopInfoSetKey(_playerCount, actor, PreflopHistorySignature.Build(state.Actions), (int)Math.Round(toCall), (int)Math.Round(_effectiveStackBb));
         if (!nodes.ContainsKey(key))
         {
-            var villainCommit = state.Contrib.Where(c => c.Key != actor).DefaultIfEmpty(new KeyValuePair<Position, decimal>(Position.BB, 0m)).Max(c => c.Value);
-            nodes[key] = new PreflopNode(key,
-                new PreflopNodeState(key, state.Contrib.Values.Sum(), toCall, state.Contrib.GetValueOrDefault(actor), villainCommit, state.EffectiveStackBb),
+            var villainCommit = state.Contrib.Where(c => c.Key != actor).Max(c => c.Value);
+            nodes[key] = new PreflopNode(
+                key,
+                new PreflopNodeState(key, state.Contrib.Values.Sum(), toCall, state.Contrib.GetValueOrDefault(actor), villainCommit, _effectiveStackBb),
                 legal,
-                raiseTo);
+                new Dictionary<ActionType, decimal> { [ActionType.Raise] = raiseTo });
         }
 
         foreach (var action in legal)
+            Expand(state.Apply(action, raiseTo, _effectiveStackBb), nodes);
+    }
+
+    private decimal BuildRaiseTo(BuildState state)
+    {
+        var current = state.BetToCall;
+        var raw = state.RaiseCount switch
         {
-            var next = state.Apply(action, raiseTo.GetValueOrDefault(ActionType.Raise, 0m));
-            Expand(next, playerCount, sizing, nodes);
-        }
+            0 => _sizing.OpenSizesBb.First(),
+            1 => current * _sizing.ThreeBetSizeMultipliers.First(),
+            _ => current * _sizing.FourBetSizeMultipliers.First()
+        };
+
+        raw = Math.Max(current + _bigBlindBb, raw);
+        return Math.Min(raw, _effectiveStackBb);
     }
 
     private sealed record BuildState(
         IReadOnlyList<Position> Order,
         Position NextActor,
         Dictionary<Position, decimal> Contrib,
-        HashSet<Position> Folded,
         List<ActionType> Actions,
+        HashSet<Position> Folded,
         decimal BetToCall,
-        decimal LastRaiseBb,
-        decimal EffectiveStackBb,
-        int RaiseCount = 0,
-        int ConsecutiveCallsOrChecks = 0)
+        int RaiseCount,
+        HashSet<Position> PendingResponses)
     {
-        public bool IsTerminal => Folded.Count >= Order.Count - 1 || RaiseCount >= 4 || ConsecutiveCallsOrChecks >= ActiveCount;
-        private int ActiveCount => Order.Count - Folded.Count;
+        public bool IsTerminal(decimal effectiveStackBb)
+            => Folded.Count >= Order.Count - 1 || PendingResponses.Count == 0 || Contrib.Values.Any(v => v >= effectiveStackBb);
 
-        public BuildState Apply(ActionType action, decimal raiseTo)
+        public BuildState Apply(ActionType action, decimal raiseTo, decimal effectiveStackBb)
         {
             var contrib = new Dictionary<Position, decimal>(Contrib);
-            var folded = new HashSet<Position>(Folded);
             var actions = new List<ActionType>(Actions) { action };
+            var folded = new HashSet<Position>(Folded);
+            var pending = new HashSet<Position>(PendingResponses);
+            pending.Remove(NextActor);
             var nextBetToCall = BetToCall;
-            var nextLastRaise = LastRaiseBb;
             var nextRaiseCount = RaiseCount;
-            var nextClosed = ConsecutiveCallsOrChecks + 1;
 
             if (action == ActionType.Fold)
                 folded.Add(NextActor);
@@ -113,47 +126,43 @@ public sealed class PreflopGameTreeBuilder
             else if (action == ActionType.Raise)
             {
                 contrib[NextActor] = raiseTo;
-                nextLastRaise = Math.Max(0m, raiseTo - nextBetToCall);
                 nextBetToCall = raiseTo;
                 nextRaiseCount++;
-                nextClosed = 1;
+                pending = new HashSet<Position>(Order.Where(p => p != NextActor && !folded.Contains(p)));
             }
             else if (action == ActionType.AllIn)
             {
-                contrib[NextActor] = EffectiveStackBb;
-                nextLastRaise = Math.Max(0m, EffectiveStackBb - nextBetToCall);
-                nextBetToCall = EffectiveStackBb;
+                contrib[NextActor] = effectiveStackBb;
+                nextBetToCall = effectiveStackBb;
                 nextRaiseCount++;
-                nextClosed = 1;
+                pending = new HashSet<Position>(Order.Where(p => p != NextActor && !folded.Contains(p)));
             }
 
-            var nextActor = NextPosition(Order, NextActor, folded);
+            var nextActor = NextPosition(Order, NextActor, folded, pending);
             return this with
             {
                 Contrib = contrib,
-                Folded = folded,
                 Actions = actions,
-                NextActor = nextActor,
+                Folded = folded,
                 BetToCall = nextBetToCall,
-                LastRaiseBb = nextLastRaise,
                 RaiseCount = nextRaiseCount,
-                ConsecutiveCallsOrChecks = nextClosed
+                PendingResponses = pending,
+                NextActor = nextActor
             };
         }
 
-        private static Position NextPosition(IReadOnlyList<Position> order, Position current, HashSet<Position> folded)
+        private static Position NextPosition(IReadOnlyList<Position> order, Position current, HashSet<Position> folded, HashSet<Position> pending)
         {
             var idx = FindIndex(order, current);
             for (var i = 1; i <= order.Count; i++)
             {
                 var pos = order[(idx + i) % order.Count];
-                if (!folded.Contains(pos))
+                if (!folded.Contains(pos) && (pending.Count == 0 || pending.Contains(pos)))
                     return pos;
             }
 
             return current;
         }
-
         private static int FindIndex(IReadOnlyList<Position> order, Position current)
         {
             for (var i = 0; i < order.Count; i++)
@@ -162,7 +171,7 @@ public sealed class PreflopGameTreeBuilder
                     return i;
             }
 
-            return -1;
+            return 0;
         }
     }
 }

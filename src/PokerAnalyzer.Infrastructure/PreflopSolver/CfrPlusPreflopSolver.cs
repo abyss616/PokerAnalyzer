@@ -6,7 +6,6 @@ namespace PokerAnalyzer.Infrastructure.PreflopSolver;
 public sealed class CfrPlusPreflopSolver
 {
     private readonly PreflopTerminalEvaluator _terminal;
-    private readonly PreflopGameTreeBuilder _treeBuilder = new();
 
     public CfrPlusPreflopSolver(PreflopTerminalEvaluator terminal)
     {
@@ -15,7 +14,7 @@ public sealed class CfrPlusPreflopSolver
 
     public PreflopSolveResult SolvePreflop(PreflopSolverConfig config)
     {
-        var nodes = _treeBuilder.Build(config);
+        var nodes = new PreflopGameTreeBuilder(config.PlayerCount, config.EffectiveStackBb, 0.5m, 1m, config.Rake, config.ResolveSizing()).Build();
         var result = new Dictionary<PreflopInfoSetKey, NodeStrategyResult>();
         foreach (var node in nodes)
             result[node.InfoSet] = SolveNode(node, config);
