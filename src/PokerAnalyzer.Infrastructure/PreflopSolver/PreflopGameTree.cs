@@ -72,7 +72,7 @@ public sealed class PreflopGameTreeBuilder
 
         PreflopGameTreeNode BuildNode(PreflopPublicState state, int depth)
         {
-            if (depth > config.MaxDepth)
+            if (depth >= config.MaxDepth)
             {
                 return new PreflopGameTreeNode
                 {
