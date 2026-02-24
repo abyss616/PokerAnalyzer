@@ -162,6 +162,30 @@ public class CfrPlusPreflopSolverTests
     }
 
     [Fact]
+    public void SolverCache_Lookup_ReturnsNormalizedMix_ForHeadsUpBbVsLimp()
+    {
+        var solver = new CfrPlusPreflopSolver(new PreflopTerminalEvaluator(new ApproxMonteCarloContinuationValueProvider()));
+        var cache = new PreflopSolverCache(solver);
+        var config = new PreflopSolverConfig(
+            Iterations: 80,
+            EffectiveStackBb: 100m,
+            Rake: Rake,
+            PlayerCount: 2,
+            Sizing: RaiseSizingAbstraction.Default,
+            MaxTreeDepth: 8);
+
+        cache.GetOrSolve(config);
+
+        var key = new PreflopInfoSetKey(2, Position.BB, "LIMPED", 0, 100);
+        var query = cache.Lookup(key, "AsKh");
+
+        Assert.NotEmpty(query.ActionFrequencies);
+        var sum = query.ActionFrequencies.Values.Sum();
+        Assert.InRange(sum, 0.999, 1.001);
+        Assert.NotNull(query.BestAction);
+    }
+
+    [Fact]
     public void Solver_ProducesNormalizedStrategies_OnTinyDepthTree()
     {
         var solver = new CfrPlusPreflopSolver(new PreflopTerminalEvaluator(new ApproxMonteCarloContinuationValueProvider()));
