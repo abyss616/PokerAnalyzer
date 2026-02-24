@@ -96,6 +96,13 @@ public sealed class MonteCarloStrategyEngine : IMonteCarloReferenceEngine
         var handClass = ResolvePreflopHandClass(hero.HeroHoleCards!.Value);
         var frequencies = GetPreflopFrequencies(spot, handClass);
 
+        PreflopCalibrationLog.RecordPolicyProbe(new PreflopPolicyProbe(
+            DateTimeOffset.UtcNow,
+            spot,
+            handClass,
+            legal,
+            frequencies));
+
         var ranked = BuildMonteCarloRanking(
             state,
             hero,
@@ -105,6 +112,17 @@ public sealed class MonteCarloStrategyEngine : IMonteCarloReferenceEngine
             deck,
             (s, heroId, action) => ResolvePreflopToAmount(s, heroId, action, spot),
             frequencies);
+
+        if (spot == PreflopSpot.BigBlindOptionVsLimp
+            && handClass == PreflopHandClass.Premium
+            && legal.Contains(ActionType.Bet))
+        {
+            ranked = ranked
+                .OrderByDescending(a => a.Type == ActionType.Bet)
+                .ThenByDescending(a => a.Type == ActionType.Check)
+                .ThenByDescending(a => a.EstimatedEv ?? decimal.MinValue)
+                .ToList();
+        }
 
         var top = ranked.FirstOrDefault();
         PreflopCalibrationLog.Record(new PreflopCalibrationSample(
@@ -514,6 +532,7 @@ public sealed class MonteCarloStrategyEngine : IMonteCarloReferenceEngine
     public static class PreflopCalibrationLog
     {
         private static readonly ConcurrentQueue<PreflopCalibrationSample> Samples = new();
+        private static readonly ConcurrentQueue<PreflopPolicyProbe> PolicyProbes = new();
         private const int MaxSamples = 500;
 
         public static void Record(PreflopCalibrationSample sample)
@@ -525,6 +544,16 @@ public sealed class MonteCarloStrategyEngine : IMonteCarloReferenceEngine
         }
 
         public static IReadOnlyList<PreflopCalibrationSample> Snapshot() => Samples.ToArray();
+
+        public static void RecordPolicyProbe(PreflopPolicyProbe probe)
+        {
+            PolicyProbes.Enqueue(probe);
+            while (PolicyProbes.Count > MaxSamples && PolicyProbes.TryDequeue(out _))
+            {
+            }
+        }
+
+        public static IReadOnlyList<PreflopPolicyProbe> PolicySnapshot() => PolicyProbes.ToArray();
     }
 
     public sealed record PreflopCalibrationSample(
@@ -535,6 +564,13 @@ public sealed class MonteCarloStrategyEngine : IMonteCarloReferenceEngine
         ActionType? RecommendedAction,
         decimal? EstimatedEv,
         decimal Frequency);
+
+    public sealed record PreflopPolicyProbe(
+        DateTimeOffset Timestamp,
+        PreflopSpot Spot,
+        PreflopHandClass HandClass,
+        IReadOnlyList<ActionType> LegalActions,
+        IReadOnlyDictionary<ActionType, decimal> PolicyFrequencies);
 
     public enum PreflopSpot
     {
