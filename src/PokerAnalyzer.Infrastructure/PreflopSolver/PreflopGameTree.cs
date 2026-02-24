@@ -51,23 +51,93 @@ public sealed class PreflopGameTreeBuilder
     }
 
     /// <summary>
-    /// Creates the root-only preflop tree scaffold used by upcoming tree-expansion steps.
+    /// Builds a memoized preflop game tree from the generated initial state.
     /// </summary>
     public PreflopGameTree BuildTree()
     {
         var positions = GetTablePositions(_playerCount);
         var rootState = CreateInitialState(positions);
-        var _ = _stateKeyBuilder(rootState);
+        return Build(rootState, _buildConfig);
+    }
 
-        return new PreflopGameTree(
-            new PreflopGameTreeNode
+    public PreflopGameTree Build(PreflopPublicState root, PreflopTreeBuildConfig config)
+    {
+        ArgumentNullException.ThrowIfNull(root);
+        ArgumentNullException.ThrowIfNull(config);
+
+        var memo = new Dictionary<StateKey, PreflopGameTreeNode>();
+        var domainSizing = ToDomainSizingConfig(config.EffectiveRaiseSizing);
+        var rootNode = BuildNode(root, depth: 0);
+        return new PreflopGameTree(rootNode, memo.Count);
+
+        PreflopGameTreeNode BuildNode(PreflopPublicState state, int depth)
+        {
+            if (depth > config.MaxDepth)
             {
-                State = rootState,
-                IsTerminal = _buildConfig.MaxDepth <= 0,
+                return new PreflopGameTreeNode
+                {
+                    State = state,
+                    IsTerminal = true,
+                    Children = new Dictionary<PreflopAction, PreflopGameTreeNode>(),
+                    Depth = depth
+                };
+            }
+
+            var street = Street.Preflop;
+            if ((config.PreflopOnly && street != Street.Preflop) || PreflopRules.IsTerminal(state, out _))
+            {
+                return new PreflopGameTreeNode
+                {
+                    State = state,
+                    IsTerminal = true,
+                    Children = new Dictionary<PreflopAction, PreflopGameTreeNode>(),
+                    Depth = depth
+                };
+            }
+
+            var key = _stateKeyBuilder(state);
+            if (memo.TryGetValue(key, out var cached))
+            {
+                return cached;
+            }
+
+            var node = new PreflopGameTreeNode
+            {
+                State = state,
+                IsTerminal = false,
                 Children = new Dictionary<PreflopAction, PreflopGameTreeNode>(),
-                Depth = 0
-            },
-            NodeCount: 1);
+                Depth = depth
+            };
+
+            memo[key] = node;
+
+            var actions = PreflopRules.GetLegalActions(state, domainSizing);
+            actions = FilterRaiseActions(actions, state, config.EffectiveRaiseSizing)
+                .OrderBy(action => action, PreflopActionComparer.Instance)
+                .ToList();
+
+            foreach (var action in actions)
+            {
+                var next = PreflopRules.ApplyAction(state, action);
+
+#if DEBUG
+                if (_stateKeyBuilder(next) == key)
+                {
+                    throw new InvalidOperationException("State transition did not progress; refusing to recurse to avoid infinite loops.");
+                }
+#endif
+
+                var child = BuildNode(next, depth + 1);
+                node.Children[action] = child;
+            }
+
+            if (node.Children.Count == 0)
+            {
+                node.IsTerminal = true;
+            }
+
+            return node;
+        }
     }
 
     public IReadOnlyList<PreflopNode> Build()
@@ -122,6 +192,49 @@ public sealed class PreflopGameTreeBuilder
         }
 
         return -1;
+    }
+
+    private static PokerAnalyzer.Domain.PreflopTree.PreflopSizingConfig ToDomainSizingConfig(RaiseSizingAbstraction abstraction)
+    {
+        return new PokerAnalyzer.Domain.PreflopTree.PreflopSizingConfig
+        {
+            OpenRaiseToBb = abstraction.OpenSizesBb.Select(x => (int)Math.Round(x)).Distinct().Order().ToArray(),
+            ThreeBetToBb = abstraction.ThreeBetSizesBb.Select(x => (int)Math.Round(x)).Distinct().Order().ToArray(),
+            FourBetToBb = abstraction.FourBetSizesBb.Select(x => (int)Math.Round(x)).Distinct().Order().ToArray(),
+            AllowAllInAlways = true
+        };
+    }
+
+    private static IEnumerable<PreflopAction> FilterRaiseActions(
+        IEnumerable<PreflopAction> actions,
+        PreflopPublicState state,
+        RaiseSizingAbstraction abstraction)
+    {
+        var raisesCount = state.RaisesCount;
+        var allowed = raisesCount switch
+        {
+            <= 1 => abstraction.OpenSizesBb,
+            2 => abstraction.ThreeBetSizesBb,
+            _ => abstraction.FourBetSizesBb
+        };
+
+        var allowedRaiseTo = allowed
+            .Select(x => (int)Math.Round(x))
+            .ToHashSet();
+
+        foreach (var action in actions)
+        {
+            if (action.Type != PreflopActionType.RaiseTo)
+            {
+                yield return action;
+                continue;
+            }
+
+            if (allowedRaiseTo.Contains(action.RaiseToBb))
+            {
+                yield return action;
+            }
+        }
     }
 
     public static IReadOnlyList<Position> GetTablePositions(int playerCount) => playerCount switch
