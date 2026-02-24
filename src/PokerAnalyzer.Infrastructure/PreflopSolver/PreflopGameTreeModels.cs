@@ -21,7 +21,7 @@ public sealed class PreflopGameTreeNode
     /// <summary>
     /// Indicates whether this node is terminal.
     /// </summary>
-    public bool IsTerminal { get; init; }
+    public bool IsTerminal { get; set; }
 
     /// <summary>
     /// Child nodes by action.
