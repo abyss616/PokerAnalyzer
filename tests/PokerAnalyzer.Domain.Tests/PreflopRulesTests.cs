@@ -57,4 +57,72 @@ public class PreflopRulesTests
 
         Assert.Equal(1, next);
     }
+
+    [Fact]
+    public void GetLegalActions_UtgFacingBigBlind_ContainsFoldAndCallOnly()
+    {
+        var state = PreflopRules.CreateInitialState(playerCount: 4, stackBb: 100, smallBlindBb: 1, bigBlindBb: 2);
+
+        var legal = PreflopRules.GetLegalActions(state);
+
+        Assert.Contains(legal, a => a.Type == PreflopActionType.Fold);
+        Assert.Contains(legal, a => a.Type == PreflopActionType.Call);
+        Assert.DoesNotContain(legal, a => a.Type == PreflopActionType.Check);
+    }
+
+    [Fact]
+    public void GetLegalActions_SbAfterUtgAndBtnFold_ToCallIsOneWithFoldAndCallOnly()
+    {
+        var state = PreflopRules.CreateInitialState(playerCount: 4, stackBb: 100, smallBlindBb: 1, bigBlindBb: 2);
+
+        state = PreflopRules.ApplyAction(state, new PreflopAction(PreflopActionType.Fold));
+        state = PreflopRules.ApplyAction(state, new PreflopAction(PreflopActionType.Fold));
+
+        var toCall = PreflopRules.GetToCall(state, state.ActingIndex);
+        var legal = PreflopRules.GetLegalActions(state);
+
+        Assert.Equal(1, toCall);
+        Assert.Contains(legal, a => a.Type == PreflopActionType.Fold);
+        Assert.Contains(legal, a => a.Type == PreflopActionType.Call);
+        Assert.DoesNotContain(legal, a => a.Type == PreflopActionType.Check);
+    }
+
+    [Fact]
+    public void GetLegalActions_BigBlindAfterCalls_CanCheckButCannotCall()
+    {
+        var state = PreflopRules.CreateInitialState(playerCount: 4, stackBb: 100, smallBlindBb: 1, bigBlindBb: 2);
+
+        state = PreflopRules.ApplyAction(state, new PreflopAction(PreflopActionType.Call));
+        state = PreflopRules.ApplyAction(state, new PreflopAction(PreflopActionType.Call));
+        state = PreflopRules.ApplyAction(state, new PreflopAction(PreflopActionType.Call));
+
+        var toCall = PreflopRules.GetToCall(state, state.ActingIndex);
+        var legal = PreflopRules.GetLegalActions(state);
+
+        Assert.Equal(0, toCall);
+        Assert.Contains(legal, a => a.Type == PreflopActionType.Check);
+        Assert.DoesNotContain(legal, a => a.Type == PreflopActionType.Call);
+    }
+
+    [Fact]
+    public void ApplyAction_CheckWhenFacingBet_ThrowsInvalidOperationException()
+    {
+        var state = PreflopRules.CreateInitialState(playerCount: 4, stackBb: 100, smallBlindBb: 1, bigBlindBb: 2);
+
+        Assert.Throws<InvalidOperationException>(() =>
+            PreflopRules.ApplyAction(state, new PreflopAction(PreflopActionType.Check)));
+    }
+
+    [Fact]
+    public void ApplyAction_Call_UpdatesPotAndAdvancesActingIndex()
+    {
+        var state = PreflopRules.CreateInitialState(playerCount: 4, stackBb: 100, smallBlindBb: 1, bigBlindBb: 2);
+
+        var next = PreflopRules.ApplyAction(state, new PreflopAction(PreflopActionType.Call));
+
+        Assert.Equal(2, next.ContribBb[3]);
+        Assert.Equal(98, next.StackBb[3]);
+        Assert.Equal(5, next.PotBb);
+        Assert.Equal(0, next.ActingIndex);
+    }
 }
