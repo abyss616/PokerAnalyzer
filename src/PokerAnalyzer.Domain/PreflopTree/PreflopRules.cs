@@ -58,7 +58,81 @@ public static class PreflopRules
 
     public static int GetToCall(PreflopPublicState state, int playerIndex)
     {
-        return int.Max(0, state.CurrentToCallBb - state.ContribBb[playerIndex]);
+        return Math.Max(0, state.CurrentToCallBb - state.ContribBb[playerIndex]);
+    }
+
+    public static List<PreflopAction> GetLegalActions(PreflopPublicState state)
+    {
+        var i = state.ActingIndex;
+        var toCall = GetToCall(state, i);
+        var stack = state.StackBb[i];
+
+        if (!state.InHand[i] || stack == 0)
+        {
+            return [];
+        }
+
+        if (toCall == 0)
+        {
+            return
+            [
+                new PreflopAction(PreflopActionType.Check),
+                new PreflopAction(PreflopActionType.Fold)
+            ];
+        }
+
+        if (stack >= toCall)
+        {
+            return
+            [
+                new PreflopAction(PreflopActionType.Fold),
+                new PreflopAction(PreflopActionType.Call)
+            ];
+        }
+
+        return [new PreflopAction(PreflopActionType.Fold)];
+    }
+
+    public static PreflopPublicState ApplyAction(PreflopPublicState state, PreflopAction action)
+    {
+        var newState = state.Clone();
+        var i = state.ActingIndex;
+        var toCall = GetToCall(state, i);
+
+        switch (action.Type)
+        {
+            case PreflopActionType.Fold:
+                newState.InHand[i] = false;
+                break;
+            case PreflopActionType.Check:
+                if (toCall != 0)
+                {
+                    throw new InvalidOperationException("Check is only legal when there is nothing to call.");
+                }
+
+                break;
+            case PreflopActionType.Call:
+                if (toCall <= 0)
+                {
+                    throw new InvalidOperationException("Call is only legal when facing a bet.");
+                }
+
+                if (state.StackBb[i] < toCall)
+                {
+                    throw new InvalidOperationException("Call is only legal when stack covers the amount to call.");
+                }
+
+                newState.ContribBb[i] += toCall;
+                newState.StackBb[i] -= toCall;
+                newState.PotBb += toCall;
+                break;
+            default:
+                throw new InvalidOperationException($"Unsupported action type: {action.Type}.");
+        }
+
+        newState.ActingIndex = GetNextActingIndex(newState);
+
+        return newState;
     }
 
     public static bool IsBettingClosed(PreflopPublicState state)

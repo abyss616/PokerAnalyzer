@@ -3,9 +3,8 @@ namespace PokerAnalyzer.Domain.PreflopTree;
 public enum PreflopActionType
 {
     Fold,
-    Call,
-    RaiseTo,
-    AllIn
+    Check,
+    Call
 }
 
 public sealed record PreflopAction(PreflopActionType Type, int RaiseToBb = 0);
