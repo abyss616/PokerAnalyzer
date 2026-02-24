@@ -19,19 +19,19 @@ public class CfrPlusPreflopSolverTests
     [InlineData(6)]
     public void TreeBuilds_UnopenedFirstIn_ForSupportedPlayerCounts(int playerCount)
     {
-        var builder = new PreflopGameTreeBuilder();
-        var nodes = builder.Build(new PreflopSolverConfig(20, 100m, Rake, playerCount, RaiseSizingAbstraction.Default));
+        var builder = new PreflopGameTreeBuilder(playerCount, 100m, 0.5m, 1m, Rake, PreflopSizingConfig.Default);
+        var nodes = builder.Build();
 
-        var firstActor = playerCount == 2 ? Position.BTN : PreflopGameTreeBuilder.GetTablePositions(playerCount)[0];
-        Assert.Contains(nodes, n => n.InfoSet.HistorySig == "UNOPENED" && n.InfoSet.ActingPosition == firstActor);
+        var firstActor = PreflopGameTreeBuilder.GetTablePositions(playerCount)[0];
+        Assert.Contains(nodes, n => n.InfoSet.HistorySignature == "UNOPENED" && n.InfoSet.ActingPosition == firstActor);
     }
 
     [Fact]
     public void HeadsUp_ActionOrder_IsBtnThenBb()
     {
-        var nodes = new PreflopGameTreeBuilder().Build(new PreflopSolverConfig(20, 100m, Rake, 2, RaiseSizingAbstraction.Default));
-        Assert.Contains(nodes, n => n.InfoSet.HistorySig == "UNOPENED" && n.InfoSet.ActingPosition == Position.BTN);
-        Assert.Contains(nodes, n => n.InfoSet.HistorySig == "OPEN" && n.InfoSet.ActingPosition == Position.BB);
+        var nodes = new PreflopGameTreeBuilder(2, 100m, 0.5m, 1m, Rake, PreflopSizingConfig.Default).Build();
+        Assert.Contains(nodes, n => n.InfoSet.HistorySignature == "UNOPENED" && n.InfoSet.ActingPosition == Position.BTN);
+        Assert.Contains(nodes, n => n.InfoSet.HistorySignature == "OPEN" && n.InfoSet.ActingPosition == Position.BB);
     }
 
     [Theory]
@@ -40,11 +40,13 @@ public class CfrPlusPreflopSolverTests
     [InlineData(4)]
     [InlineData(5)]
     [InlineData(6)]
-    public void TreeContains_VsOpenAndVs3BetResponses(int playerCount)
+    public void TreeContains_VsOpen_Vs3Bet_Vs4Bet_AndAllIn(int playerCount)
     {
-        var nodes = new PreflopGameTreeBuilder().Build(new PreflopSolverConfig(30, 100m, Rake, playerCount, RaiseSizingAbstraction.Default));
-        Assert.Contains(nodes, n => n.InfoSet.HistorySig is "OPEN" or "OPEN_CALL");
-        Assert.Contains(nodes, n => n.InfoSet.HistorySig.Contains("3BET", StringComparison.Ordinal));
+        var nodes = new PreflopGameTreeBuilder(playerCount, 100m, 0.5m, 1m, Rake, PreflopSizingConfig.Default).Build();
+        Assert.Contains(nodes, n => n.InfoSet.HistorySignature is "OPEN" or "OPEN_CALL");
+        Assert.Contains(nodes, n => n.InfoSet.HistorySignature.Contains("3BET", StringComparison.Ordinal));
+        Assert.Contains(nodes, n => n.InfoSet.HistorySignature.Contains("4BET", StringComparison.Ordinal));
+        Assert.Contains(nodes, n => n.LegalActions.Contains(ActionType.AllIn));
     }
 
     [Fact]
@@ -75,7 +77,12 @@ public class CfrPlusPreflopSolverTests
             new ChipAmount(5),
             new ChipAmount(10));
 
-        var engine = new CfrPlusPreflopStrategyEngine(new MonteCarloStrategyEngine());
+        var engine = new CfrPlusPreflopStrategyEngine(
+            new MonteCarloStrategyEngine(),
+            new PreflopSolverCache(new CfrPlusPreflopSolver(new PreflopTerminalEvaluator(new ApproxMonteCarloContinuationValueProvider()))),
+            new PreflopSolverConfig(40, 100m, Rake, 2, RaiseSizingAbstraction.Default),
+            Microsoft.Extensions.Logging.Abstractions.NullLogger<CfrPlusPreflopStrategyEngine>.Instance);
+
         var rec = engine.Recommend(state, new HeroContext(hero, new ChipAmount(5), new ChipAmount(10))
         {
             HeroHoleCards = HoleCards.Parse("AsAh"),
@@ -86,5 +93,29 @@ public class CfrPlusPreflopSolverTests
         Assert.NotNull(rec.PrimaryEV);
         Assert.NotNull(rec.ReferenceEV);
         Assert.NotEmpty(rec.RankedActions);
+    }
+
+    [Fact]
+    public void StateExtractor_ProducesUnifiedInfoSetKey()
+    {
+        var hero = PlayerId.New();
+        var villain = PlayerId.New();
+
+        var state = HandState.CreateNewHand(
+            [
+                new PlayerSeat(hero, "Hero", 1, Position.UTG, new ChipAmount(10000)),
+                new PlayerSeat(villain, "Villain", 2, Position.BB, new ChipAmount(10000))
+            ],
+            new ChipAmount(5),
+            new ChipAmount(10));
+
+        var key = PreflopStateExtractor.TryExtract(state, new HeroContext(hero, new ChipAmount(5), new ChipAmount(10))
+        {
+            PlayerPositions = new Dictionary<PlayerId, Position> { [hero] = Position.UTG, [villain] = Position.BB },
+            ActionHistory = []
+        });
+
+        Assert.NotNull(key);
+        Assert.Equal("UNOPENED", key!.HistorySignature);
     }
 }

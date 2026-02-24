@@ -19,6 +19,7 @@ public static class ServiceCollectionExtensions
         services.AddSingleton(new PreflopSolverConfig(140, 100m, new RakeConfig(0.05m, 1.0m, NoFlopNoDrop: true), 2, RaiseSizingAbstraction.Default));
         services.AddSingleton(new PreflopTerminalEvaluator(new ApproxMonteCarloContinuationValueProvider()));
         services.AddSingleton<CfrPlusPreflopSolver>();
+        services.AddSingleton<PreflopSolverCache>();
         services.AddSingleton<CfrPlusPreflopStrategyEngine>();
         services.AddSingleton<IStrategyEngine>(sp => sp.GetRequiredService<CfrPlusPreflopStrategyEngine>());
         services.AddTransient<HandAnalyzer>();

@@ -7,7 +7,7 @@ public sealed record PreflopSolverCacheKey(int PlayerCount, int EffectiveStackBb
 public sealed class PreflopSolverCache : IPreflopStrategyStore
 {
     private readonly CfrPlusPreflopSolver _solver;
-    private readonly ConcurrentDictionary<PreflopSolverCacheKey, PreflopSolveResult> _cache = new();
+    private readonly ConcurrentDictionary<PreflopSolverCacheKey, Lazy<Task<PreflopSolveResult>>> _cache = new();
 
     public PreflopSolverCache(CfrPlusPreflopSolver solver)
     {
@@ -18,22 +18,34 @@ public sealed class PreflopSolverCache : IPreflopStrategyStore
     public int SolveCount => _solveCount;
 
     public PreflopSolveResult GetOrSolve(PreflopSolverConfig config)
+        => GetOrSolveAsync(config, CancellationToken.None).GetAwaiter().GetResult();
+
+    public async Task<PreflopSolveResult> GetOrSolveAsync(PreflopSolverConfig config, CancellationToken ct)
     {
-        var sizing = config.Sizing ?? RaiseSizingAbstraction.Default;
+        var sizing = config.ResolveSizing();
         var key = new PreflopSolverCacheKey(config.PlayerCount, (int)Math.Round(config.EffectiveStackBb), config.Rake, Fingerprint(sizing));
-        return _cache.GetOrAdd(key, _ =>
+        var lazy = _cache.GetOrAdd(key, _ => new Lazy<Task<PreflopSolveResult>>(() => Task.Run(() =>
         {
             Interlocked.Increment(ref _solveCount);
-            return _solver.SolvePreflop(config with { Sizing = sizing });
-        });
+            return _solver.SolvePreflop(config with { Sizing = new RaiseSizingAbstraction(sizing.OpenSizesBb, sizing.ThreeBetSizeMultipliers, sizing.FourBetSizeMultipliers, sizing.JamThresholdStackBb) });
+        }, CancellationToken.None)));
+
+        return await lazy.Value.WaitAsync(ct);
     }
 
     public StrategyQueryResult Lookup(PreflopInfoSetKey key, string heroHand)
     {
-        var match = _cache.Values.Select(v => _solver.QueryStrategy(v, key, heroHand)).FirstOrDefault(r => r.ActionFrequencies.Count > 0);
-        return match ?? new StrategyQueryResult(new Dictionary<PokerAnalyzer.Domain.Game.ActionType, double>(), null, 0m, key);
+        var solvedResults = _cache.Values.Where(v => v.IsValueCreated).Select(v => v.Value.IsCompletedSuccessfully ? v.Value.Result : null).Where(v => v is not null).ToList();
+        foreach (var solved in solvedResults)
+        {
+            var result = _solver.QueryStrategy(solved!, key, heroHand);
+            if (result.ActionFrequencies.Count > 0)
+                return result;
+        }
+
+        return new StrategyQueryResult(new Dictionary<PokerAnalyzer.Domain.Game.ActionType, double>(), null, 0m, key);
     }
 
-    private static string Fingerprint(RaiseSizingAbstraction s)
-        => $"O:{string.Join(',', s.OpenSizesBb)}|3:{string.Join(',', s.ThreeBetSizesBb)}|4:{string.Join(',', s.FourBetSizesBb)}|J:{s.JamThresholdStackBb}";
+    private static string Fingerprint(PreflopSizingConfig s)
+        => $"O:{string.Join(',', s.OpenSizesBb)}|3:{string.Join(',', s.ThreeBetSizeMultipliers)}|4:{string.Join(',', s.FourBetSizeMultipliers)}|J:{s.JamThresholdStackBb}|AJ:{s.AllowExplicitJam}";
 }

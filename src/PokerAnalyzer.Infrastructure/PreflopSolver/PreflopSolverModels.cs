@@ -4,16 +4,29 @@ namespace PokerAnalyzer.Infrastructure.PreflopSolver;
 
 public sealed record RakeConfig(decimal Percent, decimal CapBb, bool NoFlopNoDrop);
 
+public sealed record PreflopSizingConfig(
+    IReadOnlyList<decimal> OpenSizesBb,
+    IReadOnlyList<decimal> ThreeBetSizeMultipliers,
+    IReadOnlyList<decimal> FourBetSizeMultipliers,
+    decimal JamThresholdStackBb = 25m,
+    bool AllowExplicitJam = true)
+{
+    public static PreflopSizingConfig Default { get; } = new(
+        OpenSizesBb: [2.0m, 2.5m],
+        ThreeBetSizeMultipliers: [3.0m],
+        FourBetSizeMultipliers: [2.2m]);
+}
+
 public sealed record RaiseSizingAbstraction(
     IReadOnlyList<decimal> OpenSizesBb,
     IReadOnlyList<decimal> ThreeBetSizesBb,
     IReadOnlyList<decimal> FourBetSizesBb,
     decimal JamThresholdStackBb = 25m)
 {
-    public static RaiseSizingAbstraction Default { get; } = new(
-        OpenSizesBb: [2.5m],
-        ThreeBetSizesBb: [9m],
-        FourBetSizesBb: [20m]);
+    public static RaiseSizingAbstraction Default { get; } = new([2.0m, 2.5m], [3m], [2.2m], 25m);
+
+    public PreflopSizingConfig ToPreflopSizingConfig()
+        => new(OpenSizesBb, ThreeBetSizesBb, FourBetSizesBb, JamThresholdStackBb, true);
 }
 
 public sealed record PreflopSolverConfig(
@@ -27,14 +40,16 @@ public sealed record PreflopSolverConfig(
 {
     public int ResolveMaxDegreeOfParallelism()
         => MaxDegreeOfParallelism <= 0 ? Environment.ProcessorCount : MaxDegreeOfParallelism;
+
+    public PreflopSizingConfig ResolveSizing()
+        => (Sizing ?? RaiseSizingAbstraction.Default).ToPreflopSizingConfig();
 }
 
 public sealed record PreflopInfoSetKey(
     int PlayerCount,
     Position ActingPosition,
-    string HistorySig,
+    string HistorySignature,
     int ToCallBb,
-    int LastRaiseBb,
     int EffectiveStackBb);
 
 public sealed record PreflopNodeState(
