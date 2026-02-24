@@ -43,9 +43,15 @@ public sealed class CfrPlusPreflopStrategyEngine : IStrategyEngine
         if (key is null)
             return BuildUnsupportedRecommendation(reference, "Unsupported preflop state for solver abstraction");
 
+        var normalizedKey = key with
+        {
+            PlayerCount = _config.PlayerCount,
+            EffectiveStackBb = (int)Math.Round(_config.EffectiveStackBb)
+        };
+
         _logger.LogInformation("Ensuring preflop strategy solved for {Players} players", _config.PlayerCount);
         _cache.GetOrSolve(_config);
-        var query = _cache.Lookup(key, hero.HeroHoleCards.Value.ToString());
+        var query = _cache.Lookup(normalizedKey, hero.HeroHoleCards.Value.ToString());
         if (query.ActionFrequencies.Count == 0)
             return BuildUnsupportedRecommendation(reference, "Unsupported preflop state for solver abstraction");
 
