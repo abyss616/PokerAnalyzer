@@ -60,6 +60,41 @@
 
         @if (_solverResult is not null)
         {
+            <div class="card mt-3 p-3">
+                <h5 class="mb-2">Preflop Actions</h5>
+                <table class="table table-sm table-striped mb-0">
+                    <thead>
+                    <tr>
+                        <th>Seat</th>
+                        <th>Player Name</th>
+                        <th>Position</th>
+                        <th>Stack at Start</th>
+                        <th>Actions</th>
+                        <th>Total Put In</th>
+                        <th>In Hand?</th>
+                    </tr>
+                    </thead>
+                    <tbody>
+                    @foreach (var player in _solverResult.PreflopSummary.Players.OrderBy(p => p.Seat))
+                    {
+                        var actionSequence = player.Actions.Count == 0
+                            ? "—"
+                            : string.Join(" → ", player.Actions.OrderBy(a => a.Order).Select(a => a.Display));
+
+                        <tr>
+                            <td>@player.Seat</td>
+                            <td>@(player.Name ?? "—")</td>
+                            <td>@(player.Position ?? "—")</td>
+                            <td>@(player.StartingStack.HasValue ? $"€{player.StartingStack.Value:0.00}" : "—")</td>
+                            <td>@actionSequence</td>
+                            <td>@($"€{player.TotalPutIn:0.00}")</td>
+                            <td>@(player.Occupied ? (player.FoldedPreflop ? "No" : "Yes") : "—")</td>
+                        </tr>
+                    }
+                    </tbody>
+                </table>
+            </div>
+
             <div class="mt-3">
                 @foreach (var engine in _solverResult.Engines)
                 {
