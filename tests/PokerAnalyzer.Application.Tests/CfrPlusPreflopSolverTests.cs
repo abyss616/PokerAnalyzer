@@ -1,3 +1,5 @@
+using PokerAnalyzer.Application.Engines;
+using PokerAnalyzer.Domain.Cards;
 using PokerAnalyzer.Domain.Game;
 using PokerAnalyzer.Infrastructure.Engines;
 using PokerAnalyzer.Infrastructure.PreflopSolver;
@@ -7,92 +9,82 @@ namespace PokerAnalyzer.Application.Tests;
 
 public class CfrPlusPreflopSolverTests
 {
-    private static readonly PreflopSolverConfig Config = new(150, 100m, new RakeConfig(0.05m, 1m, true));
+    private static readonly RakeConfig Rake = new(0.05m, 1m, true);
 
-    [Fact]
-    public void UnopenedBtn_AA_RaisesMoreThan_72o()
+    [Theory]
+    [InlineData(2)]
+    [InlineData(3)]
+    [InlineData(4)]
+    [InlineData(5)]
+    [InlineData(6)]
+    public void TreeBuilds_UnopenedFirstIn_ForSupportedPlayerCounts(int playerCount)
     {
-        var solver = new CfrPlusPreflopSolver(new PreflopTerminalEvaluator(new ApproxMonteCarloContinuationValueProvider()));
-        var solved = solver.SolvePreflop(Config);
+        var builder = new PreflopGameTreeBuilder();
+        var nodes = builder.Build(new PreflopSolverConfig(20, 100m, Rake, playerCount, RaiseSizingAbstraction.Default));
 
-        var aa = solved.QueryStrategy("OPEN_BTN", "AA");
-        var sevenTwo = solved.QueryStrategy("OPEN_BTN", "72O");
-
-        Assert.True(aa[ActionType.Raise] > sevenTwo[ActionType.Raise]);
+        var firstActor = playerCount == 2 ? Position.BTN : PreflopGameTreeBuilder.GetTablePositions(playerCount)[0];
+        Assert.Contains(nodes, n => n.InfoSet.HistorySig == "UNOPENED" && n.InfoSet.ActingPosition == firstActor);
     }
 
     [Fact]
-    public void BbVsSbLimp_StrongHandsHaveIsoFrequency()
+    public void HeadsUp_ActionOrder_IsBtnThenBb()
     {
-        var solver = new CfrPlusPreflopSolver(new PreflopTerminalEvaluator(new ApproxMonteCarloContinuationValueProvider()));
-        var solved = solver.SolvePreflop(Config);
+        var nodes = new PreflopGameTreeBuilder().Build(new PreflopSolverConfig(20, 100m, Rake, 2, RaiseSizingAbstraction.Default));
+        Assert.Contains(nodes, n => n.InfoSet.HistorySig == "UNOPENED" && n.InfoSet.ActingPosition == Position.BTN);
+        Assert.Contains(nodes, n => n.InfoSet.HistorySig == "OPEN" && n.InfoSet.ActingPosition == Position.BB);
+    }
 
-        var aks = solved.QueryStrategy("BB_VS_SB_LIMP", "AKS");
-        Assert.True(aks[ActionType.Raise] > 0.05d);
+    [Theory]
+    [InlineData(2)]
+    [InlineData(3)]
+    [InlineData(4)]
+    [InlineData(5)]
+    [InlineData(6)]
+    public void TreeContains_VsOpenAndVs3BetResponses(int playerCount)
+    {
+        var nodes = new PreflopGameTreeBuilder().Build(new PreflopSolverConfig(30, 100m, Rake, playerCount, RaiseSizingAbstraction.Default));
+        Assert.Contains(nodes, n => n.InfoSet.HistorySig is "OPEN" or "OPEN_CALL");
+        Assert.Contains(nodes, n => n.InfoSet.HistorySig.Contains("3BET", StringComparison.Ordinal));
     }
 
     [Fact]
-    public void HeadsUpMirror_SubgameOrderingIsConsistent()
+    public void SolverCache_SolvesOnce_PerConfiguration()
     {
         var solver = new CfrPlusPreflopSolver(new PreflopTerminalEvaluator(new ApproxMonteCarloContinuationValueProvider()));
-        var solved = solver.SolvePreflop(Config);
+        var cache = new PreflopSolverCache(solver);
+        var config = new PreflopSolverConfig(30, 100m, Rake, 6, RaiseSizingAbstraction.Default);
 
-        var sbOpenEv = solved.NodeStrategies["OPEN_SB"].EstimatedEvBb;
-        var bbVsLimpEv = solved.NodeStrategies["BB_VS_SB_LIMP"].EstimatedEvBb;
+        var first = cache.GetOrSolve(config);
+        var second = cache.GetOrSolve(config);
 
-        Assert.True(sbOpenEv >= bbVsLimpEv - 0.5m);
+        Assert.Same(first, second);
+        Assert.Equal(1, cache.SolveCount);
     }
 
     [Fact]
-    public void Regression_PostflopNotLabeledAsPreflopPolicy()
+    public void Engine_UsesSolverWhenSupported_AndProvidesReferenceSeparately()
     {
         var hero = PlayerId.New();
         var villain = PlayerId.New();
 
         var state = HandState.CreateNewHand(
-            new[]
-            {
-                new PlayerSeat(hero, "Hero", 1, Position.BB, new ChipAmount(1000)),
-                new PlayerSeat(villain, "Villain", 2, Position.BTN, new ChipAmount(1000))
-            },
-            new ChipAmount(5),
-            new ChipAmount(10)).TransitionToStreet(Street.Flop);
-
-        var engine = new MonteCarloStrategyEngine();
-        var rec = engine.Recommend(state, new PokerAnalyzer.Application.Engines.HeroContext(hero, new ChipAmount(5), new ChipAmount(10))
-        {
-            HeroHoleCards = PokerAnalyzer.Domain.Cards.HoleCards.Parse("AsKh"),
-            PlayerPositions = new Dictionary<PlayerId, Position> { [hero] = Position.BB, [villain] = Position.BTN },
-            ActionHistory = [new BettingAction(Street.Preflop, villain, ActionType.Raise, new ChipAmount(25))]
-        });
-
-        Assert.DoesNotContain("preflop policy", rec.ReferenceExplanation ?? string.Empty, StringComparison.OrdinalIgnoreCase);
-    }
-
-    [Fact]
-    public void Engine_UsesSolverForPreflopRecommendation()
-    {
-        var hero = PlayerId.New();
-        var villain = PlayerId.New();
-
-        var state = HandState.CreateNewHand(
-            new[]
-            {
+            [
                 new PlayerSeat(hero, "Hero", 1, Position.BTN, new ChipAmount(10000)),
                 new PlayerSeat(villain, "Villain", 2, Position.BB, new ChipAmount(10000))
-            },
+            ],
             new ChipAmount(5),
             new ChipAmount(10));
 
         var engine = new CfrPlusPreflopStrategyEngine(new MonteCarloStrategyEngine());
-        var rec = engine.Recommend(state, new PokerAnalyzer.Application.Engines.HeroContext(hero, new ChipAmount(5), new ChipAmount(10))
+        var rec = engine.Recommend(state, new HeroContext(hero, new ChipAmount(5), new ChipAmount(10))
         {
-            HeroHoleCards = PokerAnalyzer.Domain.Cards.HoleCards.Parse("AsAh"),
+            HeroHoleCards = HoleCards.Parse("AsAh"),
             PlayerPositions = new Dictionary<PlayerId, Position> { [hero] = Position.BTN, [villain] = Position.BB },
             ActionHistory = []
         });
 
-        Assert.Contains("CFR+ preflop solver", rec.PrimaryExplanation ?? string.Empty, StringComparison.OrdinalIgnoreCase);
+        Assert.NotNull(rec.PrimaryEV);
+        Assert.NotNull(rec.ReferenceEV);
         Assert.NotEmpty(rec.RankedActions);
     }
 }

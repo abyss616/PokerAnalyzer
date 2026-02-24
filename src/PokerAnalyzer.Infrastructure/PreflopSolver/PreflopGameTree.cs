@@ -3,95 +3,175 @@ using PokerAnalyzer.Domain.Game;
 namespace PokerAnalyzer.Infrastructure.PreflopSolver;
 
 public sealed record PreflopNode(
-    string NodeId,
-    Position Actor,
-    Position Villain,
+    PreflopInfoSetKey InfoSet,
     PreflopNodeState State,
     IReadOnlyList<ActionType> LegalActions,
-    IReadOnlyDictionary<ActionType, decimal> RaiseToByActionBb,
-    string Stage);
+    IReadOnlyDictionary<ActionType, decimal> RaiseToByActionBb);
 
-public static class PreflopGameTree
+public sealed class PreflopGameTreeBuilder
 {
-    public static IReadOnlyList<PreflopNode> Build(PreflopSolverConfig config)
+    public IReadOnlyList<PreflopNode> Build(PreflopSolverConfig config)
     {
-        var nodes = new List<PreflopNode>();
-        nodes.Add(BuildOpenNode(Position.BTN, config));
-        nodes.Add(BuildOpenNode(Position.SB, config));
-        nodes.Add(BuildFacingOpenNode(Position.BB, Position.BTN, config, isSbVsBtn: false));
-        nodes.Add(BuildFacingOpenNode(Position.SB, Position.BTN, config, isSbVsBtn: true));
-        nodes.Add(BuildFacing3BetNode(Position.BTN, Position.BB, config));
-        nodes.Add(BuildFacing4BetNode(Position.BTN, Position.BB, config));
-        nodes.Add(BuildSbLimpNode(config));
-        nodes.Add(BuildBbVsSbLimpNode(config));
-        return nodes;
+        var sizing = config.Sizing ?? RaiseSizingAbstraction.Default;
+        var positions = GetTablePositions(config.PlayerCount);
+        var firstActor = config.PlayerCount == 2 ? Position.BTN : positions[0];
+
+        var root = new BuildState(
+            positions,
+            firstActor,
+            new Dictionary<Position, decimal> { [Position.SB] = 0.5m, [Position.BB] = 1m },
+            new HashSet<Position>(),
+            [],
+            1m,
+            0m,
+            config.EffectiveStackBb);
+
+        var nodes = new Dictionary<PreflopInfoSetKey, PreflopNode>();
+        Expand(root, config.PlayerCount, sizing, nodes);
+        return nodes.Values.ToList();
     }
 
-    private static PreflopNode BuildOpenNode(Position actor, PreflopSolverConfig config)
+    public static IReadOnlyList<Position> GetTablePositions(int playerCount) => playerCount switch
     {
-        var openSize = actor == Position.SB ? 3.0m : 2.5m;
-        var legal = actor == Position.SB
-            ? new[] { ActionType.Fold, ActionType.Call, ActionType.Raise }
-            : new[] { ActionType.Fold, ActionType.Raise };
+        2 => [Position.BTN, Position.BB],
+        3 => [Position.BTN, Position.SB, Position.BB],
+        4 => [Position.UTG, Position.BTN, Position.SB, Position.BB],
+        5 => [Position.UTG, Position.CO, Position.BTN, Position.SB, Position.BB],
+        6 => [Position.UTG, Position.HJ, Position.CO, Position.BTN, Position.SB, Position.BB],
+        _ => throw new ArgumentOutOfRangeException(nameof(playerCount), "Supported player count is 2-6.")
+    };
 
-        return new PreflopNode(
-            $"OPEN_{actor}", actor, Position.BB,
-            new PreflopNodeState($"OPEN_{actor}", actor, Position.BB, 1.5m, actor == Position.SB ? 0.5m : 1m, actor == Position.SB ? 0.5m : 0m, 1m, actor == Position.SB, false, false, config.EffectiveStackBb),
-            legal,
-            new Dictionary<ActionType, decimal> { [ActionType.Raise] = openSize },
-            "Unopened");
+    private static void Expand(BuildState state, int playerCount, RaiseSizingAbstraction sizing, IDictionary<PreflopInfoSetKey, PreflopNode> nodes)
+    {
+        if (state.IsTerminal)
+            return;
+
+        var actor = state.NextActor;
+        var toCall = Math.Max(0m, state.BetToCall - state.Contrib.GetValueOrDefault(actor));
+        var legal = toCall > 0 ? new List<ActionType> { ActionType.Fold, ActionType.Call, ActionType.Raise } : new List<ActionType> { ActionType.Check, ActionType.Raise };
+        if (state.EffectiveStackBb <= sizing.JamThresholdStackBb || state.RaiseCount >= 3)
+            legal.Add(ActionType.AllIn);
+
+        var raiseTo = new Dictionary<ActionType, decimal>();
+        if (legal.Contains(ActionType.Raise))
+        {
+            var size = state.RaiseCount switch
+            {
+                0 => sizing.OpenSizesBb.First(),
+                1 => sizing.ThreeBetSizesBb.First(),
+                _ => sizing.FourBetSizesBb.First()
+            };
+            raiseTo[ActionType.Raise] = Math.Min(size, state.EffectiveStackBb);
+        }
+
+        var key = new PreflopInfoSetKey(playerCount, actor, PreflopHistorySignature.Build(state.Actions), (int)Math.Round(toCall), (int)Math.Round(state.LastRaiseBb), (int)Math.Round(state.EffectiveStackBb));
+        if (!nodes.ContainsKey(key))
+        {
+            var villainCommit = state.Contrib.Where(c => c.Key != actor).DefaultIfEmpty(new KeyValuePair<Position, decimal>(Position.BB, 0m)).Max(c => c.Value);
+            nodes[key] = new PreflopNode(key,
+                new PreflopNodeState(key, state.Contrib.Values.Sum(), toCall, state.Contrib.GetValueOrDefault(actor), villainCommit, state.EffectiveStackBb),
+                legal,
+                raiseTo);
+        }
+
+        foreach (var action in legal)
+        {
+            var next = state.Apply(action, raiseTo.GetValueOrDefault(ActionType.Raise, 0m));
+            Expand(next, playerCount, sizing, nodes);
+        }
     }
 
-    private static PreflopNode BuildFacingOpenNode(Position actor, Position opener, PreflopSolverConfig config, bool isSbVsBtn)
+    private sealed record BuildState(
+        IReadOnlyList<Position> Order,
+        Position NextActor,
+        Dictionary<Position, decimal> Contrib,
+        HashSet<Position> Folded,
+        List<ActionType> Actions,
+        decimal BetToCall,
+        decimal LastRaiseBb,
+        decimal EffectiveStackBb,
+        int RaiseCount = 0,
+        int ConsecutiveCallsOrChecks = 0)
     {
-        var threeBet = isSbVsBtn ? 10.5m : actor == Position.BB ? 10m : 9m;
-        return new PreflopNode(
-            $"VS_OPEN_{actor}_vs_{opener}", actor, opener,
-            new PreflopNodeState($"VS_OPEN_{actor}_vs_{opener}", actor, opener, 4.0m, 2.5m, actor == Position.BB ? 1m : 0.5m, 2.5m, false, false, false, config.EffectiveStackBb),
-            new[] { ActionType.Fold, ActionType.Call, ActionType.Raise, ActionType.AllIn },
-            new Dictionary<ActionType, decimal> { [ActionType.Raise] = threeBet },
-            "FacingOpen");
-    }
+        public bool IsTerminal => Folded.Count >= Order.Count - 1 || RaiseCount >= 4 || ConsecutiveCallsOrChecks >= ActiveCount;
+        private int ActiveCount => Order.Count - Folded.Count;
 
-    private static PreflopNode BuildFacing3BetNode(Position actor, Position villain, PreflopSolverConfig config)
+        public BuildState Apply(ActionType action, decimal raiseTo)
+        {
+            var contrib = new Dictionary<Position, decimal>(Contrib);
+            var folded = new HashSet<Position>(Folded);
+            var actions = new List<ActionType>(Actions) { action };
+            var nextBetToCall = BetToCall;
+            var nextLastRaise = LastRaiseBb;
+            var nextRaiseCount = RaiseCount;
+            var nextClosed = ConsecutiveCallsOrChecks + 1;
+
+            if (action == ActionType.Fold)
+                folded.Add(NextActor);
+            else if (action == ActionType.Call)
+                contrib[NextActor] = nextBetToCall;
+            else if (action == ActionType.Raise)
+            {
+                contrib[NextActor] = raiseTo;
+                nextLastRaise = Math.Max(0m, raiseTo - nextBetToCall);
+                nextBetToCall = raiseTo;
+                nextRaiseCount++;
+                nextClosed = 1;
+            }
+            else if (action == ActionType.AllIn)
+            {
+                contrib[NextActor] = EffectiveStackBb;
+                nextLastRaise = Math.Max(0m, EffectiveStackBb - nextBetToCall);
+                nextBetToCall = EffectiveStackBb;
+                nextRaiseCount++;
+                nextClosed = 1;
+            }
+
+            var nextActor = NextPosition(Order, NextActor, folded);
+            return this with
+            {
+                Contrib = contrib,
+                Folded = folded,
+                Actions = actions,
+                NextActor = nextActor,
+                BetToCall = nextBetToCall,
+                LastRaiseBb = nextLastRaise,
+                RaiseCount = nextRaiseCount,
+                ConsecutiveCallsOrChecks = nextClosed
+            };
+        }
+
+        private static Position NextPosition(IReadOnlyList<Position> order, Position current, HashSet<Position> folded)
+        {
+            var idx = order.IndexOf(current);
+            for (var i = 1; i <= order.Count; i++)
+            {
+                var pos = order[(idx + i) % order.Count];
+                if (!folded.Contains(pos))
+                    return pos;
+            }
+
+            return current;
+        }
+    }
+}
+
+public static class PreflopHistorySignature
+{
+    public static string Build(IReadOnlyList<ActionType> actions)
     {
-        var allowJam = config.EffectiveStackBb <= 30m || 22m >= config.EffectiveStackBb * 0.6m;
-        var legal = allowJam
-            ? new[] { ActionType.Fold, ActionType.Call, ActionType.Raise, ActionType.AllIn }
-            : new[] { ActionType.Fold, ActionType.Call, ActionType.Raise };
-
-        return new PreflopNode(
-            $"VS_3BET_{actor}_vs_{villain}", actor, villain,
-            new PreflopNodeState($"VS_3BET_{actor}_vs_{villain}", actor, villain, 14m, 7.5m, 2.5m, 10m, false, true, false, config.EffectiveStackBb),
-            legal,
-            new Dictionary<ActionType, decimal> { [ActionType.Raise] = 22m },
-            "Facing3Bet");
+        var raises = actions.Count(a => a is ActionType.Raise or ActionType.AllIn or ActionType.Bet);
+        var calls = actions.Count(a => a == ActionType.Call);
+        return raises switch
+        {
+            0 when calls == 0 => "UNOPENED",
+            0 => "LIMPED",
+            1 when calls == 0 => "OPEN",
+            1 => "OPEN_CALL",
+            2 when calls <= 1 => "OPEN_3BET",
+            2 => "OPEN_3BET_CALL",
+            3 => "OPEN_3BET_4BET",
+            _ => "OPEN_3BET_4BET_PLUS"
+        };
     }
-
-    private static PreflopNode BuildFacing4BetNode(Position actor, Position villain, PreflopSolverConfig config)
-    {
-        var legal = new[] { ActionType.Fold, ActionType.Call, ActionType.AllIn };
-        return new PreflopNode(
-            $"VS_4BET_{actor}_vs_{villain}", actor, villain,
-            new PreflopNodeState($"VS_4BET_{actor}_vs_{villain}", actor, villain, 35m, 12m, 10m, 22m, false, false, true, config.EffectiveStackBb),
-            legal,
-            new Dictionary<ActionType, decimal>(),
-            "Facing4Bet");
-    }
-
-    private static PreflopNode BuildSbLimpNode(PreflopSolverConfig config)
-        => new(
-            "SB_LIMP_FIRST_IN", Position.SB, Position.BB,
-            new PreflopNodeState("SB_LIMP_FIRST_IN", Position.SB, Position.BB, 1.5m, 0.5m, 0.5m, 1m, true, false, false, config.EffectiveStackBb),
-            new[] { ActionType.Call, ActionType.Raise },
-            new Dictionary<ActionType, decimal> { [ActionType.Raise] = 3m },
-            "Unopened");
-
-    private static PreflopNode BuildBbVsSbLimpNode(PreflopSolverConfig config)
-        => new(
-            "BB_VS_SB_LIMP", Position.BB, Position.SB,
-            new PreflopNodeState("BB_VS_SB_LIMP", Position.BB, Position.SB, 2m, 0m, 1m, 1m, true, false, false, config.EffectiveStackBb),
-            new[] { ActionType.Check, ActionType.Raise },
-            new Dictionary<ActionType, decimal> { [ActionType.Raise] = 4.5m },
-            "Limped");
 }
