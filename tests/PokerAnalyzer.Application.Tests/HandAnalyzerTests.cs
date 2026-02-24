@@ -219,6 +219,48 @@ public class HandAnalyzerTests
     }
 
     [Fact]
+    public void CreateNewHand_HeadsUpBtnPostsSmallBlind_WhenNoExplicitSbSeat()
+    {
+        var btn = PlayerId.New();
+        var bb = PlayerId.New();
+
+        var state = HandState.CreateNewHand(
+            new List<PlayerSeat>
+            {
+                new(btn, "BTN", 1, Position.BTN, new ChipAmount(1000)),
+                new(bb, "BB", 2, Position.BB, new ChipAmount(1000))
+            },
+            new ChipAmount(5),
+            new ChipAmount(10));
+
+        Assert.Equal(new ChipAmount(15), state.Pot);
+        Assert.Equal(new ChipAmount(10), state.BetToCall);
+        Assert.Equal(new ChipAmount(5), state.GetToCall(btn));
+        Assert.Equal(new ChipAmount(0), state.GetToCall(bb));
+    }
+
+    [Fact]
+    public void HeadsUp_BtnSmallBlind_HasNoPreflopCheckOption()
+    {
+        var btn = PlayerId.New();
+        var bb = PlayerId.New();
+
+        var state = HandState.CreateNewHand(
+            new List<PlayerSeat>
+            {
+                new(btn, "BTN", 1, Position.BTN, new ChipAmount(1000)),
+                new(bb, "BB", 2, Position.BB, new ChipAmount(1000))
+            },
+            new ChipAmount(5),
+            new ChipAmount(10));
+
+        var legal = state.GetLegalActions(btn);
+
+        Assert.DoesNotContain(ActionType.Check, legal);
+        Assert.Contains(ActionType.Call, legal);
+    }
+
+    [Fact]
     public void Analyzer_RejectsIllegalCheckRecommendation_WhenFacingBet()
     {
         var hero = PlayerId.New();

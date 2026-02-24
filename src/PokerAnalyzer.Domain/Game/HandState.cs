@@ -51,7 +51,7 @@ public sealed class HandState
     }
 
     /// <summary>
-    /// Creates a new hand state and applies forced blinds as setup (NOT as actions).
+    /// Creates a new hand state and applies forced blinds immediately as blind-posting actions.
     /// </summary>
     public static HandState CreateNewHand(
         IEnumerable<PlayerSeat> seats,
@@ -61,55 +61,32 @@ public sealed class HandState
         Board? board = null)
     {
         var seatList = seats.ToList();
+        var state = new HandState(
+            street,
+            board ?? new Board(),
+            ChipAmount.Zero,
+            ChipAmount.Zero,
+            seatList.ToDictionary(s => s.Id, _ => ChipAmount.Zero),
+            seatList.ToDictionary(s => s.Id, s => s.StartingStack),
+            seatList.Select(s => s.Id).ToHashSet(),
+            lastAggressor: null);
 
-        var stacks = seatList.ToDictionary(s => s.Id, s => s.StartingStack);
-        var contrib = seatList.ToDictionary(s => s.Id, _ => ChipAmount.Zero);
-        var active = seatList.Select(s => s.Id).ToHashSet();
+        // In heads-up games, BTN is also the small blind and acts first preflop.
+        var sbSeat = seatList.FirstOrDefault(s => s.Position == Position.SB)
+            ?? (seatList.Count == 2 ? seatList.FirstOrDefault(s => s.Position == Position.BTN) : null);
+        var bbSeat = seatList.FirstOrDefault(s => s.Position == Position.BB);
 
-        var pot = ChipAmount.Zero;
-
-        // Forced blinds are posted here. They do NOT imply aggression.
-        if (smallBlind.Value > 0)
+        if (sbSeat is not null && smallBlind.Value > 0)
         {
-            var sbSeat = seatList.FirstOrDefault(s => s.Position == Position.SB);
-            if (sbSeat is not null)
-            {
-                PostBlind(sbSeat.Id, smallBlind, stacks, contrib, ref pot);
-            }
+            state = state.Apply(new BettingAction(street, sbSeat.Id, ActionType.PostSmallBlind, smallBlind));
         }
 
-        ChipAmount bbPosted = ChipAmount.Zero;
-        if (bigBlind.Value > 0)
+        if (bbSeat is not null && bigBlind.Value > 0)
         {
-            var bbSeat = seatList.FirstOrDefault(s => s.Position == Position.BB);
-            if (bbSeat is not null)
-            {
-                bbPosted = PostBlind(bbSeat.Id, bigBlind, stacks, contrib, ref pot);
-            }
+            state = state.Apply(new BettingAction(street, bbSeat.Id, ActionType.PostBigBlind, bigBlind));
         }
 
-        // BetToCall at start of preflop is the effective big blind (can be short/all-in).
-        var betToCall = bbPosted.Value > 0 ? bbPosted : ChipAmount.Zero;
-
-        // IMPORTANT: posting blinds does NOT set LastAggressor.
-        PlayerId? lastAggressor = null;
-
-        return new HandState(street, board ?? new Board(), pot, betToCall, contrib, stacks, active, lastAggressor);
-    }
-
-    private static ChipAmount PostBlind(
-        PlayerId playerId,
-        ChipAmount blind,
-        IDictionary<PlayerId, ChipAmount> stacks,
-        IDictionary<PlayerId, ChipAmount> contrib,
-        ref ChipAmount pot)
-    {
-        var stack = stacks[playerId];
-        var posted = blind.Value > stack.Value ? stack : blind; // allow short blind
-        stacks[playerId] = new ChipAmount(stack.Value - posted.Value);
-        contrib[playerId] = new ChipAmount(contrib[playerId].Value + posted.Value);
-        pot = new ChipAmount(pot.Value + posted.Value);
-        return posted;
+        return state;
     }
 
 
