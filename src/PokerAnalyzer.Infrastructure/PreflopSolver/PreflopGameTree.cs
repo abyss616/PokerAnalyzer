@@ -143,7 +143,7 @@ public sealed class PreflopGameTreeBuilder
 
         private static Position NextPosition(IReadOnlyList<Position> order, Position current, HashSet<Position> folded)
         {
-            var idx = order.IndexOf(current);
+            var idx = FindIndex(order, current);
             for (var i = 1; i <= order.Count; i++)
             {
                 var pos = order[(idx + i) % order.Count];
@@ -152,6 +152,17 @@ public sealed class PreflopGameTreeBuilder
             }
 
             return current;
+        }
+
+        private static int FindIndex(IReadOnlyList<Position> order, Position current)
+        {
+            for (var i = 0; i < order.Count; i++)
+            {
+                if (order[i] == current)
+                    return i;
+            }
+
+            return -1;
         }
     }
 }

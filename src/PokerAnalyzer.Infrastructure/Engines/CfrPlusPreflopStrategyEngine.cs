@@ -54,12 +54,12 @@ public sealed class CfrPlusPreflopStrategyEngine : IStrategyEngine
             .Select(k => new RecommendedAction(k.Key, null, (decimal)k.Value)).ToList();
 
         return new Recommendation(
-            ranked,
-            ranked.FirstOrDefault(),
-            query.EstimatedEvBb,
-            reference.ReferenceEV,
-            $"CFR+ preflop solver key={query.InfoSet.HistorySig}/{query.InfoSet.ActingPosition}, best={query.BestAction}, ev={query.EstimatedEvBb:0.###}bb",
-            reference.ReferenceExplanation);
+            RankedActions: ranked,
+            PrimaryAction: ranked.FirstOrDefault(),
+            PrimaryEV: query.EstimatedEvBb,
+            ReferenceEV: reference.ReferenceEV,
+            PrimaryExplanation: $"CFR+ preflop solver key={query.InfoSet.HistorySig}/{query.InfoSet.ActingPosition}, best={query.BestAction}, ev={query.EstimatedEvBb:0.###}bb",
+            ReferenceExplanation: reference.ReferenceExplanation);
     }
 
     public PreflopSolveResult SolvePreflop(PreflopSolverConfig config) => _solver.SolvePreflop(config);
@@ -88,7 +88,11 @@ public sealed class CfrPlusPreflopStrategyEngine : IStrategyEngine
     }
 
     private static Recommendation BuildUnsupportedRecommendation(Recommendation reference, string reason)
-        => new([], null, null, reference.ReferenceEV, reason, reference.ReferenceExplanation);
+        => new(
+            RankedActions: [],
+            ReferenceEV: reference.ReferenceEV,
+            PrimaryExplanation: reason,
+            ReferenceExplanation: reference.ReferenceExplanation);
 }
 
 public static class PreflopLiveStateMapper
