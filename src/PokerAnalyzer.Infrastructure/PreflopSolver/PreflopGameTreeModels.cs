@@ -112,9 +112,15 @@ public sealed class PreflopActionComparer : IComparer<PreflopAction>
     {
     }
 
-    public int Compare(PreflopAction x, PreflopAction y)
+    public int Compare(PreflopAction? x, PreflopAction? y)
     {
+        if (ReferenceEquals(x, y)) return 0;
+        if (x is null) return -1;
+        if (y is null) return 1;
+
         var typeComparison = x.Type.CompareTo(y.Type);
-        return typeComparison != 0 ? typeComparison : x.RaiseToBb.CompareTo(y.RaiseToBb);
+        return typeComparison != 0
+            ? typeComparison
+            : x.RaiseToBb.CompareTo(y.RaiseToBb);
     }
 }

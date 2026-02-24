@@ -291,7 +291,7 @@ public class MonteCarloStrategyEngineTests
         ChipAmount? toAmount,
         IReadOnlyList<PlayerId> opponents)
     {
-        return (decimal)ComputePotAfterCallMethod.Invoke(null, new object[] { state, hero, action, toAmount, opponents })!;
+        return (decimal)ComputePotAfterCallMethod.Invoke(null, new object[] { state, hero, action, toAmount?? new ChipAmount(), opponents })!;
     }
 
 }
