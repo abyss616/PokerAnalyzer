@@ -6,27 +6,28 @@ namespace PokerAnalyzer.Infrastructure.Engines;
 
 public sealed class CfrPlusPreflopStrategyEngine : IStrategyEngine
 {
-    private readonly MonteCarloStrategyEngine _legacy;
+    private readonly IMonteCarloReferenceEngine _monteCarloReference;
     private readonly CfrPlusPreflopSolver _solver;
     private readonly PreflopSolveResult _solved;
-    private readonly PreflopSolverConfig _config;
 
-    public CfrPlusPreflopStrategyEngine(MonteCarloStrategyEngine legacy)
+    public CfrPlusPreflopStrategyEngine(IMonteCarloReferenceEngine monteCarloReference)
     {
-        _legacy = legacy;
-        _config = new PreflopSolverConfig(220, 100m, new RakeConfig(0.05m, 1.0m, NoFlopNoDrop: true));
+        _monteCarloReference = monteCarloReference;
+        var config = new PreflopSolverConfig(220, 100m, new RakeConfig(0.05m, 1.0m, NoFlopNoDrop: true));
         _solver = new CfrPlusPreflopSolver(new PreflopTerminalEvaluator(new ApproxMonteCarloContinuationValueProvider()));
-        _solved = _solver.SolvePreflop(_config);
+        _solved = _solver.SolvePreflop(config);
     }
 
     public Recommendation Recommend(HandState state, HeroContext hero)
     {
-        if (_config.UseLegacyMonteCarlo || state.Street != Street.Preflop || hero.HeroHoleCards is null)
-            return _legacy.Recommend(state, hero);
+        var reference = _monteCarloReference.EvaluateReference(state, hero);
+
+        if (state.Street != Street.Preflop || hero.HeroHoleCards is null)
+            return BuildUnsupportedRecommendation(reference);
 
         var node = ResolveNode(state, hero);
         if (node is null)
-            return _legacy.Recommend(state, hero) with { Explanation = "CFR+ preflop fallback: unsupported node, legacy MC used." };
+            return BuildUnsupportedRecommendation(reference);
 
         var query = _solver.QueryStrategy(_solved, node, hero.HeroHoleCards.Value.ToString());
         var ranked = query.ActionFrequencies
@@ -34,13 +35,32 @@ public sealed class CfrPlusPreflopStrategyEngine : IStrategyEngine
             .Select(k => new RecommendedAction(k.Key, ResolveToAmount(state, hero.HeroId, k.Key, node), (decimal)k.Value))
             .ToList();
 
-        return new Recommendation(ranked,
-            $"CFR+ preflop solver node={query.NodeId}, hero={hero.HeroHoleCards.Value}, best={query.BestAction}, approxEV={query.EstimatedEvBb:0.###}bb");
+        var primary = ranked.FirstOrDefault();
+        return new Recommendation(
+            ranked,
+            PrimaryAction: primary,
+            PrimaryEV: (decimal)query.EstimatedEvBb,
+            ReferenceEV: reference.ReferenceEV,
+            PrimaryExplanation: $"CFR+ preflop solver node={query.NodeId}, hero={hero.HeroHoleCards.Value}, best={query.BestAction}, approxEV={query.EstimatedEvBb:0.###}bb",
+            ReferenceExplanation: reference.ReferenceExplanation
+        );
     }
 
     public PreflopSolveResult SolvePreflop(PreflopSolverConfig config) => _solver.SolvePreflop(config);
 
     public StrategyQueryResult QueryStrategy(PreflopNodeState state, string heroHand) => _solver.QueryStrategy(_solved, state, heroHand);
+
+    private static Recommendation BuildUnsupportedRecommendation(Recommendation reference)
+    {
+        return new Recommendation(
+            RankedActions: Array.Empty<RecommendedAction>(),
+            PrimaryAction: null,
+            PrimaryEV: null,
+            ReferenceEV: reference.ReferenceEV,
+            PrimaryExplanation: "CFR+ node unsupported — no solver output available.",
+            ReferenceExplanation: reference.ReferenceExplanation
+        );
+    }
 
     private static ChipAmount? ResolveToAmount(HandState state, PlayerId heroId, ActionType action, PreflopNodeState node)
     {

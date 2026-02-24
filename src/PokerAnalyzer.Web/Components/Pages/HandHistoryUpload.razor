@@ -82,8 +82,9 @@
                                     <th>Villain Position</th>
                                     <th>Villain Action</th>
                                     <th>Hero Action</th>
-                                    <th>Recommended</th>
-                                    <th>EV</th>
+                                    <th>Solver Recommendation</th>
+                                    <th>Solver EV</th>
+                                    <th>Monte Carlo Reference EV</th>
                                 </tr>
                                 </thead>
                                 <tbody>
@@ -97,12 +98,19 @@
                                         <td>@(decision.VillainAction ?? "N/A")</td>
                                         <td>@decision.HeroAction</td>
                                         <td>@decision.RecommendedAction</td>
-                                        <td>@(decision.RecommendedEv?.ToString("0.###") ?? "N/A")</td>
+                                        <td>@(decision.PrimaryEv?.ToString("0.###") ?? "N/A")</td>
+                                        <td>@(decision.ReferenceEv?.ToString("0.###") ?? "N/A")</td>
                                     </tr>
-                                    @if (!string.IsNullOrWhiteSpace(decision.Explanation))
+                                    @if (!string.IsNullOrWhiteSpace(decision.PrimaryExplanation))
                                     {
                                         <tr>
-                                            <td colspan="8" class="text-muted small">@decision.Explanation</td>
+                                            <td colspan="9" class="text-muted small"><strong>Solver:</strong> @decision.PrimaryExplanation</td>
+                                        </tr>
+                                    }
+                                    @if (!string.IsNullOrWhiteSpace(decision.ReferenceExplanation))
+                                    {
+                                        <tr>
+                                            <td colspan="9" class="text-muted small"><strong>Monte Carlo Reference (non-decision):</strong> @decision.ReferenceExplanation</td>
                                         </tr>
                                     }
                                 }

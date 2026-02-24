@@ -3,7 +3,7 @@ using Microsoft.EntityFrameworkCore;
 using PokerAnalyzer.Application.Analysis;
 using PokerAnalyzer.Domain.Cards;
 using PokerAnalyzer.Domain.Game;
-using PokerAnalyzer.Infrastructure.Engines;
+using PokerAnalyzer.Application.Engines;
 using PokerAnalyzer.Infrastructure.Persistence;
 
 [ApiController]
@@ -11,17 +11,14 @@ using PokerAnalyzer.Infrastructure.Persistence;
 public sealed class HandAnalysisController : ControllerBase
 {
     private readonly PokerDbContext _db;
-    private readonly DummyStrategyEngine _dummyEngine;
-    private readonly MonteCarloStrategyEngine _monteCarloEngine;
+    private readonly HandAnalyzer _handAnalyzer;
 
     public HandAnalysisController(
         PokerDbContext db,
-        DummyStrategyEngine dummyEngine,
-        MonteCarloStrategyEngine monteCarloEngine)
+        HandAnalyzer handAnalyzer)
     {
         _db = db;
-        _dummyEngine = dummyEngine;
-        _monteCarloEngine = monteCarloEngine;
+        _handAnalyzer = handAnalyzer;
     }
 
     [HttpGet("hand/{handId:guid}")]
@@ -61,16 +58,10 @@ public sealed class HandAnalysisController : ControllerBase
             return NotFound("Hand not found in session.");
 
         var domainHand = MapToDomainHand(hand, session);
-        var dummyResult = new HandAnalyzer(_dummyEngine).Analyze(domainHand);
-        var monteCarloResult = new HandAnalyzer(_monteCarloEngine).Analyze(domainHand);
+        var solverResult = _handAnalyzer.Analyze(domainHand);
 
-        var engineSummaries = new[]
-        {
-            BuildEngineResult("Dummy", dummyResult, domainHand),
-            BuildEngineResult("Monte Carlo", monteCarloResult, domainHand)
-        };
-
-        return Ok(new HandSolverResponse(domainHand.HandId, handNumber, engineSummaries.Max(e => e.DecisionCount), engineSummaries));
+        var engineSummary = BuildEngineResult("CFR+ Solver", solverResult, domainHand);
+        return Ok(new HandSolverResponse(domainHand.HandId, handNumber, engineSummary.DecisionCount, new[] { engineSummary }));
     }
 
     [HttpGet("session/{sessionId:guid}")]
@@ -181,7 +172,7 @@ public sealed class HandAnalysisController : ControllerBase
         var decisionSummaries = result.Decisions
             .Select(decision =>
             {
-                var topRecommendation = decision.Recommendation.RankedActions.FirstOrDefault();
+                var primaryRecommendation = decision.Recommendation.PrimaryAction ?? decision.Recommendation.RankedActions.FirstOrDefault();
                 var villainContext = TryGetLatestVillainContext(hand, decision.ActionIndex);
                 var heroSeat = hand.Seats.FirstOrDefault(seat => seat.Id == hand.HeroId);
                 return new EngineDecisionSummary(
@@ -192,11 +183,13 @@ public sealed class HandAnalysisController : ControllerBase
                     villainContext?.Position,
                     villainContext?.Action,
                     FormatAction(decision.ActualAction.Type, decision.ActualAction.Amount),
-                    topRecommendation is null
+                    primaryRecommendation is null
                         ? "N/A"
-                        : FormatAction(topRecommendation.Type, topRecommendation.ToAmount),
-                    topRecommendation?.EstimatedEv,
-                    decision.Recommendation.Explanation
+                        : FormatAction(primaryRecommendation.Type, primaryRecommendation.ToAmount),
+                    decision.Recommendation.PrimaryEV ?? primaryRecommendation?.EstimatedEv,
+                    decision.Recommendation.ReferenceEV,
+                    decision.Recommendation.PrimaryExplanation,
+                    decision.Recommendation.ReferenceExplanation
                 );
             })
             .ToList();
@@ -259,6 +252,8 @@ public sealed class HandAnalysisController : ControllerBase
         string? VillainAction,
         string HeroAction,
         string RecommendedAction,
-        decimal? RecommendedEv,
-        string? Explanation);
+        decimal? PrimaryEv,
+        decimal? ReferenceEv,
+        string? PrimaryExplanation,
+        string? ReferenceExplanation);
 }
