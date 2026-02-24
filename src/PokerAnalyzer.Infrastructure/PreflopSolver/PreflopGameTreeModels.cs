@@ -29,6 +29,16 @@ public sealed class PreflopGameTreeNode
     public Dictionary<PreflopAction, PreflopGameTreeNode> Children { get; init; } = new();
 
     /// <summary>
+    /// Deterministic legal action ordering for this node, aligned with CFR arrays.
+    /// </summary>
+    public ActionType[] LegalActions { get; set; } = [];
+
+    /// <summary>
+    /// Number of legal actions available from this node.
+    /// </summary>
+    public int ActionCount => LegalActions.Length;
+
+    /// <summary>
     /// Optional depth of this node from root.
     /// </summary>
     public int? Depth { get; init; }
