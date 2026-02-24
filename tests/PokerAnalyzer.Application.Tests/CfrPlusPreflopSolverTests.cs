@@ -210,4 +210,24 @@ public class CfrPlusPreflopSolverTests
         }
     }
 
+
+    [Fact]
+    public void Solver_LimpedBbVsBtnOpen_HasStableBestAction()
+    {
+        var solver = new CfrPlusPreflopSolver(new PreflopTerminalEvaluator(new ApproxMonteCarloContinuationValueProvider()));
+        var config = new PreflopSolverConfig(
+            Iterations: 80,
+            EffectiveStackBb: 100m,
+            Rake: Rake,
+            PlayerCount: 2,
+            Sizing: RaiseSizingAbstraction.Default,
+            MaxTreeDepth: 8);
+
+        var solved = solver.SolvePreflop(config);
+        var key = new PreflopInfoSetKey(2, Position.BB, "LIMPED", 0, 100);
+        var query = solver.QueryStrategy(solved, key, "AsKh");
+
+        Assert.InRange(query.ActionFrequencies.Values.Sum(), 0.999, 1.001);
+        Assert.Equal(ActionType.Raise, query.BestAction);
+    }
 }
