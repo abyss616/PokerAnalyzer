@@ -5,6 +5,9 @@ namespace PokerAnalyzer.Domain.Tests;
 
 public class PreflopRulesTests
 {
+    // These tests use blind-denominated integer units where SB=1 and BB=2 ("half-BB" units).
+    // PreflopActionType.RaiseTo is always an absolute "raise-to" total contribution in this unit.
+
     [Fact]
     public void CreateInitialState_HeadsUp_PostsBlindsAndSetsActingIndex()
     {
@@ -136,7 +139,7 @@ public class PreflopRulesTests
     {
         var state = PreflopRules.CreateInitialState(playerCount: 4, stackBb: 100, smallBlindBb: 1, bigBlindBb: 2);
 
-        state = PreflopRules.ApplyAction(state, new PreflopAction(PreflopActionType.RaiseTo, 2)); // UTG
+        state = PreflopRules.ApplyAction(state, new PreflopAction(PreflopActionType.RaiseTo, 4)); // UTG opens to 2bb (4 units)
         state = PreflopRules.ApplyAction(state, new PreflopAction(PreflopActionType.Fold)); // BTN
         state = PreflopRules.ApplyAction(state, new PreflopAction(PreflopActionType.Call)); // SB
         state = PreflopRules.ApplyAction(state, new PreflopAction(PreflopActionType.Call)); // BB
@@ -151,7 +154,7 @@ public class PreflopRulesTests
     {
         var state = PreflopRules.CreateInitialState(playerCount: 4, stackBb: 100, smallBlindBb: 1, bigBlindBb: 2);
 
-        state = PreflopRules.ApplyAction(state, new PreflopAction(PreflopActionType.RaiseTo, 2)); // UTG
+        state = PreflopRules.ApplyAction(state, new PreflopAction(PreflopActionType.RaiseTo, 4)); // UTG opens to 2bb (4 units)
         state = PreflopRules.ApplyAction(state, new PreflopAction(PreflopActionType.RaiseTo, 9)); // BTN
         state = PreflopRules.ApplyAction(state, new PreflopAction(PreflopActionType.Fold)); // SB
         state = PreflopRules.ApplyAction(state, new PreflopAction(PreflopActionType.Fold)); // BB
