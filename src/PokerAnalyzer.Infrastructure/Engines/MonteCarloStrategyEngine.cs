@@ -10,7 +10,7 @@ namespace PokerAnalyzer.Infrastructure.Engines;
 /// Uses simple opponent range profiles (position + action-history heuristics)
 /// and falls back to <see cref="DummyStrategyEngine"/> when required inputs are missing.
 /// </summary>
-public sealed class MonteCarloStrategyEngine : IStrategyEngine
+public sealed class MonteCarloStrategyEngine : IMonteCarloReferenceEngine
 {
     private const decimal EvTieBreakEpsilon = 0.0001m;
     private static readonly IReadOnlyDictionary<Position, decimal> BaseRangeByPosition = new Dictionary<Position, decimal>
@@ -41,23 +41,25 @@ public sealed class MonteCarloStrategyEngine : IStrategyEngine
         _iterations = Math.Max(100, iterations);
     }
 
-    public Recommendation Recommend(HandState state, HeroContext hero)
+    public Recommendation Recommend(HandState state, HeroContext hero) => EvaluateReference(state, hero);
+
+    public Recommendation EvaluateReference(HandState state, HeroContext hero)
     {
         var legal = state.GetLegalActions(hero.HeroId);
         if (legal.Count == 0)
-            return _fallback.Recommend(state, hero);
+            return BuildReference(_fallback.Recommend(state, hero));
 
         if (hero.HeroHoleCards is null)
-            return _fallback.Recommend(state, hero) with
+            return BuildReference(_fallback.Recommend(state, hero)) with
             {
-                Explanation = "Monte Carlo fallback: hero hole cards unavailable."
+                Explanation = "Monte Carlo Reference (non-decision): hero hole cards unavailable."
             };
 
         var opponents = state.ActivePlayers.Where(id => id != hero.HeroId).ToArray();
         if (opponents.Length == 0)
-            return _fallback.Recommend(state, hero) with
+            return BuildReference(_fallback.Recommend(state, hero)) with
             {
-                Explanation = "Monte Carlo fallback: no active opponents."
+                Explanation = "Monte Carlo Reference (non-decision): no active opponents."
             };
 
         var boardCards = GetBoardCards(state.Board);
@@ -65,9 +67,9 @@ public sealed class MonteCarloStrategyEngine : IStrategyEngine
         var deck = BuildDeck(deadCards);
 
         if (deck.Count < opponents.Length * 2)
-            return _fallback.Recommend(state, hero) with
+            return BuildReference(_fallback.Recommend(state, hero)) with
             {
-                Explanation = "Monte Carlo fallback: insufficient remaining deck cards."
+                Explanation = "Monte Carlo Reference (non-decision): insufficient remaining deck cards."
             };
 
         if (state.Street == Street.Preflop)
@@ -75,10 +77,10 @@ public sealed class MonteCarloStrategyEngine : IStrategyEngine
 
         var ranked = BuildMonteCarloRanking(state, hero, legal, opponents, boardCards, deck, ResolveToAmount);
 
-        return new Recommendation(
+        return BuildReference(new Recommendation(
             ranked,
-            "Monte Carlo engine: EV-ranked actions using position + action-history opponent ranges. Solver export lookup can be layered later."
-        );
+            "Monte Carlo Reference (non-decision): EV-ranked actions using position + action-history opponent ranges."
+        ));
     }
 
     private Recommendation RecommendPreflopPolicy(
@@ -113,10 +115,21 @@ public sealed class MonteCarloStrategyEngine : IStrategyEngine
             top?.EstimatedEv,
             top is null ? 0m : (frequencies.TryGetValue(top.Type, out var f) ? f : 0m)));
 
-        return new Recommendation(
+        return BuildReference(new Recommendation(
             ranked,
-            $"Monte Carlo preflop policy: spot={spot}, class={handClass}. Range-frequency policy with MC EV tie-break + spot sizing."
-        );
+            $"Monte Carlo Reference (non-decision): spot={spot}, class={handClass}. Range-frequency policy with MC EV tie-break + spot sizing."
+        ));
+    }
+
+
+    private static Recommendation BuildReference(Recommendation recommendation)
+    {
+        var top = recommendation.RankedActions.FirstOrDefault();
+        return recommendation with
+        {
+            ReferenceEV = top?.EstimatedEv,
+            ReferenceExplanation = recommendation.Explanation ?? "Monte Carlo Reference (non-decision)."
+        };
     }
 
     private List<RecommendedAction> BuildMonteCarloRanking(

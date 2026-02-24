@@ -40,7 +40,7 @@ public class MonteCarloStrategyEngineTests
         var rec = engine.Recommend(state, ctx);
 
         Assert.NotEmpty(rec.RankedActions);
-        Assert.Contains("fallback", rec.Explanation, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Reference", rec.ReferenceExplanation, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
@@ -79,7 +79,7 @@ public class MonteCarloStrategyEngineTests
 
         Assert.NotEmpty(rec.RankedActions);
         Assert.All(rec.RankedActions, a => Assert.NotNull(a.EstimatedEv));
-        Assert.Contains("preflop policy", rec.Explanation, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Monte Carlo Reference (non-decision)", rec.ReferenceExplanation, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
@@ -118,7 +118,7 @@ public class MonteCarloStrategyEngineTests
 
         Assert.NotEmpty(rec.RankedActions);
         Assert.Equal(ActionType.Bet, rec.RankedActions[0].Type);
-        Assert.Contains("preflop policy", rec.Explanation, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Monte Carlo Reference (non-decision)", rec.ReferenceExplanation, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]

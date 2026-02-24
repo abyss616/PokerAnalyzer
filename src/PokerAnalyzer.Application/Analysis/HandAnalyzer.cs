@@ -58,7 +58,7 @@ public sealed class HandAnalyzer
                     ActualAction: a,
                     Recommendation: rec,
                     Severity: sev,
-                    Notes: rec.Explanation
+                    Notes: rec.PrimaryExplanation
                 ));
             }
 
@@ -71,11 +71,11 @@ public sealed class HandAnalyzer
 
     private static DecisionSeverity Score(BettingAction actual, Recommendation rec)
     {
-        if (rec.RankedActions.Count == 0)
+        var top = rec.PrimaryAction ?? rec.RankedActions.FirstOrDefault();
+        if (top is null)
             return DecisionSeverity.Unknown;
 
         // v0 scoring: "OK" if the top recommended action matches type (and for bet/raise/all-in matches to-amount if provided)
-        var top = rec.RankedActions[0];
 
         if (top.Type != actual.Type)
             return DecisionSeverity.Mistake;

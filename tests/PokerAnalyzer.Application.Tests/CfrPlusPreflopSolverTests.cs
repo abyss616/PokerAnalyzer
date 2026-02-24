@@ -66,7 +66,7 @@ public class CfrPlusPreflopSolverTests
             ActionHistory = [new BettingAction(Street.Preflop, villain, ActionType.Raise, new ChipAmount(25))]
         });
 
-        Assert.DoesNotContain("preflop policy", rec.Explanation ?? string.Empty, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("preflop policy", rec.ReferenceExplanation ?? string.Empty, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
@@ -92,7 +92,7 @@ public class CfrPlusPreflopSolverTests
             ActionHistory = []
         });
 
-        Assert.Contains("CFR+ preflop solver", rec.Explanation ?? string.Empty, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("CFR+ preflop solver", rec.PrimaryExplanation ?? string.Empty, StringComparison.OrdinalIgnoreCase);
         Assert.NotEmpty(rec.RankedActions);
     }
 }

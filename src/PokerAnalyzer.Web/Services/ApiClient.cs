@@ -36,8 +36,10 @@ public sealed class ApiClient
         string? VillainAction,
         string HeroAction,
         string RecommendedAction,
-        decimal? RecommendedEv,
-        string? Explanation);
+        decimal? PrimaryEv,
+        decimal? ReferenceEv,
+        string? PrimaryExplanation,
+        string? ReferenceExplanation);
 
     public async Task<UploadHandHistoryResult> UploadHandHistoryXmlAsync(
         IBrowserFile file,
