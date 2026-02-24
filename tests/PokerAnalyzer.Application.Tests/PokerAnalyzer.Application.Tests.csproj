@@ -12,5 +12,6 @@
     <ProjectReference Include="..\..\src\PokerAnalyzer.Application\PokerAnalyzer.Application.csproj" />
     <ProjectReference Include="..\..\src\PokerAnalyzer.Domain\PokerAnalyzer.Domain.csproj" />
     <ProjectReference Include="..\..\src\PokerAnalyzer.Infrastructure\PokerAnalyzer.Infrastructure.csproj" />
+    <ProjectReference Include="..\..\src\PokerAnalyzer.Api\PokerAnalyzer.Api.csproj" />
   </ItemGroup>
 </Project>
