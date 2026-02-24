@@ -79,6 +79,7 @@ public sealed class PreflopGameTreeBuilder
                     State = state,
                     IsTerminal = true,
                     Children = new Dictionary<PreflopAction, PreflopGameTreeNode>(),
+                    LegalActions = [],
                     Depth = depth
                 };
             }
@@ -91,6 +92,7 @@ public sealed class PreflopGameTreeBuilder
                     State = state,
                     IsTerminal = true,
                     Children = new Dictionary<PreflopAction, PreflopGameTreeNode>(),
+                    LegalActions = [],
                     Depth = depth
                 };
             }
@@ -106,6 +108,7 @@ public sealed class PreflopGameTreeBuilder
                 State = state,
                 IsTerminal = false,
                 Children = new Dictionary<PreflopAction, PreflopGameTreeNode>(),
+                LegalActions = [],
                 Depth = depth
             };
 
@@ -115,6 +118,9 @@ public sealed class PreflopGameTreeBuilder
             actions = FilterRaiseActions(actions, state, config.EffectiveRaiseSizing)
                 .OrderBy(action => action, PreflopActionComparer.Instance)
                 .ToList();
+            node.LegalActions = actions
+                .Select(ConvertAction)
+                .ToArray();
 
             foreach (var action in actions)
             {
@@ -139,6 +145,16 @@ public sealed class PreflopGameTreeBuilder
             return node;
         }
     }
+
+    private static ActionType ConvertAction(PreflopAction action) => action.Type switch
+    {
+        PreflopActionType.Fold => ActionType.Fold,
+        PreflopActionType.Check => ActionType.Check,
+        PreflopActionType.Call => ActionType.Call,
+        PreflopActionType.RaiseTo => ActionType.Raise,
+        PreflopActionType.AllIn => ActionType.AllIn,
+        _ => throw new ArgumentOutOfRangeException(nameof(action), action.Type, "Unsupported preflop action.")
+    };
 
     public IReadOnlyList<PreflopNode> Build()
     {

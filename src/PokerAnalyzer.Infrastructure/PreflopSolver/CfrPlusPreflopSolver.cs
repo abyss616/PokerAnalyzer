@@ -83,10 +83,7 @@ public sealed class CfrPlusPreflopSolver
         }
 
         var actor = node.State.ActingIndex;
-        var legalActions = node.Children.Keys
-            .OrderBy(action => action, PreflopActionComparer.Instance)
-            .Select(ConvertAction)
-            .ToArray();
+        var legalActions = node.LegalActions;
 
         if (legalActions.Length == 0)
             return (double)EvaluateTerminalUtility(node.State, config);
@@ -94,25 +91,28 @@ public sealed class CfrPlusPreflopSolver
         var infoSet = BuildInfoSetKey(node.State, history, positions, effectiveStackBucket);
         if (!infosets.TryGetValue(infoSet, out var data))
         {
-            data = new InfoSetData(legalActions);
+            data = new InfoSetData(legalActions, node.Children.Keys.OrderBy(action => action, PreflopActionComparer.Instance).ToArray());
             infosets[infoSet] = data;
         }
 
-        var strategy = RegretMatchingPlus(data.LegalActions, data.RegretSum);
-        var actionUtilities = new Dictionary<ActionType, double>(data.LegalActions.Length);
+        var strategy = RegretMatchingPlus(data.RegretSum);
+        var actionUtilities = new double[data.ActionCount];
         var nodeUtility = 0d;
 
-        foreach (var childEntry in node.Children.OrderBy(k => k.Key, PreflopActionComparer.Instance))
+        for (var actionIndex = 0; actionIndex < data.ActionCount; actionIndex++)
         {
-            var action = ConvertAction(childEntry.Key);
+            var action = data.LegalActions[actionIndex];
+            if (!node.Children.TryGetValue(data.NodeActions[actionIndex], out var child))
+                continue;
+
             var nextHistory = new List<ActionType>(history.Count + 1);
             nextHistory.AddRange(history);
             nextHistory.Add(action);
             var nextReach = (double[])reach.Clone();
-            nextReach[actor] *= strategy[action];
-            var utility = Cfr(childEntry.Value, nextHistory, nextReach, infosets, positions, effectiveStackBucket, config);
-            actionUtilities[action] = utility;
-            nodeUtility += strategy[action] * utility;
+            nextReach[actor] *= strategy[actionIndex];
+            var utility = Cfr(child, nextHistory, nextReach, infosets, positions, effectiveStackBucket, config);
+            actionUtilities[actionIndex] = utility;
+            nodeUtility += strategy[actionIndex] * utility;
         }
 
         data.HeroUtilitySum += nodeUtility;
@@ -126,12 +126,12 @@ public sealed class CfrPlusPreflopSolver
                 otherReach *= reach[player];
         }
 
-        foreach (var action in data.LegalActions)
+        for (var actionIndex = 0; actionIndex < data.ActionCount; actionIndex++)
         {
-            var actorViewActionUtility = actor == 0 ? actionUtilities[action] : -actionUtilities[action];
-            var updatedRegret = data.RegretSum[action] + ((actorViewActionUtility - actorViewNodeUtility) * otherReach);
-            data.RegretSum[action] = Math.Max(0d, updatedRegret);
-            data.StrategySum[action] += reach[actor] * strategy[action];
+            var actorViewActionUtility = actor == 0 ? actionUtilities[actionIndex] : -actionUtilities[actionIndex];
+            var updatedRegret = data.RegretSum[actionIndex] + ((actorViewActionUtility - actorViewNodeUtility) * otherReach);
+            data.RegretSum[actionIndex] = Math.Max(0d, updatedRegret);
+            data.StrategySum[actionIndex] += reach[actor] * strategy[actionIndex];
         }
 
         return nodeUtility;
@@ -180,16 +180,18 @@ public sealed class CfrPlusPreflopSolver
 
     private static Dictionary<ActionType, double> NormalizeAverageStrategy(
         IReadOnlyList<ActionType> legalActions,
-        IReadOnlyDictionary<ActionType, double> strategySum)
+        IReadOnlyList<double> strategySum)
     {
-        var total = legalActions.Sum(action => strategySum.GetValueOrDefault(action));
+        var total = strategySum.Sum();
         if (total <= 0)
         {
             var uniform = 1d / legalActions.Count;
             return legalActions.ToDictionary(action => action, _ => uniform);
         }
 
-        return legalActions.ToDictionary(action => action, action => strategySum.GetValueOrDefault(action) / total);
+        return legalActions
+            .Select((action, index) => new { action, index })
+            .ToDictionary(x => x.action, x => strategySum[x.index] / total);
     }
 
     private static Dictionary<string, Dictionary<ActionType, double>> BuildHandConditionedMixes(
@@ -246,30 +248,31 @@ public sealed class CfrPlusPreflopSolver
         return high + (low * 0.35m) + pair + suited;
     }
 
-    private static Dictionary<ActionType, double> RegretMatchingPlus(
-        IReadOnlyList<ActionType> legalActions,
-        IReadOnlyDictionary<ActionType, double> regrets)
+    private static double[] RegretMatchingPlus(IReadOnlyList<double> regrets)
     {
-        var positives = legalActions.ToDictionary(action => action, action => Math.Max(0d, regrets.GetValueOrDefault(action)));
-        var positiveSum = positives.Values.Sum();
-        if (positiveSum <= 0)
+        var strategy = new double[regrets.Count];
+        var positiveSum = 0d;
+
+        for (var i = 0; i < regrets.Count; i++)
         {
-            var uniform = 1d / legalActions.Count;
-            return legalActions.ToDictionary(action => action, _ => uniform);
+            strategy[i] = Math.Max(0d, regrets[i]);
+            positiveSum += strategy[i];
         }
 
-        return legalActions.ToDictionary(action => action, action => positives[action] / positiveSum);
-    }
+        if (positiveSum <= 0)
+        {
+            var uniform = 1d / regrets.Count;
+            for (var i = 0; i < strategy.Length; i++)
+                strategy[i] = uniform;
 
-    private static ActionType ConvertAction(PreflopAction action) => action.Type switch
-    {
-        PreflopActionType.Fold => ActionType.Fold,
-        PreflopActionType.Check => ActionType.Check,
-        PreflopActionType.Call => ActionType.Call,
-        PreflopActionType.RaiseTo => ActionType.Raise,
-        PreflopActionType.AllIn => ActionType.AllIn,
-        _ => throw new ArgumentOutOfRangeException(nameof(action), action.Type, "Unsupported preflop action.")
-    };
+            return strategy;
+        }
+
+        for (var i = 0; i < strategy.Length; i++)
+            strategy[i] /= positiveSum;
+
+        return strategy;
+    }
 
     private static string Normalize(string hand)
     {
@@ -305,18 +308,23 @@ public sealed class CfrPlusPreflopSolver
 
     private sealed class InfoSetData
     {
-        public InfoSetData(IReadOnlyList<ActionType> legalActions)
+        public InfoSetData(ActionType[] legalActions, IReadOnlyList<PreflopAction> nodeActions)
         {
             LegalActions = legalActions;
-            RegretSum = legalActions.ToDictionary(action => action, _ => 0d);
-            StrategySum = legalActions.ToDictionary(action => action, _ => 0d);
+            NodeActions = nodeActions.ToArray();
+            RegretSum = new double[legalActions.Length];
+            StrategySum = new double[legalActions.Length];
         }
 
-        public IReadOnlyList<ActionType> LegalActions { get; }
+        public ActionType[] LegalActions { get; }
 
-        public Dictionary<ActionType, double> RegretSum { get; }
+        public PreflopAction[] NodeActions { get; }
 
-        public Dictionary<ActionType, double> StrategySum { get; }
+        public int ActionCount => LegalActions.Length;
+
+        public double[] RegretSum { get; }
+
+        public double[] StrategySum { get; }
 
         public double HeroUtilitySum { get; set; }
 
