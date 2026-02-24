@@ -24,6 +24,7 @@ public sealed class HandAnalyzer
 
         var heroCtx = new HeroContext(hand.HeroId, hand.SmallBlind, hand.BigBlind);
         var positionMap = hand.Seats.ToDictionary(s => s.Id, s => s.Position);
+        ValidateDistinctHeroAndVillainPositions(hand, positionMap);
 
         var state = HandState.CreateNewHand(hand.Seats, hand.SmallBlind, hand.BigBlind, Street.Preflop, hand.Board);
 
@@ -67,6 +68,26 @@ public sealed class HandAnalyzer
         }
 
         return new HandAnalysisResult(hand.HandId, decisions);
+    }
+
+
+    private static void ValidateDistinctHeroAndVillainPositions(
+        Domain.HandHistory.Hand hand,
+        IReadOnlyDictionary<PlayerId, Position> positionMap)
+    {
+        if (!positionMap.TryGetValue(hand.HeroId, out var heroPosition))
+            throw new InvalidOperationException("Invalid hand state: Hero seat was not found in position map.");
+
+        var villainPosition = hand.Seats
+            .Where(seat => seat.Id != hand.HeroId)
+            .Select(seat => positionMap[seat.Id])
+            .FirstOrDefault(position => position == heroPosition);
+
+        if (villainPosition == heroPosition)
+        {
+            throw new InvalidOperationException(
+                $"Invalid hand state: Hero and Villain cannot have the same position ({heroPosition}).");
+        }
     }
 
     private static DecisionSeverity Score(BettingAction actual, Recommendation rec)

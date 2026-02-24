@@ -57,6 +57,9 @@ public sealed class HandAnalysisController : ControllerBase
         if (hand is null)
             return NotFound("Hand not found in session.");
 
+        if (HasInvalidHeroVillainPosition(hand))
+            return BadRequest("Invalid hand data: Hero and Villain positions cannot be identical.");
+
         var domainHand = MapToDomainHand(hand, session);
         var solverResult = _handAnalyzer.Analyze(domainHand);
 
@@ -70,6 +73,16 @@ public sealed class HandAnalysisController : ControllerBase
     CancellationToken ct)
     {
         return null!;
+    }
+
+
+    private static bool HasInvalidHeroVillainPosition(Hand hand)
+    {
+        if (hand.Players.Count == 0)
+            return false;
+
+        var hero = hand.Players.FirstOrDefault(p => p.IsHero) ?? hand.Players[0];
+        return hand.Players.Any(p => p.Id != hero.Id && p.PlayerPosition == hero.PlayerPosition);
     }
 
     private static PokerAnalyzer.Domain.HandHistory.Hand MapToDomainHand(
@@ -96,6 +109,17 @@ public sealed class HandAnalysisController : ControllerBase
 
         var hero = hand.Players.FirstOrDefault(p => p.IsHero) ?? hand.Players[0];
         var heroId = playerIds[hero.Name];
+        var heroPosition = MapPosition(hero.PlayerPosition);
+        var hasDuplicateVillainPosition = hand.Players.Any(p =>
+            !string.Equals(p.Name, hero.Name, StringComparison.OrdinalIgnoreCase) &&
+            MapPosition(p.PlayerPosition) == heroPosition);
+
+        if (hasDuplicateVillainPosition)
+        {
+            throw new InvalidOperationException(
+                $"Invalid hand state: Hero and Villain cannot have the same position ({heroPosition}).");
+        }
+
         var holeCards = ParseHoleCards(hand.HeroHoleCards);
 
         var actions = hand.Actions
