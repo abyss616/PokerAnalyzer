@@ -1,4 +1,5 @@
 using PokerAnalyzer.Domain.Game;
+using PokerAnalyzer.Domain.PreflopTree;
 
 namespace PokerAnalyzer.Infrastructure.PreflopSolver;
 
@@ -15,6 +16,8 @@ public sealed class PreflopGameTreeBuilder
     private readonly decimal _smallBlindBb;
     private readonly decimal _bigBlindBb;
     private readonly PreflopSizingConfig _sizing;
+    private readonly PreflopTreeBuildConfig _buildConfig;
+    private readonly Func<PreflopPublicState, StateKey> _stateKeyBuilder;
 
     public PreflopGameTreeBuilder(int playerCount, decimal effectiveStackBb, decimal smallBlindBb, decimal bigBlindBb, RakeConfig rake, PreflopSizingConfig sizing)
     {
@@ -25,6 +28,46 @@ public sealed class PreflopGameTreeBuilder
         _smallBlindBb = smallBlindBb;
         _bigBlindBb = bigBlindBb;
         _sizing = sizing;
+        _buildConfig = new PreflopTreeBuildConfig();
+        _stateKeyBuilder = state => StateKeyBuilder.Build(state, Street.Preflop);
+    }
+
+    /// <summary>
+    /// Initializes a game-tree builder with explicit tree-build configuration and state-key strategy.
+    /// </summary>
+    public PreflopGameTreeBuilder(
+        int playerCount,
+        decimal effectiveStackBb,
+        decimal smallBlindBb,
+        decimal bigBlindBb,
+        RakeConfig rake,
+        PreflopSizingConfig sizing,
+        PreflopTreeBuildConfig buildConfig,
+        Func<PreflopPublicState, StateKey>? stateKeyBuilder = null)
+        : this(playerCount, effectiveStackBb, smallBlindBb, bigBlindBb, rake, sizing)
+    {
+        _buildConfig = buildConfig;
+        _stateKeyBuilder = stateKeyBuilder ?? (state => StateKeyBuilder.Build(state, Street.Preflop));
+    }
+
+    /// <summary>
+    /// Creates the root-only preflop tree scaffold used by upcoming tree-expansion steps.
+    /// </summary>
+    public PreflopGameTree BuildTree()
+    {
+        var positions = GetTablePositions(_playerCount);
+        var rootState = CreateInitialState(positions);
+        var _ = _stateKeyBuilder(rootState);
+
+        return new PreflopGameTree(
+            new PreflopGameTreeNode
+            {
+                State = rootState,
+                IsTerminal = _buildConfig.MaxDepth <= 0,
+                Children = new Dictionary<PreflopAction, PreflopGameTreeNode>(),
+                Depth = 0
+            },
+            NodeCount: 1);
     }
 
     public IReadOnlyList<PreflopNode> Build()
@@ -39,6 +82,46 @@ public sealed class PreflopGameTreeBuilder
         var nodes = new Dictionary<PreflopInfoSetKey, PreflopNode>();
         Expand(root, nodes);
         return nodes.Values.ToList();
+    }
+
+    private PreflopPublicState CreateInitialState(IReadOnlyList<Position> positions)
+    {
+        var sbIndex = FindIndex(positions, Position.SB);
+        var bbIndex = FindIndex(positions, Position.BB);
+        var contrib = new int[positions.Count];
+
+        if (bbIndex >= 0)
+            contrib[bbIndex] = (int)Math.Round(_bigBlindBb);
+
+        if (sbIndex >= 0)
+            contrib[sbIndex] = (int)Math.Round(_smallBlindBb);
+
+        return new PreflopPublicState
+        {
+            PlayerCount = positions.Count,
+            ActingIndex = 0,
+            InHand = Enumerable.Repeat(true, positions.Count).ToArray(),
+            ContribBb = contrib,
+            StackBb = Enumerable.Repeat((int)Math.Round(_effectiveStackBb), positions.Count).ToArray(),
+            CurrentToCallBb = (int)Math.Round(_bigBlindBb),
+            LastRaiseToBb = (int)Math.Round(_bigBlindBb),
+            RaisesCount = 0,
+            PotBb = contrib.Sum(),
+            LastAggressorIndex = bbIndex,
+            LastActionWasRaiseByIndex = bbIndex,
+            BettingClosed = false
+        };
+    }
+
+    private static int FindIndex(IReadOnlyList<Position> positions, Position target)
+    {
+        for (var i = 0; i < positions.Count; i++)
+        {
+            if (positions[i] == target)
+                return i;
+        }
+
+        return -1;
     }
 
     public static IReadOnlyList<Position> GetTablePositions(int playerCount) => playerCount switch
