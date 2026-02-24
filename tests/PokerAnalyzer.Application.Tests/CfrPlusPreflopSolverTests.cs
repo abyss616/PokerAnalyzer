@@ -1,6 +1,8 @@
 using PokerAnalyzer.Application.Engines;
 using PokerAnalyzer.Domain.Cards;
 using PokerAnalyzer.Domain.Game;
+using Microsoft.Extensions.DependencyInjection;
+using PokerAnalyzer.Infrastructure;
 using PokerAnalyzer.Infrastructure.Engines;
 using PokerAnalyzer.Infrastructure.PreflopSolver;
 using Xunit;
@@ -229,5 +231,45 @@ public class CfrPlusPreflopSolverTests
 
         Assert.InRange(query.ActionFrequencies.Values.Sum(), 0.999, 1.001);
         Assert.Equal(ActionType.Raise, query.BestAction);
+    }
+
+    [Fact]
+    public void AddPokerAnalyzer_ResolvesCfrEngine_WithSixMaxRecommendationAndFiniteEv()
+    {
+        var services = new ServiceCollection();
+        services.AddPokerAnalyzer();
+        using var provider = services.BuildServiceProvider();
+
+        var config = provider.GetRequiredService<PreflopSolverConfig>();
+        Assert.Equal(6, config.PlayerCount);
+
+        var engine = provider.GetRequiredService<IStrategyEngine>();
+        var hero = PlayerId.New();
+        var players = new[]
+        {
+            new { Id = hero, Name = "Hero", Seat = 1, Position = Position.UTG },
+            new { Id = PlayerId.New(), Name = "CO", Seat = 2, Position = Position.CO },
+            new { Id = PlayerId.New(), Name = "BTN", Seat = 3, Position = Position.BTN },
+            new { Id = PlayerId.New(), Name = "SB", Seat = 4, Position = Position.SB },
+            new { Id = PlayerId.New(), Name = "BB", Seat = 5, Position = Position.BB },
+            new { Id = PlayerId.New(), Name = "HJ", Seat = 6, Position = Position.HJ }
+        };
+
+        var state = HandState.CreateNewHand(
+            players.Select(p => new PlayerSeat(p.Id, p.Name, p.Seat, p.Position, new ChipAmount(10_000))).ToList(),
+            new ChipAmount(5),
+            new ChipAmount(10));
+
+        var recommendation = engine.Recommend(state, new HeroContext(hero, new ChipAmount(5), new ChipAmount(10))
+        {
+            HeroHoleCards = HoleCards.Parse("Ah5h"),
+            PlayerPositions = players.ToDictionary(p => p.Id, p => p.Position),
+            ActionHistory = []
+        });
+
+        Assert.NotEmpty(recommendation.RankedActions);
+        Assert.NotNull(recommendation.PrimaryAction);
+        Assert.NotNull(recommendation.PrimaryEV);
+        Assert.True(double.IsFinite((double)recommendation.PrimaryEV!.Value));
     }
 }

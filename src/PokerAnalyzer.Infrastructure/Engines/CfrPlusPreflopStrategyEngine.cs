@@ -1,4 +1,5 @@
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.DependencyInjection;
 using PokerAnalyzer.Application.Engines;
 using PokerAnalyzer.Domain.Game;
 using PokerAnalyzer.Infrastructure.PreflopSolver;
@@ -16,11 +17,12 @@ public sealed class CfrPlusPreflopStrategyEngine : IStrategyEngine
         : this(
             monteCarloReference,
             new PreflopSolverCache(new CfrPlusPreflopSolver(new PreflopTerminalEvaluator(new ApproxMonteCarloContinuationValueProvider()))),
-            new PreflopSolverConfig(140, 100m, new RakeConfig(0.05m, 1.0m, NoFlopNoDrop: true), 2, RaiseSizingAbstraction.Default),
+            new PreflopSolverConfig(140, 100m, new RakeConfig(0.05m, 1.0m, NoFlopNoDrop: true), 6, RaiseSizingAbstraction.Default),
             Microsoft.Extensions.Logging.Abstractions.NullLogger<CfrPlusPreflopStrategyEngine>.Instance)
     {
     }
 
+    [ActivatorUtilitiesConstructor]
     public CfrPlusPreflopStrategyEngine(
         IMonteCarloReferenceEngine monteCarloReference,
         PreflopSolverCache cache,

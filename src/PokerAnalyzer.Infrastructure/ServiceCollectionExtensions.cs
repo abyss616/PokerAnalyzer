@@ -16,7 +16,7 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<DummyStrategyEngine>();
         services.AddSingleton<MonteCarloStrategyEngine>();
         services.AddSingleton<IMonteCarloReferenceEngine>(sp => sp.GetRequiredService<MonteCarloStrategyEngine>());
-        services.AddSingleton(new PreflopSolverConfig(140, 100m, new RakeConfig(0.05m, 1.0m, NoFlopNoDrop: true), 2, RaiseSizingAbstraction.Default));
+        services.AddSingleton(new PreflopSolverConfig(140, 100m, new RakeConfig(0.05m, 1.0m, NoFlopNoDrop: true), 6, RaiseSizingAbstraction.Default));
         services.AddSingleton(new PreflopTerminalEvaluator(new ApproxMonteCarloContinuationValueProvider()));
         services.AddSingleton<CfrPlusPreflopSolver>();
         services.AddSingleton<PreflopSolverCache>();
