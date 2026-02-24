@@ -4,6 +4,7 @@ using PokerAnalyzer.Domain.Game;
 using PokerAnalyzer.Infrastructure.Engines;
 using PokerAnalyzer.Infrastructure.PreflopSolver;
 using Xunit;
+using SolverSizingConfig = PokerAnalyzer.Infrastructure.PreflopSolver.PreflopSizingConfig;
 
 namespace PokerAnalyzer.Application.Tests;
 
@@ -19,7 +20,7 @@ public class CfrPlusPreflopSolverTests
     [InlineData(6)]
     public void TreeBuilds_UnopenedFirstIn_ForSupportedPlayerCounts(int playerCount)
     {
-        var builder = new PreflopGameTreeBuilder(playerCount, 100m, 0.5m, 1m, Rake, PreflopSizingConfig.Default);
+        var builder = new PreflopGameTreeBuilder(playerCount, 100m, 0.5m, 1m, Rake, SolverSizingConfig.Default);
         var nodes = builder.Build();
 
         var firstActor = PreflopGameTreeBuilder.GetTablePositions(playerCount)[0];
@@ -29,7 +30,7 @@ public class CfrPlusPreflopSolverTests
     [Fact]
     public void HeadsUp_ActionOrder_IsBtnThenBb()
     {
-        var nodes = new PreflopGameTreeBuilder(2, 100m, 0.5m, 1m, Rake, PreflopSizingConfig.Default).Build();
+        var nodes = new PreflopGameTreeBuilder(2, 100m, 0.5m, 1m, Rake, SolverSizingConfig.Default).Build();
         Assert.Contains(nodes, n => n.InfoSet.HistorySignature == "UNOPENED" && n.InfoSet.ActingPosition == Position.BTN);
         Assert.Contains(nodes, n => n.InfoSet.HistorySignature == "OPEN" && n.InfoSet.ActingPosition == Position.BB);
     }
@@ -42,7 +43,7 @@ public class CfrPlusPreflopSolverTests
     [InlineData(6)]
     public void TreeContains_VsOpen_Vs3Bet_Vs4Bet_AndAllIn(int playerCount)
     {
-        var nodes = new PreflopGameTreeBuilder(playerCount, 100m, 0.5m, 1m, Rake, PreflopSizingConfig.Default).Build();
+        var nodes = new PreflopGameTreeBuilder(playerCount, 100m, 0.5m, 1m, Rake, SolverSizingConfig.Default).Build();
         Assert.Contains(nodes, n => n.InfoSet.HistorySignature is "OPEN" or "OPEN_CALL");
         Assert.Contains(nodes, n => n.InfoSet.HistorySignature.Contains("3BET", StringComparison.Ordinal));
         Assert.Contains(nodes, n => n.InfoSet.HistorySignature.Contains("4BET", StringComparison.Ordinal));

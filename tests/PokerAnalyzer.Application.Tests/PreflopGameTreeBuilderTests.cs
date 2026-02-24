@@ -3,6 +3,7 @@ using PokerAnalyzer.Domain.Game;
 using PokerAnalyzer.Domain.PreflopTree;
 using PokerAnalyzer.Infrastructure.PreflopSolver;
 using Xunit;
+using SolverSizingConfig = PokerAnalyzer.Infrastructure.PreflopSolver.PreflopSizingConfig;
 
 namespace PokerAnalyzer.Application.Tests;
 
@@ -70,8 +71,8 @@ public class PreflopGameTreeBuilderTests
     private static PreflopGameTreeBuilder CreateBuilder(PreflopTreeBuildConfig? config = null)
     {
         return config is null
-            ? new PreflopGameTreeBuilder(2, 100m, 0.5m, 1m, Rake, PreflopSizingConfig.Default)
-            : new PreflopGameTreeBuilder(2, 100m, 0.5m, 1m, Rake, PreflopSizingConfig.Default, config);
+            ? new PreflopGameTreeBuilder(2, 100m, 0.5m, 1m, Rake, SolverSizingConfig.Default)
+            : new PreflopGameTreeBuilder(2, 100m, 0.5m, 1m, Rake, SolverSizingConfig.Default, config);
     }
 
     private static IEnumerable<PreflopGameTreeNode> Traverse(PreflopGameTreeNode root)
