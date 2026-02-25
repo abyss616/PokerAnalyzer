@@ -51,62 +51,6 @@
             Run Analysis
         </button>
 
-        @if (_analysisSteps.Count > 0)
-        {
-            <div class="mt-3">
-                <h5>Analysis Steps</h5>
-                <table class="table table-sm">
-                    <thead>
-                    <tr>
-                        <th>Time</th>
-                        <th>Title</th>
-                        <th>Details</th>
-                        <th>Status</th>
-                    </tr>
-                    </thead>
-                    <tbody>
-                    @foreach (var step in _analysisSteps)
-                    {
-                        <tr>
-                            <td>@step.Time.ToString("HH:mm:ss")</td>
-                            <td>@step.Title</td>
-                            <td>@step.Details</td>
-                            <td>@step.Status</td>
-                        </tr>
-                    }
-                    </tbody>
-                </table>
-            </div>
-        }
-
-
-        @if (_solverResult?.Logs?.Count > 0)
-        {
-            <div class="mt-3">
-                <h5>Solver Logs (current hand)</h5>
-                <table class="table table-sm table-striped">
-                    <thead>
-                    <tr>
-                        <th>Time (UTC)</th>
-                        <th>Level</th>
-                        <th>Source</th>
-                        <th>Message</th>
-                    </tr>
-                    </thead>
-                    <tbody>
-                    @foreach (var log in _solverResult.Logs)
-                    {
-                        <tr>
-                            <td>@log.Timestamp.ToString("HH:mm:ss.fff")</td>
-                            <td>@log.Level</td>
-                            <td>@log.Category</td>
-                            <td style="white-space:pre-wrap">@log.Message</td>
-                        </tr>
-                    }
-                    </tbody>
-                </table>
-            </div>
-        }
 
         @if (!string.IsNullOrWhiteSpace(_solverStatus))
         {
@@ -276,6 +220,66 @@
                 </Columns>
             </RadzenDataGrid>
         </div>
+    </div>
+}
+
+
+
+
+@if (_analysisSteps.Count > 0)
+{
+    <div class="mt-3">
+        <h5>Analysis Steps</h5>
+        <table class="table table-sm">
+            <thead>
+                <tr>
+                    <th>Time</th>
+                    <th>Title</th>
+                    <th>Details</th>
+                    <th>Status</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var step in _analysisSteps)
+                {
+                    <tr>
+                        <td>@step.Time.ToString("HH:mm:ss")</td>
+                        <td>@step.Title</td>
+                        <td>@step.Details</td>
+                        <td>@step.Status</td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+}
+
+
+@if (_solverResult?.Logs?.Count > 0)
+{
+    <div class="mt-3">
+        <h5>Solver Logs (current hand)</h5>
+        <table class="table table-sm table-striped">
+            <thead>
+                <tr>
+                    <th>Time (UTC)</th>
+                    <th>Level</th>
+                    <th>Source</th>
+                    <th>Message</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var log in _solverResult.Logs)
+                {
+                    <tr>
+                        <td>@log.Timestamp.ToString("HH:mm:ss.fff")</td>
+                        <td>@log.Level</td>
+                        <td>@log.Category</td>
+                        <td style="white-space:pre-wrap">@log.Message</td>
+                    </tr>
+                }
+            </tbody>
+        </table>
     </div>
 }
 
