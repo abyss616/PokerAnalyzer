@@ -1,7 +1,6 @@
+using Microsoft.Extensions.Logging;
 using PokerAnalyzer.Application.Engines;
 using PokerAnalyzer.Domain.Game;
-using PokerAnalyzer.Domain.HandHistory;
-using Microsoft.Extensions.Logging;
 
 namespace PokerAnalyzer.Application.Analysis;
 
