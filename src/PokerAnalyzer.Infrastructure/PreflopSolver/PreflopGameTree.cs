@@ -229,6 +229,7 @@ public sealed class PreflopGameTreeBuilder
         PreflopPublicState state,
         RaiseSizingAbstraction abstraction)
     {
+        var actionList = actions.ToList();
         var raisesCount = state.RaisesCount;
         var allowed = raisesCount switch
         {
@@ -241,7 +242,14 @@ public sealed class PreflopGameTreeBuilder
             .Select(x => (int)Math.Round(x))
             .ToHashSet();
 
-        foreach (var action in actions)
+        var raiseActions = actionList
+            .Where(action => action.Type == PreflopActionType.RaiseTo)
+            .OrderBy(action => action.RaiseToBb)
+            .ToList();
+
+        var keptRaiseTo = new HashSet<int>();
+
+        foreach (var action in actionList)
         {
             if (action.Type != PreflopActionType.RaiseTo)
             {
@@ -251,9 +259,16 @@ public sealed class PreflopGameTreeBuilder
 
             if (allowedRaiseTo.Contains(action.RaiseToBb))
             {
+                keptRaiseTo.Add(action.RaiseToBb);
                 yield return action;
             }
         }
+
+        if (raiseActions.Count == 0 || keptRaiseTo.Count > 0)
+            yield break;
+
+        var fallbackRaise = raiseActions[0];
+        yield return fallbackRaise;
     }
 
     public static IReadOnlyList<Position> GetTablePositions(int playerCount) => playerCount switch
