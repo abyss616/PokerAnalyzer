@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using Microsoft.Extensions.Logging;
 
 namespace PokerAnalyzer.Infrastructure.PreflopSolver;
 
@@ -7,15 +8,25 @@ public sealed record PreflopSolverCacheKey(int PlayerCount, int EffectiveStackBb
 public sealed class PreflopSolverCache : IPreflopStrategyStore
 {
     private readonly CfrPlusPreflopSolver _solver;
+    private readonly ILogger<PreflopSolverCache> _logger;
     private readonly ConcurrentDictionary<PreflopSolverCacheKey, Lazy<Task<PreflopSolveResult>>> _cache = new();
 
     public PreflopSolverCache(CfrPlusPreflopSolver solver)
+        : this(solver, Microsoft.Extensions.Logging.Abstractions.NullLogger<PreflopSolverCache>.Instance)
+    {
+    }
+
+    public PreflopSolverCache(CfrPlusPreflopSolver solver, ILogger<PreflopSolverCache> logger)
     {
         _solver = solver;
+        _logger = logger;
     }
 
     private int _solveCount;
     public int SolveCount => _solveCount;
+    public int CacheEntries => _cache.Count;
+
+    public bool ContainsKey(PreflopSolverCacheKey key) => _cache.ContainsKey(key);
 
     public PreflopSolveResult GetOrSolve(PreflopSolverConfig config)
         => GetOrSolveAsync(config, CancellationToken.None).GetAwaiter().GetResult();
@@ -24,13 +35,24 @@ public sealed class PreflopSolverCache : IPreflopStrategyStore
     {
         var sizing = config.ResolveSizing();
         var key = new PreflopSolverCacheKey(config.PlayerCount, (int)Math.Round(config.EffectiveStackBb), config.Rake, Fingerprint(sizing));
+        var hadEntry = _cache.ContainsKey(key);
+        _logger.LogInformation("Solve requested. CacheKey={CacheKey}, AlreadySolving={AlreadySolving}, CacheHit={CacheHit}, CacheMiss={CacheMiss}", key, hadEntry, hadEntry, !hadEntry);
+        var started = System.Diagnostics.Stopwatch.StartNew();
+
         var lazy = _cache.GetOrAdd(key, _ => new Lazy<Task<PreflopSolveResult>>(() => Task.Run(() =>
         {
             Interlocked.Increment(ref _solveCount);
             return _solver.SolvePreflop(config with { Sizing = new RaiseSizingAbstraction(sizing.OpenSizesBb, sizing.ThreeBetSizeMultipliers, sizing.FourBetSizeMultipliers, sizing.JamThresholdStackBb) });
         }, CancellationToken.None)));
 
-        return await lazy.Value.WaitAsync(ct);
+        var result = await lazy.Value.WaitAsync(ct);
+        started.Stop();
+        _logger.LogInformation("Solve finished. DurationMs={DurationMs}, SolveCount={SolveCount}, ConfigSummary={ConfigSummary}",
+            started.ElapsedMilliseconds,
+            _solveCount,
+            $"P{config.PlayerCount}/Eff{config.EffectiveStackBb}/It{config.Iterations}/Depth{config.MaxTreeDepth}");
+
+        return result;
     }
 
     public StrategyQueryResult Lookup(PreflopInfoSetKey key, string heroHand)

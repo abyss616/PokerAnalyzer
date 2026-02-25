@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Logging;
 using PokerAnalyzer.Domain.Cards;
 using PokerAnalyzer.Domain.Game;
 using PokerAnalyzer.Domain.PreflopTree;
@@ -10,15 +11,33 @@ public sealed class CfrPlusPreflopSolver
     private static readonly IReadOnlyDictionary<string, decimal> HandStrengthByClass =
         PreflopRange.AllClasses.ToDictionary(h => h.Label, h => EvaluateHandClassStrength(h.Label));
     private readonly PreflopTerminalEvaluator _terminal;
+    private readonly ILogger<CfrPlusPreflopSolver> _logger;
 
     public CfrPlusPreflopSolver(PreflopTerminalEvaluator terminal)
+        : this(terminal, Microsoft.Extensions.Logging.Abstractions.NullLogger<CfrPlusPreflopSolver>.Instance)
+    {
+    }
+
+    public CfrPlusPreflopSolver(PreflopTerminalEvaluator terminal, ILogger<CfrPlusPreflopSolver> logger)
     {
         _terminal = terminal;
+        _logger = logger;
     }
 
     public PreflopSolveResult SolvePreflop(PreflopSolverConfig config)
     {
+        var totalStopwatch = System.Diagnostics.Stopwatch.StartNew();
         var sizing = config.ResolveSizing();
+        _logger.LogInformation(
+            "SolvePreflop start. PlayerCount={PlayerCount}, EffectiveStackBb={EffectiveStackBb}, Iterations={Iterations}, MaxTreeDepth={MaxTreeDepth}, Rake={Rake}, SizingFingerprint={SizingFingerprint}",
+            config.PlayerCount,
+            config.EffectiveStackBb,
+            config.Iterations,
+            config.MaxTreeDepth,
+            config.Rake,
+            $"O:{string.Join(',', sizing.OpenSizesBb)}|3:{string.Join(',', sizing.ThreeBetSizeMultipliers)}|4:{string.Join(',', sizing.FourBetSizeMultipliers)}|J:{sizing.JamThresholdStackBb}|AJ:{sizing.AllowExplicitJam}");
+
+        var buildStopwatch = System.Diagnostics.Stopwatch.StartNew();
         var builder = new PreflopGameTreeBuilder(
             config.PlayerCount,
             config.EffectiveStackBb,
@@ -28,15 +47,26 @@ public sealed class CfrPlusPreflopSolver
             sizing,
             new PreflopTreeBuildConfig(MaxDepth: config.MaxTreeDepth, RaiseSizing: config.Sizing));
         var tree = builder.BuildTree();
+        buildStopwatch.Stop();
+        var nodeCount = CountNodes(tree.Root);
+        _logger.LogInformation("Tree built. NodeCount={NodeCount}, BuildDurationMs={BuildDurationMs}", nodeCount, buildStopwatch.ElapsedMilliseconds);
+
         var positions = PreflopGameTreeBuilder.GetTablePositions(config.PlayerCount);
         var stackBucket = (int)Math.Round(config.EffectiveStackBb);
 
         var infosets = new Dictionary<PreflopInfoSetKey, InfoSetData>();
         var initialReach = Enumerable.Repeat(1d, config.PlayerCount).ToArray();
+        var lastProgressLog = System.Diagnostics.Stopwatch.StartNew();
+        var progressEveryIterations = Math.Max(1, config.Iterations / 10);
 
         for (var iteration = 0; iteration < config.Iterations; iteration++)
         {
             Cfr(tree.Root, [], initialReach, infosets, positions, stackBucket, config);
+            if ((iteration + 1) % progressEveryIterations == 0 || lastProgressLog.ElapsedMilliseconds >= 2000)
+            {
+                _logger.LogInformation("Solve progress. Iteration={Iteration}, ElapsedMs={ElapsedMs}, InfosetCount={InfosetCount}", iteration + 1, totalStopwatch.ElapsedMilliseconds, infosets.Count);
+                lastProgressLog.Restart();
+            }
         }
 
         var handClasses = PreflopRange.BuildClassDistribution().Keys.Select(h => h.Label).OrderBy(h => h).ToArray();
@@ -56,6 +86,9 @@ public sealed class CfrPlusPreflopSolver
                         : new Dictionary<ActionType, double>(average));
                 return new NodeStrategyResult(kvp.Key, handMix, average, estimatedEv);
             });
+
+        totalStopwatch.Stop();
+        _logger.LogInformation("SolvePreflop done. TotalDurationMs={TotalDurationMs}, InfosetCount={InfosetCount}, StrategyNodes={StrategyNodes}", totalStopwatch.ElapsedMilliseconds, infosets.Count, nodeResults.Count);
 
         return new PreflopSolveResult(nodeResults);
     }
@@ -154,6 +187,23 @@ public sealed class CfrPlusPreflopSolver
         }
 
         return _terminal.EvaluateCallToFlop(nodeState, DefaultHeroHandClass, villainRange);
+    }
+
+    private static int CountNodes(PreflopGameTreeNode root)
+    {
+        var count = 0;
+        var stack = new Stack<PreflopGameTreeNode>();
+        stack.Push(root);
+
+        while (stack.Count > 0)
+        {
+            var current = stack.Pop();
+            count++;
+            foreach (var child in current.Children.Values)
+                stack.Push(child);
+        }
+
+        return count;
     }
 
     private static PreflopInfoSetKey BuildInfoSetKey(
