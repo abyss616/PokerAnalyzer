@@ -104,7 +104,11 @@ public static class PreflopStateExtractor
         var history = hero.ActionHistory?.Where(a => a.Street == Street.Preflop).ToList() ?? [];
         if (history.Count == 0)
         {
-            var realToCall = hero.BigBlind.Value <= 0 ? 0 : PreflopSizingNormalizer.RoundBb(state.GetToCall(hero.HeroId).Value / (decimal)hero.BigBlind.Value);
+            // Solver unopened keys use the table's current preflop price (BB level),
+            // not the hero's incremental completion after forced blind posts.
+            var realToCall = hero.BigBlind.Value <= 0
+                ? 0
+                : PreflopSizingNormalizer.RoundBb(state.BetToCall.Value / (decimal)hero.BigBlind.Value);
             var key = new PreflopInfoSetKey(playerCount, normalizedHeroPos, "UNOPENED", realToCall, effectiveStackBb);
             return new PreflopExtractionResult(key, null, null, null, realToCall, null, null, null, realToCall, "No preflop raises to normalize");
         }
