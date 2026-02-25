@@ -471,11 +471,6 @@
             _solverResult = result;
             await AddStepAsync("Solver", $"Solver completed. HandId: {result.HandId}. CorrelationId={correlationId}", "OK");
 
-            foreach (var log in result.Logs)
-            {
-                await AddStepAsync($"{log.Level} {log.Category}", log.Message, log.Level);
-            }
-
             await AddStepAsync("Finalize", "Analysis complete.", "OK");
             _solverStatus = $"Solver complete for hand #{result.HandNumber}. HandId: {result.HandId}.";
         }
