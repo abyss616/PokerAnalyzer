@@ -21,7 +21,8 @@ public sealed class ApiClient
         int HandNumber,
         int DecisionCount,
         PreflopSummary PreflopSummary,
-        IReadOnlyList<EngineSolverResult> Engines);
+        IReadOnlyList<EngineSolverResult> Engines,
+        IReadOnlyList<UiLogLine> Logs);
 
     public sealed record PreflopSummary(
         Guid HandId,
@@ -44,6 +45,13 @@ public sealed class ApiClient
         decimal? Amount,
         decimal? ToAmount,
         string Display);
+
+
+    public sealed record UiLogLine(
+        DateTimeOffset Timestamp,
+        string Level,
+        string Category,
+        string Message);
 
     public sealed record EngineSolverResult(
         string Engine,

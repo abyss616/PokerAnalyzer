@@ -1,6 +1,7 @@
 ﻿using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
+using PokerAnalyzer.Api.Logging;
 using PokerAnalyzer.Application.Analysis;
 using PokerAnalyzer.Domain.Cards;
 using PokerAnalyzer.Domain.Game;
@@ -14,15 +15,18 @@ public sealed class HandAnalysisController : ControllerBase
     private readonly PokerDbContext _db;
     private readonly HandAnalyzer _handAnalyzer;
     private readonly ILogger<HandAnalysisController> _logger;
+    private readonly UiLogStore _uiLogStore;
 
     public HandAnalysisController(
         PokerDbContext db,
         HandAnalyzer handAnalyzer,
-        ILogger<HandAnalysisController> logger)
+        ILogger<HandAnalysisController> logger,
+        UiLogStore uiLogStore)
     {
         _db = db;
         _handAnalyzer = handAnalyzer;
         _logger = logger;
+        _uiLogStore = uiLogStore;
     }
 
     [HttpGet("hand/{handId:guid}")]
@@ -41,6 +45,13 @@ public sealed class HandAnalysisController : ControllerBase
         CancellationToken ct)
     {
         correlationId ??= HttpContext.TraceIdentifier;
+        _uiLogStore.Clear(correlationId);
+
+        using var scope = _logger.BeginScope(new Dictionary<string, object?>
+        {
+            ["CorrelationId"] = correlationId
+        });
+
         var utcStart = DateTimeOffset.UtcNow;
         var total = System.Diagnostics.Stopwatch.StartNew();
         var clientVersion = Request.Headers["X-Client-Version"].FirstOrDefault() ?? Request.Headers.UserAgent.ToString();
@@ -115,7 +126,11 @@ public sealed class HandAnalysisController : ControllerBase
 
             total.Stop();
             _logger.LogInformation("Return OK. CorrelationId={CorrelationId}, HttpStatus={HttpStatus}, TotalDurationMs={TotalDurationMs}", correlationId, 200, total.ElapsedMilliseconds);
-            return Ok(new HandSolverResponse(domainHand.HandId, handNumber, engineSummary.DecisionCount, preflopSummary, new[] { engineSummary }));
+            var logs = _uiLogStore.GetSnapshot(correlationId)
+                .Select(entry => new UiLogLine(entry.Timestamp, entry.Level, entry.Category, entry.Message))
+                .ToArray();
+
+            return Ok(new HandSolverResponse(domainHand.HandId, handNumber, engineSummary.DecisionCount, preflopSummary, new[] { engineSummary }, logs));
         }
         catch (Exception ex)
         {
@@ -439,7 +454,8 @@ public sealed class HandAnalysisController : ControllerBase
         int HandNumber,
         int DecisionCount,
         PreflopSummary PreflopSummary,
-        IReadOnlyList<EngineSolverResult> Engines);
+        IReadOnlyList<EngineSolverResult> Engines,
+        IReadOnlyList<UiLogLine> Logs);
 
     public sealed record PreflopSummary(
         Guid HandId,
@@ -462,6 +478,13 @@ public sealed class HandAnalysisController : ControllerBase
         decimal? Amount,
         decimal? ToAmount,
         string Display);
+
+
+    public sealed record UiLogLine(
+        DateTimeOffset Timestamp,
+        string Level,
+        string Category,
+        string Message);
 
     public sealed record EngineSolverResult(
         string Engine,
