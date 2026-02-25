@@ -264,22 +264,28 @@ public sealed class CfrPlusPreflopSolver
 
             foreach (var action in legalActions)
             {
-                if (action == ActionType.Raise)
-                    mix[action] *= 0.75 + (normalizedStrength * 0.95);
-                else if (action == ActionType.AllIn)
+                if (aggressiveActions.Contains(action))
+                    if (action == ActionType.Raise)
+                        mix[action] *= 0.75 + (normalizedStrength * 0.95);
+                    else if (action == ActionType.AllIn)
+                    {
+                        if (checkPresent)
+                            mix[action] *= 0.12 + (normalizedStrength * 0.18);
+                        else
+                            mix[action] *= 0.45 + (normalizedStrength * 0.65);
+                    }
+                    else if (aggressiveActions.Contains(action))
+                        mix[action] *= 0.70 + (normalizedStrength * 0.90);
+                    else if (passiveActions.Contains(action))
+                        mix[action] *= 0.85 + ((1d - normalizedStrength) * 0.30);
+                    else if (foldPresent && action == ActionType.Fold)
 
-                    mix[action] *= 0.45 + (normalizedStrength * 0.65);
-                else if (aggressiveActions.Contains(action))
-                    mix[action] *= 0.70 + (normalizedStrength * 0.90);
-                else if (passiveActions.Contains(action))
-                    mix[action] *= 0.85 + ((1d - normalizedStrength) * 0.30);
-                else if (foldPresent && action == ActionType.Fold)
-                {
-                    if (checkPresent)
-                        mix[action] *= 0.03 + ((1d - normalizedStrength) * 0.07);
-                    else
-                        mix[action] *= 0.55 + ((1d - normalizedStrength) * 1.10);
-                }
+                    {
+                        if (checkPresent)
+                            mix[action] *= 0.03 + ((1d - normalizedStrength) * 0.07);
+                        else
+                            mix[action] *= 0.55 + ((1d - normalizedStrength) * 1.10);
+                    }
             }
 
             var sum = mix.Values.Sum();
