@@ -245,8 +245,8 @@ public sealed class CfrPlusPreflopSolver
     }
 
     private static Dictionary<string, Dictionary<ActionType, double>> BuildHandConditionedMixes(
-        IReadOnlyList<ActionType> legalActions,
-        IReadOnlyDictionary<ActionType, double> populationAverage)
+    IReadOnlyList<ActionType> legalActions,
+    IReadOnlyDictionary<ActionType, double> populationAverage)
     {
         var aggressiveActions = new HashSet<ActionType> { ActionType.Raise, ActionType.AllIn, ActionType.Bet };
         var passiveActions = new HashSet<ActionType> { ActionType.Check, ActionType.Call };
@@ -267,12 +267,8 @@ public sealed class CfrPlusPreflopSolver
                 if (action == ActionType.Raise)
                     mix[action] *= 0.75 + (normalizedStrength * 0.95);
                 else if (action == ActionType.AllIn)
-                {
-                    if (checkPresent)
-                        mix[action] *= 0.12 + (normalizedStrength * 0.18);
-                    else
-                        mix[action] *= 0.45 + (normalizedStrength * 0.65);
-                }
+
+                    mix[action] *= 0.45 + (normalizedStrength * 0.65);
                 else if (aggressiveActions.Contains(action))
                     mix[action] *= 0.70 + (normalizedStrength * 0.90);
                 else if (passiveActions.Contains(action))
