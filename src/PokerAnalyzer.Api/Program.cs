@@ -1,9 +1,14 @@
+using PokerAnalyzer.Api.Logging;
 using PokerAnalyzer.Application.Analysis;
 using PokerAnalyzer.Domain.Cards;
 using PokerAnalyzer.Domain.Game;
 using PokerAnalyzer.Infrastructure;
 
 var builder = WebApplication.CreateBuilder(args);
+
+builder.Services.AddSingleton<UiLogStore>();
+builder.Services.AddSingleton<UiLogLoggerProvider>();
+builder.Logging.Services.AddSingleton<ILoggerProvider>(sp => sp.GetRequiredService<UiLogLoggerProvider>());
 
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
