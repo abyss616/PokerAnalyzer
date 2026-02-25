@@ -1,5 +1,6 @@
 using PokerAnalyzer.Domain.Game;
 using System.Xml.Linq;
+using Xunit;
 
 namespace PokerAnalyzer.Application.Tests;
 
