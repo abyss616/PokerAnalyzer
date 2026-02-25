@@ -60,12 +60,57 @@ public sealed class PreflopSolverCache : IPreflopStrategyStore
         var solvedResults = _cache.Values.Where(v => v.IsValueCreated).Select(v => v.Value.IsCompletedSuccessfully ? v.Value.Result : null).Where(v => v is not null).ToList();
         foreach (var solved in solvedResults)
         {
-            var result = _solver.QueryStrategy(solved!, key, heroHand);
-            if (result.ActionFrequencies.Count > 0)
-                return result;
+            foreach (var candidate in BuildLookupCandidates(key, solved!))
+            {
+                var result = _solver.QueryStrategy(solved!, candidate, heroHand);
+                if (result.ActionFrequencies.Count > 0)
+                    return Normalize(result);
+            }
         }
 
         return new StrategyQueryResult(new Dictionary<PokerAnalyzer.Domain.Game.ActionType, double>(), null, 0m, key);
+    }
+
+    private static IEnumerable<PreflopInfoSetKey> BuildLookupCandidates(PreflopInfoSetKey key, PreflopSolveResult solved)
+    {
+        yield return key;
+
+        var normalizedHistory = NormalizeHistory(key.HistorySignature);
+        if (!string.Equals(normalizedHistory, key.HistorySignature, StringComparison.OrdinalIgnoreCase))
+            yield return key with { HistorySignature = normalizedHistory };
+
+        var nearest = solved.NodeStrategies.Keys
+            .Where(k => k.PlayerCount == key.PlayerCount &&
+                        k.ActingPosition == key.ActingPosition &&
+                        string.Equals(NormalizeHistory(k.HistorySignature), normalizedHistory, StringComparison.OrdinalIgnoreCase))
+            .OrderBy(k => Math.Abs(k.ToCallBb - key.ToCallBb))
+            .ThenBy(k => Math.Abs(k.EffectiveStackBb - key.EffectiveStackBb))
+            .FirstOrDefault();
+
+        if (nearest is not null)
+            yield return nearest;
+    }
+
+    private static string NormalizeHistory(string history)
+    {
+        var trimmed = history.Trim().ToUpperInvariant();
+        return trimmed switch
+        {
+            "LIMP" => "LIMPED",
+            "UNOPEN" => "UNOPENED",
+            _ => trimmed
+        };
+    }
+
+    private static StrategyQueryResult Normalize(StrategyQueryResult query)
+    {
+        var sum = query.ActionFrequencies.Values.Sum();
+        if (sum <= 0)
+            return query;
+
+        var normalized = query.ActionFrequencies.ToDictionary(kvp => kvp.Key, kvp => kvp.Value / sum);
+        var best = normalized.OrderByDescending(kvp => kvp.Value).Select(kvp => (PokerAnalyzer.Domain.Game.ActionType?)kvp.Key).FirstOrDefault();
+        return query with { ActionFrequencies = normalized, BestAction = best };
     }
 
     private static string Fingerprint(PreflopSizingConfig s)
