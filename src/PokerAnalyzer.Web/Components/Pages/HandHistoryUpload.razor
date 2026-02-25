@@ -3,8 +3,10 @@
 @using Microsoft.AspNetCore.Components.Forms
 @using Microsoft.AspNetCore.Components.Web
 @using PokerAnalyzer.Web.Models
+@using System.Reflection
 @inject PokerAnalyzer.Web.Services.ApiClient Api
 @inject TooltipService TooltipService
+@inject ILogger<HandHistoryUpload> Logger
 <h3>Upload Hand History (XML)</h3>
 
 <p>Select an XML hand history file. Upload starts immediately.</p>
@@ -372,15 +374,33 @@
             return;
         }
 
+        var correlationId = Guid.NewGuid().ToString("N");
+        var utcStart = DateTimeOffset.UtcNow;
+        var clientVersion = Assembly.GetExecutingAssembly().GetName().Version?.ToString() ?? "unknown";
+        var user = Environment.UserName;
+
+        await AddStepAsync("Trace", $"CorrelationId={correlationId}; SessionId={_sessionId}; HandNumber={_handNumber.Value}; User={user}; UtcStart={utcStart:O}; ClientVersion={clientVersion}", "Running");
+        Logger.LogInformation(
+            "RunSolverAsync start. CorrelationId={CorrelationId}, SessionId={SessionId}, HandNumber={HandNumber}, User={User}, UtcStart={UtcStart}, ClientVersion={ClientVersion}",
+            correlationId,
+            _sessionId,
+            _handNumber.Value,
+            user,
+            utcStart,
+            clientVersion);
+
         try
         {
-            var result = await Api.RunSolverAsync(_sessionId, _handNumber.Value);
+            var result = await Api.RunSolverAsync(_sessionId, _handNumber.Value, correlationId, clientVersion);
             _solverResult = result;
-            _solverStatus = $"Solver complete for hand #{result.HandNumber}. HandId: {result.HandId}.";
+            _solverStatus = $"Solver complete for hand #{result.HandNumber}. HandId: {result.HandId}. CorrelationId: {correlationId}.";
+            await AddStepAsync("Solver", $"Completed hand #{result.HandNumber}; DecisionCount={result.DecisionCount}; CorrelationId={correlationId}", "OK");
         }
         catch (Exception ex)
         {
-            _solverError = ex.ToString();
+            _solverError = $"{ex}\nCorrelationId: {correlationId}";
+            Logger.LogError(ex, "RunSolverAsync failed. CorrelationId={CorrelationId}", correlationId);
+            await AddStepAsync("Fail", $"Stage=RunSolverAsync; Message={ex.Message}; CorrelationId={correlationId}", "Fail");
         }
     }
 

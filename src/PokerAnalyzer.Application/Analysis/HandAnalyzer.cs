@@ -1,6 +1,7 @@
 using PokerAnalyzer.Application.Engines;
 using PokerAnalyzer.Domain.Game;
 using PokerAnalyzer.Domain.HandHistory;
+using Microsoft.Extensions.Logging;
 
 namespace PokerAnalyzer.Application.Analysis;
 
@@ -11,16 +12,34 @@ namespace PokerAnalyzer.Application.Analysis;
 public sealed class HandAnalyzer
 {
     private readonly IStrategyEngine _engine;
+    private readonly ILogger<HandAnalyzer> _logger;
 
     public HandAnalyzer(IStrategyEngine engine)
+        : this(engine, Microsoft.Extensions.Logging.Abstractions.NullLogger<HandAnalyzer>.Instance)
+    {
+    }
+
+    public HandAnalyzer(IStrategyEngine engine, ILogger<HandAnalyzer> logger)
     {
         _engine = engine ?? throw new ArgumentNullException(nameof(engine));
+        _logger = logger ?? throw new ArgumentNullException(nameof(logger));
     }
 
     public HandAnalysisResult Analyze(Domain.HandHistory.Hand hand)
     {
+        var startedAt = DateTimeOffset.UtcNow;
+        var stopwatch = System.Diagnostics.Stopwatch.StartNew();
+
         if (hand.Seats.Count == 0)
             throw new InvalidOperationException("Hand has no seats.");
+
+        _logger.LogInformation(
+            "Start analyze. HandId={HandId}, Street={Street}, Players={Players}, Actions={Actions}, UtcStart={UtcStart}",
+            hand.HandId,
+            Street.Preflop,
+            hand.Seats.Count,
+            hand.Actions.Count,
+            startedAt);
 
         var heroCtx = new HeroContext(hand.HeroId, hand.SmallBlind, hand.BigBlind);
         var positionMap = hand.Seats.ToDictionary(s => s.Id, s => s.Position);
@@ -48,6 +67,21 @@ public sealed class HandAnalyzer
                 if (hand.HeroId == villainId)
                     throw new InvalidOperationException("Invalid decision context: hero and villain must be different PlayerIds.");
 
+                _logger.LogInformation(
+                    "Decision point. ActionIndex={ActionIndex}, Street={Street}, HeroToCall={HeroToCall}, Pot={Pot}, Stacks={Stacks}, LastActionsTail={LastActionsTail}",
+                    i,
+                    a.Street,
+                    state.GetToCall(hand.HeroId).Value,
+                    state.Pot.Value,
+                    string.Join(", ", state.Stacks.Select(stack => $"{stack.Key}:{stack.Value.Value}")),
+                    string.Join(" | ", hand.Actions.Take(i).TakeLast(5).Select(action => $"{action.Street}:{action.ActorId}:{action.Type}:{action.Amount.Value}")));
+
+                var villainSeat = hand.Seats.FirstOrDefault(seat => seat.Id == villainId);
+                _logger.LogInformation(
+                    "Resolve villain. VillainId={VillainId}, VillainPosition={VillainPosition}",
+                    villainId,
+                    villainSeat?.Position);
+
                 var decisionCtx = heroCtx with
                 {
                     HeroHoleCards = hand.HeroHoleCards,
@@ -56,7 +90,23 @@ public sealed class HandAnalyzer
                 };
 
                 var rec = EnsureLegalRecommendation(state, hand.HeroId, _engine.Recommend(state, decisionCtx));
+                var primaryAction = rec.PrimaryAction ?? rec.RankedActions.FirstOrDefault();
+                var isUnsupported = primaryAction is null;
+                _logger.LogInformation(
+                    "Engine recommend. EngineName={EngineName}, Supported={Supported}, ReasonIfUnsupported={ReasonIfUnsupported}",
+                    _engine.GetType().Name,
+                    !isUnsupported,
+                    isUnsupported ? rec.PrimaryExplanation : null);
+
                 var sev = Score(a, rec);
+                _logger.LogInformation(
+                    "Compare actual vs recommended. Actual={Actual}, RecommendedPrimary={RecommendedPrimary}, Severity={Severity}, EV={EV}, ReferenceEV={ReferenceEV}",
+                    a.Type,
+                    primaryAction?.Type,
+                    sev,
+                    rec.PrimaryEV,
+                    rec.ReferenceEV);
+
                 decisions.Add(new DecisionReview(
                     ActionIndex: i,
                     Street: a.Street,
@@ -70,6 +120,15 @@ public sealed class HandAnalyzer
             // Apply action to advance the state
             state = state.Apply(a);
         }
+
+        stopwatch.Stop();
+        var unsupportedCount = decisions.Count(decision =>
+            decision.Recommendation.PrimaryAction is null && decision.Recommendation.RankedActions.Count == 0);
+        _logger.LogInformation(
+            "Analysis done. DecisionCount={DecisionCount}, UnsupportedCount={UnsupportedCount}, DurationMs={DurationMs}",
+            decisions.Count,
+            unsupportedCount,
+            stopwatch.ElapsedMilliseconds);
 
         return new HandAnalysisResult(hand.HandId, decisions);
     }

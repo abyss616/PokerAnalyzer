@@ -136,6 +136,8 @@ public sealed class ApiClient
     public async Task<HandSolverResponse> RunSolverAsync(
         Guid sessionId,
         int handNumber,
+        string? correlationId = null,
+        string? clientVersion = null,
         CancellationToken ct = default)
     {
         if (sessionId == Guid.Empty)
@@ -143,7 +145,17 @@ public sealed class ApiClient
         if (handNumber <= 0)
             throw new ArgumentOutOfRangeException(nameof(handNumber), "Hand number must be greater than zero.");
 
-        using var resp = await _http.GetAsync($"api/analysis/session/{sessionId}/hand-number/{handNumber}", ct);
+        var requestUri = $"api/analysis/session/{sessionId}/hand-number/{handNumber}";
+        if (!string.IsNullOrWhiteSpace(correlationId))
+            requestUri += $"?correlationId={Uri.EscapeDataString(correlationId)}";
+
+        using var req = new HttpRequestMessage(HttpMethod.Get, requestUri);
+        if (!string.IsNullOrWhiteSpace(correlationId))
+            req.Headers.Add("X-Correlation-Id", correlationId);
+        if (!string.IsNullOrWhiteSpace(clientVersion))
+            req.Headers.Add("X-Client-Version", clientVersion);
+
+        using var resp = await _http.SendAsync(req, ct);
         if (!resp.IsSuccessStatusCode)
         {
             var body = await resp.Content.ReadAsStringAsync(ct);

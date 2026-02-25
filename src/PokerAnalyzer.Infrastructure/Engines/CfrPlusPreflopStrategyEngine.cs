@@ -42,6 +42,13 @@ public sealed class CfrPlusPreflopStrategyEngine : IStrategyEngine
             return BuildUnsupportedRecommendation(reference, "Unsupported preflop state for solver abstraction");
 
         var key = PreflopStateExtractor.TryExtract(state, hero);
+        _logger.LogInformation(
+            "Extract solver key. PlayerCount={PlayerCount}, HeroPosNormalized={HeroPosNormalized}, HistorySignature={HistorySignature}, ToCallBb={ToCallBb}, EffectiveStackBb={EffectiveStackBb}",
+            key?.PlayerCount,
+            key?.ActingPosition,
+            key?.HistorySignature,
+            key?.ToCallBb,
+            key?.EffectiveStackBb);
         if (key is null)
             return BuildUnsupportedRecommendation(reference, "Unsupported preflop state for solver abstraction");
 
@@ -50,10 +57,33 @@ public sealed class CfrPlusPreflopStrategyEngine : IStrategyEngine
             PlayerCount = _config.PlayerCount,
             EffectiveStackBb = (int)Math.Round(_config.EffectiveStackBb)
         };
+        _logger.LogInformation(
+            "Normalize key. NormalizedPlayerCount={NormalizedPlayerCount}, NormalizedEffStackBb={NormalizedEffStackBb}, ConfigEffStackBb={ConfigEffStackBb}",
+            normalizedKey.PlayerCount,
+            normalizedKey.EffectiveStackBb,
+            _config.EffectiveStackBb);
 
         _logger.LogInformation("Ensuring preflop strategy solved for {Players} players", _config.PlayerCount);
         _cache.GetOrSolve(_config);
+        var cacheKey = new PreflopSolverCacheKey(_config.PlayerCount, (int)Math.Round(_config.EffectiveStackBb), _config.Rake, _config.ResolveSizing().Fingerprint());
+        _logger.LogInformation(
+            "Cache lookup. CacheKey={CacheKey}, CacheHit={CacheHit}, SolveCount={SolveCount}, CacheEntries={CacheEntries}",
+            cacheKey,
+            _cache.ContainsKey(cacheKey),
+            _cache.SolveCount,
+            _cache.CacheEntries);
+
         var query = _cache.Lookup(normalizedKey, hero.HeroHoleCards.Value.ToString());
+        var topFrequencies = string.Join(", ", query.ActionFrequencies
+            .OrderByDescending(k => k.Value)
+            .Take(3)
+            .Select(k => $"{k.Key}:{k.Value:0.###}"));
+        _logger.LogInformation(
+            "Query result. BestAction={BestAction}, TopFrequencies={TopFrequencies}, EstimatedEvBb={EstimatedEvBb}",
+            query.BestAction,
+            topFrequencies,
+            query.EstimatedEvBb);
+
         if (query.ActionFrequencies.Count == 0)
             return BuildUnsupportedRecommendation(reference, "Unsupported preflop state for solver abstraction");
 
@@ -77,12 +107,21 @@ public sealed class CfrPlusPreflopStrategyEngine : IStrategyEngine
         return _cache.Lookup(key, heroHand);
     }
 
-    private static Recommendation BuildUnsupportedRecommendation(Recommendation reference, string reason)
-        => new(
+    private Recommendation BuildUnsupportedRecommendation(Recommendation reference, string reason)
+    {
+        _logger.LogWarning("Unsupported reason. Reason={Reason}", reason);
+        return new Recommendation(
             RankedActions: [],
             ReferenceEV: reference.ReferenceEV,
             PrimaryExplanation: reason,
             ReferenceExplanation: reference.ReferenceExplanation);
+    }
+}
+
+internal static class PreflopSizingConfigExtensions
+{
+    public static string Fingerprint(this PreflopSizingConfig s)
+        => $"O:{string.Join(',', s.OpenSizesBb)}|3:{string.Join(',', s.ThreeBetSizeMultipliers)}|4:{string.Join(',', s.FourBetSizeMultipliers)}|J:{s.JamThresholdStackBb}|AJ:{s.AllowExplicitJam}";
 }
 
 public static class PreflopStateExtractor
