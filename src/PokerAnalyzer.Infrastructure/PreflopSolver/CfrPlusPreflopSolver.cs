@@ -260,13 +260,25 @@ public sealed class CfrPlusPreflopSolver
         foreach (var (hand, strength) in HandStrengthByClass)
         {
             var normalizedStrength = (double)((strength - minStrength) / span);
-            var mix = legalActions.ToDictionary(action => action, action => populationAverage.GetValueOrDefault(action));
+            var uniform = 1d / legalActions.Count;
+            var priorWeight = checkPresent ? 0.30d : 0.15d;
+            var mix = legalActions.ToDictionary(
+                action => action,
+                action => (populationAverage.GetValueOrDefault(action) * (1d - priorWeight)) + (uniform * priorWeight));
 
             foreach (var action in legalActions)
             {
                 if (aggressiveActions.Contains(action))
+                {
                     if (action == ActionType.Raise)
-                        mix[action] *= 0.75 + (normalizedStrength * 0.95);
+                    {
+                        // In limp/check nodes, strong hands should prefer taking initiative over checking back.
+                        // Increase raise amplification when check is available to stabilize best-action selection.
+                        if (checkPresent)
+                            mix[action] *= 1.10 + (normalizedStrength * 2.15);
+                        else
+                            mix[action] *= 0.75 + (normalizedStrength * 0.95);
+                    }
                     else if (action == ActionType.AllIn)
                     {
                         if (checkPresent)
@@ -274,24 +286,36 @@ public sealed class CfrPlusPreflopSolver
                         else
                             mix[action] *= 0.45 + (normalizedStrength * 0.65);
                     }
-                    else if (aggressiveActions.Contains(action))
-                        mix[action] *= 0.70 + (normalizedStrength * 0.90);
-                    else if (passiveActions.Contains(action))
-                        mix[action] *= 0.85 + ((1d - normalizedStrength) * 0.30);
-                    else if (foldPresent && action == ActionType.Fold)
-
+                    else
                     {
-                        if (checkPresent)
-                            mix[action] *= 0.03 + ((1d - normalizedStrength) * 0.07);
-                        else
-                            mix[action] *= 0.55 + ((1d - normalizedStrength) * 1.10);
+                        mix[action] *= 0.70 + (normalizedStrength * 0.90);
                     }
+                }
+                else if (passiveActions.Contains(action))
+                {
+                    // For stronger holdings, de-emphasize passive lines so value-heavy raises surface.
+                    if (action == ActionType.Check && legalActions.Contains(ActionType.Raise))
+                    {
+                        // Extra suppression of check in nodes where a raise is available.
+                        mix[action] *= 0.28 + ((1d - normalizedStrength) * 0.52);
+                    }
+                    else
+                    {
+                        mix[action] *= 0.62 + ((1d - normalizedStrength) * 0.45);
+                    }
+                }
+                else if (foldPresent && action == ActionType.Fold)
+                {
+                    if (checkPresent)
+                        mix[action] *= 0.03 + ((1d - normalizedStrength) * 0.07);
+                    else
+                        mix[action] *= 0.55 + ((1d - normalizedStrength) * 1.10);
+                }
             }
 
             var sum = mix.Values.Sum();
             if (sum <= 0)
             {
-                var uniform = 1d / legalActions.Count;
                 mix = legalActions.ToDictionary(action => action, _ => uniform);
             }
             else
