@@ -68,7 +68,8 @@ public readonly record struct StateKey(
     string ContributionsSignature,
     int CurrentBetBb,
     int ToCallBb,
-    int LastRaiseSizeBb);
+    int LastRaiseSizeBb,
+    bool BettingClosed);
 
 /// <summary>
 /// Builds <see cref="StateKey"/> values from state snapshots.
@@ -93,7 +94,8 @@ public static class StateKeyBuilder
             contributions,
             currentBet,
             state.CurrentToCallBb,
-            state.LastRaiseToBb);
+            state.LastRaiseToBb,
+            state.BettingClosed);
     }
 
     private static ulong BuildInHandMask(IReadOnlyList<bool> inHand)

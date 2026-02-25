@@ -191,10 +191,13 @@ public sealed class PreflopGameTreeBuilder
             StackBb = Enumerable.Repeat((int)Math.Round(_effectiveStackBb), positions.Count).ToArray(),
             CurrentToCallBb = (int)Math.Round(_bigBlindBb),
             LastRaiseToBb = (int)Math.Round(_bigBlindBb),
-            RaisesCount = 0,
+            // Align with PreflopRules.CreateInitialState semantics: the posted big blind
+            // is treated as the opening amount, and the BB retains an option when action
+            // returns unopened after calls.
+            RaisesCount = 1,
             PotBb = contrib.Sum(),
             LastAggressorIndex = bbIndex,
-            LastActionWasRaiseByIndex = bbIndex,
+            LastActionWasRaiseByIndex = null,
             BettingClosed = false
         };
     }
