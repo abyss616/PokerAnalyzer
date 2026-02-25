@@ -182,7 +182,8 @@ public sealed class HandAnalysisController : ControllerBase
             dealerSeatNumber,
             hand.Players.FirstOrDefault(p => p.IsHero)?.Name ?? hand.Players[0].Name,
             hand.Players.FirstOrDefault(p => p.IsHero)?.Seat ?? hand.Players[0].Seat);
-        var positionsBySeat = PositionAssigner.Assign(hand.Players, hand.Actions, dealerSeatNumber);
+        var positionResolution = PositionAssigner.Assign(hand.Players, hand.Actions, session.MaxSeats);
+        var positionsBySeat = positionResolution.PositionsBySeat;
         seats = seats
             .Select(seat => seat with
             {
@@ -366,6 +367,9 @@ public sealed class HandAnalysisController : ControllerBase
 
     private static PreflopSummary BuildPreflopSummary(Hand hand)
     {
+        var tableSize = Math.Max(hand.Players.Where(p => p.Seat > 0).Select(p => p.Seat).DefaultIfEmpty(0).Max(), 2);
+        var positionResolution = PositionAssigner.Assign(hand.Players, hand.Actions, tableSize);
+        var positionsBySeat = positionResolution.PositionsBySeat;
         var playersBySeat = hand.Players
             .Where(p => p.Seat > 0)
             .ToDictionary(p => p.Seat);
@@ -398,7 +402,7 @@ public sealed class HandAnalysisController : ControllerBase
             lines.Add(new PlayerPreflopLine(
                 seatNumber,
                 player?.Name,
-                ToUiPosition(player?.PlayerPosition),
+                ToUiPosition(player is not null && positionsBySeat.TryGetValue(player.Seat, out var pos) ? pos : Position.Unknown),
                 player?.StackStart,
                 playerActions,
                 totalPutIn,
@@ -406,19 +410,19 @@ public sealed class HandAnalysisController : ControllerBase
                 player is not null));
         }
 
-        return new PreflopSummary(hand.Id, hand.GameCode, lines);
+        return new PreflopSummary(hand.Id, hand.GameCode, lines, positionResolution.DealerSeat, positionResolution.SbSeat, positionResolution.BbSeat);
     }
 
-    private static string? ToUiPosition(HandPlayer.Position? position)
+    private static string? ToUiPosition(Position position)
     {
-        if (!position.HasValue)
+        if (position == Position.Unknown)
             return null;
 
-        return position.Value switch
+        return position switch
         {
-            HandPlayer.Position.HJ or HandPlayer.Position.LJ => "MP",
-            HandPlayer.Position.UTG1 or HandPlayer.Position.UTG2 => "UTG",
-            _ => position.Value.ToString()
+            Position.HJ or Position.LJ => "MP",
+            Position.UTG1 or Position.UTG2 => "UTG",
+            _ => position.ToString()
         };
     }
 
@@ -460,7 +464,10 @@ public sealed class HandAnalysisController : ControllerBase
     public sealed record PreflopSummary(
         Guid HandId,
         long GameCode,
-        IReadOnlyList<PlayerPreflopLine> Players);
+        IReadOnlyList<PlayerPreflopLine> Players,
+        int? DealerSeat,
+        int? SbSeat,
+        int? BbSeat);
 
     public sealed record PlayerPreflopLine(
         int Seat,

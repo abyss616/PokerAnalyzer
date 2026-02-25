@@ -27,7 +27,10 @@ public sealed class ApiClient
     public sealed record PreflopSummary(
         Guid HandId,
         long GameCode,
-        IReadOnlyList<PlayerPreflopLine> Players);
+        IReadOnlyList<PlayerPreflopLine> Players,
+        int? DealerSeat,
+        int? SbSeat,
+        int? BbSeat);
 
     public sealed record PlayerPreflopLine(
         int Seat,
