@@ -43,6 +43,39 @@
                 @onclick="RunSolverAsync">
             Run solver
         </button>
+        <button class="btn btn-secondary mt-2 ms-2"
+                disabled="@(!_handNumber.HasValue)"
+                @onclick="RunAnalysisAsync">
+            Run Analysis
+        </button>
+
+        @if (_analysisSteps.Count > 0)
+        {
+            <div class="mt-3">
+                <h5>Analysis Steps</h5>
+                <table class="table table-sm">
+                    <thead>
+                    <tr>
+                        <th>Time</th>
+                        <th>Title</th>
+                        <th>Details</th>
+                        <th>Status</th>
+                    </tr>
+                    </thead>
+                    <tbody>
+                    @foreach (var step in _analysisSteps)
+                    {
+                        <tr>
+                            <td>@step.Time.ToString("HH:mm:ss")</td>
+                            <td>@step.Title</td>
+                            <td>@step.Details</td>
+                            <td>@step.Status</td>
+                        </tr>
+                    }
+                    </tbody>
+                </table>
+            </div>
+        }
 
         @if (!string.IsNullOrWhiteSpace(_solverStatus))
         {
@@ -224,6 +257,7 @@
     private Guid _sessionId;
     private int? _handNumber;
     private IReadOnlyList<PokerStatsGridModel> _playerStats = Array.Empty<PokerStatsGridModel>();
+    private readonly List<StepLog> _analysisSteps = new();
     private static readonly IReadOnlyList<StatColumn> StatColumns = new[]
     {
         new StatColumn("VPIP", nameof(PokerStatsGridModel.VPIP)),
@@ -348,6 +382,60 @@
         {
             _solverError = ex.ToString();
         }
+    }
+
+    private async Task RunAnalysisAsync()
+    {
+        _analysisSteps.Clear();
+        _solverStatus = null;
+        _solverError = null;
+        _solverResult = null;
+        await AddStepAsync("Validation", "Validating analysis inputs.", "Running");
+
+        if (_sessionId == Guid.Empty)
+        {
+            await AddStepAsync("Validation", "Upload a hand history before running analysis.", "Fail");
+            _solverError = "Upload a hand history before running the solver.";
+            return;
+        }
+
+        if (!_handNumber.HasValue || _handNumber <= 0)
+        {
+            await AddStepAsync("Validation", "Hand number is invalid.", "Fail");
+            _solverError = "Enter a valid hand number.";
+            return;
+        }
+
+        await AddStepAsync("Validation", "Inputs validated.", "OK");
+
+        try
+        {
+            await AddStepAsync("Solver", $"Running solver for hand #{_handNumber.Value}.", "Running");
+            var result = await Api.RunSolverAsync(_sessionId, _handNumber.Value);
+            _solverResult = result;
+            await AddStepAsync("Solver", $"Solver completed. HandId: {result.HandId}.", "OK");
+
+            await AddStepAsync("Finalize", "Analysis complete.", "OK");
+            _solverStatus = $"Solver complete for hand #{result.HandNumber}. HandId: {result.HandId}.";
+        }
+        catch (Exception ex)
+        {
+            _solverError = ex.ToString();
+            await AddStepAsync("Solver", ex.Message, "Fail");
+        }
+    }
+
+    private async Task AddStepAsync(string title, string details, string status)
+    {
+        _analysisSteps.Add(new StepLog
+        {
+            Time = DateTime.Now,
+            Title = title,
+            Details = details,
+            Status = status
+        });
+
+        await InvokeAsync(StateHasChanged);
     }
 
     private static string GetStatDescription(string statName) =>
