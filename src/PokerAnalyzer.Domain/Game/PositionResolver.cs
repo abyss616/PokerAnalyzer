@@ -65,13 +65,13 @@ public static class PositionResolver
             dealerSeat = sbSeat.HasValue ? PreviousActiveSeat(sbSeat.Value, activeSet, resolvedTableSize) : activeSeats[0];
 
         if (!sbSeat.HasValue)
-            sbSeat = NextActiveSeat(dealerSeat.Value, activeSet, resolvedTableSize);
+            sbSeat = NextActiveSeat(dealerSeat, activeSet, resolvedTableSize);
 
         if (!bbSeat.HasValue)
             bbSeat = NextActiveSeat(sbSeat.Value, activeSet, resolvedTableSize);
 
         var positions = activeSeats.ToDictionary(seat => seat, _ => Position.Unknown);
-        positions[dealerSeat.Value] = Position.BTN;
+        positions[dealerSeat] = Position.BTN;
         positions[sbSeat.Value] = Position.SB;
         positions[bbSeat.Value] = Position.BB;
 
@@ -80,7 +80,7 @@ public static class PositionResolver
         while (true)
         {
             cursor = NextActiveSeat(cursor, activeSet, resolvedTableSize);
-            if (cursor == dealerSeat.Value)
+            if (cursor == dealerSeat)
                 break;
 
             if (cursor != sbSeat.Value && cursor != bbSeat.Value)
