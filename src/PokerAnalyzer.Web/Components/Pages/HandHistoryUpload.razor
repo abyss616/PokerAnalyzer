@@ -70,6 +70,7 @@
         {
             <div class="card mt-3 p-3">
                 <h5 class="mb-2">Preflop Actions</h5>
+                <div class="text-muted small mb-2">Derived Seats: Dealer=@(_solverResult.PreflopSummary.DealerSeat?.ToString() ?? "—"), SB=@(_solverResult.PreflopSummary.SbSeat?.ToString() ?? "—"), BB=@(_solverResult.PreflopSummary.BbSeat?.ToString() ?? "—")</div>
                 <table class="table table-sm table-striped mb-0">
                     <thead>
                     <tr>
