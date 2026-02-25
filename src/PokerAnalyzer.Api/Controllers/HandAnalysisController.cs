@@ -17,13 +17,6 @@ public sealed class HandAnalysisController : ControllerBase
 
     public HandAnalysisController(
         PokerDbContext db,
-        HandAnalyzer handAnalyzer)
-        : this(db, handAnalyzer, Microsoft.Extensions.Logging.Abstractions.NullLogger<HandAnalysisController>.Instance)
-    {
-    }
-
-    public HandAnalysisController(
-        PokerDbContext db,
         HandAnalyzer handAnalyzer,
         ILogger<HandAnalysisController> logger)
     {
