@@ -41,14 +41,23 @@ public sealed class CfrPlusPreflopStrategyEngine : IStrategyEngine
         if (state.Street != Street.Preflop || hero.HeroHoleCards is null)
             return BuildUnsupportedRecommendation(reference, "Unsupported preflop state for solver abstraction");
 
-        var key = PreflopStateExtractor.TryExtract(state, hero);
+        var extraction = PreflopStateExtractor.TryExtract(state, hero, _config.ResolveSizing());
+        var key = extraction?.Key;
         _logger.LogInformation(
-            "Extract solver key. PlayerCount={PlayerCount}, HeroPosNormalized={HeroPosNormalized}, HistorySignature={HistorySignature}, ToCallBb={ToCallBb}, EffectiveStackBb={EffectiveStackBb}",
+            "Extract solver key. PlayerCount={PlayerCount}, HeroPosNormalized={HeroPosNormalized}, HistorySignature={HistorySignature}, RealToCallBb={RealToCallBb}, NormalizedToCallBb={NormalizedToCallBb}, EffectiveStackBb={EffectiveStackBb}, RealOpenBb={RealOpenBb}, Real3Bet={Real3Bet}, Real4Bet={Real4Bet}, NormalizedOpenBb={NormalizedOpenBb}, Normalized3Bet={Normalized3Bet}, Normalized4Bet={Normalized4Bet}, NormalizationNote={NormalizationNote}",
             key?.PlayerCount,
             key?.ActingPosition,
             key?.HistorySignature,
-            key?.ToCallBb,
-            key?.EffectiveStackBb);
+            extraction?.RealToCallBb,
+            extraction?.NormalizedToCallBb,
+            key?.EffectiveStackBb,
+            extraction?.RealOpenSizeBb,
+            extraction?.RealThreeBetSizeBb,
+            extraction?.RealFourBetSizeBb,
+            extraction?.NormalizedOpenSizeBb,
+            extraction?.NormalizedThreeBetSizeBb,
+            extraction?.NormalizedFourBetSizeBb,
+            extraction?.NormalizationNote);
         if (key is null)
             return BuildUnsupportedRecommendation(reference, "Unsupported preflop state for solver abstraction");
 
@@ -85,7 +94,10 @@ public sealed class CfrPlusPreflopStrategyEngine : IStrategyEngine
             query.EstimatedEvBb);
 
         if (query.ActionFrequencies.Count == 0)
+        {
+            _logger.LogWarning("Lookup failed after normalization. LookupKey={LookupKey}, SupportedSizing={SupportedSizing}", normalizedKey, _config.ResolveSizing().Fingerprint());
             return BuildUnsupportedRecommendation(reference, "Unsupported preflop state for solver abstraction");
+        }
 
         var ranked = query.ActionFrequencies.OrderByDescending(k => k.Value)
             .Select(k => new RecommendedAction(k.Key, null, (decimal)k.Value)).ToList();
@@ -122,26 +134,4 @@ internal static class PreflopSizingConfigExtensions
 {
     public static string Fingerprint(this PreflopSizingConfig s)
         => $"O:{string.Join(',', s.OpenSizesBb)}|3:{string.Join(',', s.ThreeBetSizeMultipliers)}|4:{string.Join(',', s.FourBetSizeMultipliers)}|J:{s.JamThresholdStackBb}|AJ:{s.AllowExplicitJam}";
-}
-
-public static class PreflopStateExtractor
-{
-    public static PreflopInfoSetKey? TryExtract(HandState state, HeroContext hero)
-    {
-        if (hero.PlayerPositions is null || !hero.PlayerPositions.TryGetValue(hero.HeroId, out var heroPos))
-            return null;
-
-        var history = hero.ActionHistory?.Where(a => a.Street == Street.Preflop).Select(a => a.Type).ToList() ?? [];
-        var playerCount = hero.PlayerPositions.Count;
-        var normalizedHeroPos = playerCount == 2 && heroPos == Position.SB ? Position.BTN : heroPos;
-        var toCallBb = hero.BigBlind.Value <= 0
-            ? 0
-            : (int)Math.Round(
-                state.GetToCall(hero.HeroId).Value / (decimal)hero.BigBlind.Value,
-                0,
-                MidpointRounding.AwayFromZero);
-        var eff = (int)Math.Round(state.Stacks[hero.HeroId].Value / (decimal)hero.BigBlind.Value);
-
-        return new PreflopInfoSetKey(playerCount, normalizedHeroPos, PreflopHistorySignature.Build(history), toCallBb, eff);
-    }
 }
