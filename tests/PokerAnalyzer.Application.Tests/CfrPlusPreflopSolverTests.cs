@@ -98,15 +98,15 @@ public class CfrPlusPreflopSolverTests
             HeroHoleCards = HoleCards.Parse("AsAh"),
             PlayerPositions = new Dictionary<PlayerId, Position> { [hero] = Position.BTN, [villain] = Position.BB },
             ActionHistory = []
-        });
+        }, SolverSizingConfig.Default);
 
         Assert.NotNull(extracted);
-        Assert.Equal(2, extracted!.PlayerCount);
-        Assert.Equal(Position.BTN, extracted.ActingPosition);
-        Assert.Equal("UNOPENED", extracted.HistorySignature);
-        Assert.Equal(1, extracted.ToCallBb);
+        Assert.Equal(2, extracted!.Key.PlayerCount);
+        Assert.Equal(Position.BTN, extracted.Key.ActingPosition);
+        Assert.Equal("UNOPENED", extracted.Key.HistorySignature);
+        Assert.Equal(1, extracted.Key.ToCallBb);
 
-        var normalized = extracted with { PlayerCount = 2, EffectiveStackBb = 100 };
+        var normalized = extracted.Key with { PlayerCount = 2, EffectiveStackBb = 100 };
         var query = engine.QueryStrategy(normalized, "AsAh");
         Assert.NotEmpty(query.ActionFrequencies);
 
@@ -129,15 +129,15 @@ public class CfrPlusPreflopSolverTests
             new ChipAmount(5),
             new ChipAmount(10));
 
-        var key = PreflopStateExtractor.TryExtract(state, new HeroContext(hero, new ChipAmount(5), new ChipAmount(10))
+        var extraction = PreflopStateExtractor.TryExtract(state, new HeroContext(hero, new ChipAmount(5), new ChipAmount(10))
         {
             PlayerPositions = new Dictionary<PlayerId, Position> { [hero] = Position.SB, [villain] = Position.BB },
             ActionHistory = []
-        });
+        }, SolverSizingConfig.Default);
 
-        Assert.NotNull(key);
-        Assert.Equal(Position.BTN, key!.ActingPosition);
-        Assert.Equal(1, key.ToCallBb);
+        Assert.NotNull(extraction);
+        Assert.Equal(Position.BTN, extraction!.Key.ActingPosition);
+        Assert.Equal(1, extraction.Key.ToCallBb);
     }
 
     [Fact]
@@ -154,14 +154,28 @@ public class CfrPlusPreflopSolverTests
             new ChipAmount(5),
             new ChipAmount(10));
 
-        var key = PreflopStateExtractor.TryExtract(state, new HeroContext(hero, new ChipAmount(5), new ChipAmount(10))
+        var extraction = PreflopStateExtractor.TryExtract(state, new HeroContext(hero, new ChipAmount(5), new ChipAmount(10))
         {
             PlayerPositions = new Dictionary<PlayerId, Position> { [hero] = Position.UTG, [villain] = Position.BB },
             ActionHistory = []
-        });
+        }, SolverSizingConfig.Default);
 
-        Assert.NotNull(key);
-        Assert.Equal("UNOPENED", key!.HistorySignature);
+        Assert.NotNull(extraction);
+        Assert.Equal("UNOPENED", extraction!.Key.HistorySignature);
+    }
+
+
+    [Fact]
+    public void PreflopSizingNormalizer_OpenSize_BucketsToNearestConfiguredSize()
+    {
+        var normalizer = new PreflopSizingNormalizer();
+        var sizing = new SolverSizingConfig(OpenSizesBb: [2.0m, 2.5m], ThreeBetSizeMultipliers: [3.0m], FourBetSizeMultipliers: [2.2m]);
+
+        var normalized = normalizer.Normalize(Street.Preflop, PreflopSizingActionType.Open, 3.0m, 2.0m, 1.0m, 0m, sizing);
+
+        Assert.Equal(2.5m, normalized.NormalizedSizeBb);
+        Assert.Equal(2, normalized.NormalizedToCallBb);
+        Assert.Contains("3", normalized.NormalizationNote, StringComparison.Ordinal);
     }
 
     [Fact]
