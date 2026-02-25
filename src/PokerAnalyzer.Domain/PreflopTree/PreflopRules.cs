@@ -132,6 +132,7 @@ public static class PreflopRules
         var newState = state.Clone();
         var i = state.ActingIndex;
         var toCall = GetToCall(state, i);
+        var nextActing = i;
 
         switch (action.Type)
         {
@@ -170,9 +171,23 @@ public static class PreflopRules
                 throw new InvalidOperationException($"Unsupported action type: {action.Type}.");
         }
 
-        if (IsBettingClosed(newState))
+        if (!IsTerminal(newState, out _))
         {
-            newState.BettingClosed = true;
+            nextActing = GetNextActingIndex(newState);
+            if (IsBettingClosed(newState))
+            {
+                // In unopened pots the big blind is entitled to an option after everyone calls.
+                // Do not close the round until that option is exercised.
+                var unopenedBigBlindOptionPending =
+                    state.LastActionWasRaiseByIndex is null &&
+                    state.RaisesCount == 1 &&
+                    nextActing == state.LastAggressorIndex;
+
+                if (!unopenedBigBlindOptionPending)
+                {
+                    newState.BettingClosed = true;
+                }
+            }
         }
 
         if (IsTerminal(newState, out _))
@@ -180,7 +195,6 @@ public static class PreflopRules
             return newState;
         }
 
-        var nextActing = GetNextActingIndex(newState);
         if (nextActing == i)
         {
             newState.BettingClosed = true;

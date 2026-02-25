@@ -107,9 +107,27 @@ public class PreflopRulesTests
         var toCall = PreflopRules.GetToCall(state, state.ActingIndex);
         var legal = PreflopRules.GetLegalActions(state, PreflopSizingConfig.Default);
 
+        Assert.Equal(2, state.ActingIndex);
         Assert.Equal(0, toCall);
         Assert.Contains(legal, a => a.Type == PreflopActionType.Check);
         Assert.DoesNotContain(legal, a => a.Type == PreflopActionType.Call);
+    }
+
+    [Fact]
+    public void HeadsUp_Limp_DoesNotCloseBeforeBigBlindOption()
+    {
+        var state = PreflopRules.CreateInitialState(playerCount: 2, stackBb: 100, smallBlindBb: 1, bigBlindBb: 2);
+
+        state = PreflopRules.ApplyAction(state, new PreflopAction(PreflopActionType.Call));
+
+        Assert.False(state.BettingClosed);
+        Assert.False(PreflopRules.IsTerminal(state, out _));
+        Assert.Equal(1, state.ActingIndex);
+        Assert.Equal(0, PreflopRules.GetToCall(state, state.ActingIndex));
+
+        var legal = PreflopRules.GetLegalActions(state, PreflopSizingConfig.Default);
+        Assert.Contains(legal, a => a.Type == PreflopActionType.Check);
+        Assert.Contains(legal, a => a.Type == PreflopActionType.RaiseTo);
     }
 
     [Fact]
