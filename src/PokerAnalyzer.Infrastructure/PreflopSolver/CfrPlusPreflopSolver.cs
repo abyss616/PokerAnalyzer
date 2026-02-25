@@ -272,7 +272,12 @@ public sealed class CfrPlusPreflopSolver
                 {
                     if (action == ActionType.Raise)
                     {
-                        mix[action] *= 0.75 + (normalizedStrength * 0.95);
+                        // In limp/check nodes, strong hands should prefer taking initiative over checking back.
+                        // Increase raise amplification when check is available to stabilize best-action selection.
+                        if (checkPresent)
+                            mix[action] *= 1.10 + (normalizedStrength * 2.15);
+                        else
+                            mix[action] *= 0.75 + (normalizedStrength * 0.95);
                     }
                     else if (action == ActionType.AllIn)
                     {
@@ -288,7 +293,16 @@ public sealed class CfrPlusPreflopSolver
                 }
                 else if (passiveActions.Contains(action))
                 {
-                    mix[action] *= 0.85 + ((1d - normalizedStrength) * 0.30);
+                    // For stronger holdings, de-emphasize passive lines so value-heavy raises surface.
+                    if (action == ActionType.Check && legalActions.Contains(ActionType.Raise))
+                    {
+                        // Extra suppression of check in nodes where a raise is available.
+                        mix[action] *= 0.28 + ((1d - normalizedStrength) * 0.52);
+                    }
+                    else
+                    {
+                        mix[action] *= 0.62 + ((1d - normalizedStrength) * 0.45);
+                    }
                 }
                 else if (foldPresent && action == ActionType.Fold)
                 {
