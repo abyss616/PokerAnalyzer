@@ -251,6 +251,7 @@ public sealed class CfrPlusPreflopSolver
         var aggressiveActions = new HashSet<ActionType> { ActionType.Raise, ActionType.AllIn, ActionType.Bet };
         var passiveActions = new HashSet<ActionType> { ActionType.Check, ActionType.Call };
         var foldPresent = legalActions.Contains(ActionType.Fold);
+        var checkPresent = legalActions.Contains(ActionType.Check);
         var maxStrength = HandStrengthByClass.Values.Max();
         var minStrength = HandStrengthByClass.Values.Min();
         var span = Math.Max(0.001m, maxStrength - minStrength);
@@ -272,7 +273,12 @@ public sealed class CfrPlusPreflopSolver
                 else if (passiveActions.Contains(action))
                     mix[action] *= 0.85 + ((1d - normalizedStrength) * 0.30);
                 else if (foldPresent && action == ActionType.Fold)
-                    mix[action] *= 0.55 + ((1d - normalizedStrength) * 1.10);
+                {
+                    if (checkPresent)
+                        mix[action] *= 0.03 + ((1d - normalizedStrength) * 0.07);
+                    else
+                        mix[action] *= 0.55 + ((1d - normalizedStrength) * 1.10);
+                }
             }
 
             var sum = mix.Values.Sum();
