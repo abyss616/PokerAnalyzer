@@ -260,7 +260,11 @@ public sealed class CfrPlusPreflopSolver
         foreach (var (hand, strength) in HandStrengthByClass)
         {
             var normalizedStrength = (double)((strength - minStrength) / span);
-            var mix = legalActions.ToDictionary(action => action, action => populationAverage.GetValueOrDefault(action));
+            var uniform = 1d / legalActions.Count;
+            var priorWeight = checkPresent ? 0.30d : 0.15d;
+            var mix = legalActions.ToDictionary(
+                action => action,
+                action => (populationAverage.GetValueOrDefault(action) * (1d - priorWeight)) + (uniform * priorWeight));
 
             foreach (var action in legalActions)
             {
@@ -298,7 +302,6 @@ public sealed class CfrPlusPreflopSolver
             var sum = mix.Values.Sum();
             if (sum <= 0)
             {
-                var uniform = 1d / legalActions.Count;
                 mix = legalActions.ToDictionary(action => action, _ => uniform);
             }
             else
