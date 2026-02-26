@@ -2,6 +2,7 @@ using Microsoft.Extensions.Logging;
 using PokerAnalyzer.Domain.Cards;
 using PokerAnalyzer.Domain.Game;
 using PokerAnalyzer.Domain.PreflopTree;
+using System.Collections.Concurrent;
 
 namespace PokerAnalyzer.Infrastructure.PreflopSolver;
 
@@ -53,22 +54,43 @@ public sealed class CfrPlusPreflopSolver
         var positions = PreflopGameTreeBuilder.GetTablePositions(config.PlayerCount);
         var stackBucket = (int)Math.Round(config.EffectiveStackBb);
 
-        var infosets = new Dictionary<PreflopInfoSetKey, InfoSetData>();
+        var infosets = config.EnableParallelSolve
+            ? new ConcurrentDictionary<PreflopInfoSetKey, InfoSetData>()
+            : new Dictionary<PreflopInfoSetKey, InfoSetData>();
         var heroDist = PreflopRange.BuildClassDistribution()
             .ToDictionary(k => Normalize(k.Key.Label), v => (double)v.Value);
+        var heroHands = heroDist.Where(kvp => kvp.Value > 0d).ToArray();
         var lastProgressLog = System.Diagnostics.Stopwatch.StartNew();
         var progressEveryIterations = Math.Max(1, config.Iterations / 10);
+        var maxDegreeOfParallelism = Math.Max(1, config.ResolveMaxDegreeOfParallelism());
+        _logger.LogInformation(
+            "Solve execution mode. Parallel={Parallel}, MaxDegreeOfParallelism={MaxDegreeOfParallelism}, HeroClasses={HeroClasses}",
+            config.EnableParallelSolve,
+            maxDegreeOfParallelism,
+            heroHands.Length);
 
         for (var iteration = 0; iteration < config.Iterations; iteration++)
         {
-            foreach (var (heroHandClass, probability) in heroDist)
+            if (config.EnableParallelSolve && heroHands.Length > 1)
             {
-                if (probability <= 0)
-                    continue;
-
-                var reach = Enumerable.Repeat(1d, config.PlayerCount).ToArray();
-                reach[0] *= probability;
-                Cfr(tree.Root, [], reach, infosets, positions, stackBucket, config, heroHandClass);
+                Parallel.ForEach(
+                    heroHands,
+                    new ParallelOptions { MaxDegreeOfParallelism = maxDegreeOfParallelism },
+                    handClassEntry =>
+                    {
+                        var reach = Enumerable.Repeat(1d, config.PlayerCount).ToArray();
+                        reach[0] *= handClassEntry.Value;
+                        Cfr(tree.Root, [], reach, infosets, positions, stackBucket, config, handClassEntry.Key);
+                    });
+            }
+            else
+            {
+                foreach (var (heroHandClass, probability) in heroHands)
+                {
+                    var reach = Enumerable.Repeat(1d, config.PlayerCount).ToArray();
+                    reach[0] *= probability;
+                    Cfr(tree.Root, [], reach, infosets, positions, stackBucket, config, heroHandClass);
+                }
             }
 
             if ((iteration + 1) % progressEveryIterations == 0 || lastProgressLog.ElapsedMilliseconds >= 2000)
