@@ -51,7 +51,8 @@ public sealed record PreflopInfoSetKey(
     Position ActingPosition,
     string HistorySignature,
     int ToCallBb,
-    int EffectiveStackBb);
+    int EffectiveStackBb,
+    string HeroHandClass = "");
 
 public sealed record PreflopNodeState(
     PreflopInfoSetKey InfoSet,
