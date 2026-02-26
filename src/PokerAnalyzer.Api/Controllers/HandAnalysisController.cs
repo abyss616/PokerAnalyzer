@@ -153,7 +153,7 @@ public sealed class HandAnalysisController : ControllerBase
         Hand hand,
         HandHistorySession session)
     {
-        return MapToDomainHand(hand, session, logger: null, correlationId: null);
+        return MapToDomainHandCore(hand, session, logger: null, correlationId: null);
     }
 
     private PokerAnalyzer.Domain.HandHistory.Hand MapToDomainHand(
@@ -161,10 +161,10 @@ public sealed class HandAnalysisController : ControllerBase
         HandHistorySession session,
         string correlationId)
     {
-        return MapToDomainHand(hand, session, _logger, correlationId);
+        return MapToDomainHandCore(hand, session, _logger, correlationId);
     }
 
-    private static PokerAnalyzer.Domain.HandHistory.Hand MapToDomainHand(
+    private static PokerAnalyzer.Domain.HandHistory.Hand MapToDomainHandCore(
         Hand hand,
         HandHistorySession session,
         ILogger? logger,
