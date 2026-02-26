@@ -18,7 +18,7 @@ public class MonteCarloStrategyEngineTests
         ?? throw new InvalidOperationException("Unable to locate ComputeTotalEv.");
 
     [Fact]
-    public void Recommend_FallsBackToDummy_WhenHeroCardsMissing()
+    public void Recommend_FallsBackToLegalityBaseline_WhenHeroCardsMissing()
     {
         var hero = PlayerId.New();
         var villain = PlayerId.New();

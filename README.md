@@ -79,7 +79,7 @@ PokerAnalyzer/
 - `src/PokerAnalyzer.Api/Program.cs` (minimal API endpoint + request mapping)
 - `src/PokerAnalyzer.Application/Analysis/HandAnalyzer.cs`
 - `src/PokerAnalyzer.Application/Engines/IStrategyEngine.cs`
-- `src/PokerAnalyzer.Infrastructure/Engines/DummyStrategyEngine.cs`
+- `src/PokerAnalyzer.Infrastructure/Engines/MonteCarloStrategyEngine.cs`
 
 ---
 
@@ -143,8 +143,8 @@ Prefer provider-agnostic EF types unless you have a deliberate reason.
 - It stores raw XML and extracts key metadata (hash/session linkage/etc.)
 
 ### Engines
-- `DummyStrategyEngine` is a placeholder engine
-- Replace/extend it for actual strategy logic, solvers, or external integrations
+- `MonteCarloStrategyEngine` provides reference EV rankings and a legality baseline fallback
+- Extend with richer range modeling, solver integration, or external strategy providers
 
 ---
 
