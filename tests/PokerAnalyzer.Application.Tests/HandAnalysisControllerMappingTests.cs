@@ -43,17 +43,18 @@ public sealed class HandAnalysisControllerMappingTests
     }
 
     [Fact]
-    public void MapToDomainHand_Throws_WhenBlindActorDoesNotMatchComputedSeats()
+    public void MapToDomainHand_Throws_WhenBigBlindActorDoesNotMatchComputedSeats()
     {
-        var hand = BuildHand(dealerSeat: 1, sbSeat: 4, bbSeat: 3);
+        var hand = BuildHand(dealerSeat: 1, sbSeat: 4, bbSeat: 4);
         var session = new HandHistorySession { SmallBlind = 0.5m, BigBlind = 1m };
 
         var ex = Assert.Throws<TargetInvocationException>(() => InvokeMapToDomainHand(hand, session));
         var baseEx = Assert.IsType<InvalidOperationException>(ex.InnerException);
 
         Assert.Contains("dealerSeat=1", baseEx.Message);
-        Assert.Contains("computedSbSeat=2", baseEx.Message);
-        Assert.Contains("actionIndex=0", baseEx.Message);
+        Assert.Contains("computedSbSeat=4", baseEx.Message);
+        Assert.Contains("computedBbSeat=1", baseEx.Message);
+        Assert.Contains("actionIndex=1", baseEx.Message);
     }
 
     private static PokerAnalyzer.Domain.HandHistory.Hand InvokeMapToDomainHand(Hand hand, HandHistorySession session)
