@@ -364,6 +364,34 @@ public sealed class CfrPlusPreflopSolver
         return result;
     }
 
+    private static void MergeInfoSets(
+        IDictionary<PreflopInfoSetKey, InfoSetData> target,
+        IReadOnlyDictionary<PreflopInfoSetKey, InfoSetData> source)
+    {
+        foreach (var (key, sourceData) in source)
+        {
+            if (!target.TryGetValue(key, out var targetData))
+            {
+                target[key] = sourceData;
+                continue;
+            }
+
+            MergeInfoSetData(targetData, sourceData);
+        }
+    }
+
+    private static void MergeInfoSetData(InfoSetData target, InfoSetData source)
+    {
+        for (var i = 0; i < target.ActionCount; i++)
+        {
+            target.RegretSum[i] += source.RegretSum[i];
+            target.StrategySum[i] += source.StrategySum[i];
+        }
+
+        target.HeroUtilitySum += source.HeroUtilitySum;
+        target.WeightSum += source.WeightSum;
+    }
+
     private static decimal EvaluateHandClassStrength(string handClass)
     {
         var hc = HandClass.Parse(handClass);
