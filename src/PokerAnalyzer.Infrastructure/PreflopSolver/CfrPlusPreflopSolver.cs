@@ -54,7 +54,7 @@ public sealed class CfrPlusPreflopSolver
         var positions = PreflopGameTreeBuilder.GetTablePositions(config.PlayerCount);
         var stackBucket = (int)Math.Round(config.EffectiveStackBb);
 
-        IDictionary<PreflopInfoSetKey, InfoSetData> infosets = config.EnableParallelSolve
+        var infosets = config.EnableParallelSolve
             ? new ConcurrentDictionary<PreflopInfoSetKey, InfoSetData>()
             : new Dictionary<PreflopInfoSetKey, InfoSetData>();
         var heroDist = PreflopRange.BuildClassDistribution()
