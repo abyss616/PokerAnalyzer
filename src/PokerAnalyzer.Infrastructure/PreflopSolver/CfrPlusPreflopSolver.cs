@@ -56,19 +56,49 @@ public sealed class CfrPlusPreflopSolver
         var infosets = new Dictionary<PreflopInfoSetKey, InfoSetData>();
         var heroDist = PreflopRange.BuildClassDistribution()
             .ToDictionary(k => Normalize(k.Key.Label), v => (double)v.Value);
+        var heroHands = heroDist.Where(kvp => kvp.Value > 0d).ToArray();
         var lastProgressLog = System.Diagnostics.Stopwatch.StartNew();
         var progressEveryIterations = Math.Max(1, config.Iterations / 10);
+        var maxDegreeOfParallelism = Math.Max(1, config.ResolveMaxDegreeOfParallelism());
+        _logger.LogInformation(
+            "Solve execution mode. Parallel={Parallel}, MaxDegreeOfParallelism={MaxDegreeOfParallelism}, HeroClasses={HeroClasses}, ProgressLogIntervalMs={ProgressLogIntervalMs}",
+            config.EnableParallelSolve,
+            maxDegreeOfParallelism,
+            heroHands.Length,
+            2000);
 
         for (var iteration = 0; iteration < config.Iterations; iteration++)
         {
-            foreach (var (heroHandClass, probability) in heroDist)
+            if (config.EnableParallelSolve && heroHands.Length > 1)
             {
-                if (probability <= 0)
-                    continue;
-
-                var reach = Enumerable.Repeat(1d, config.PlayerCount).ToArray();
-                reach[0] *= probability;
-                Cfr(tree.Root, [], reach, infosets, positions, stackBucket, config, heroHandClass);
+                var mergeLock = new object();
+                Parallel.ForEach(
+                    heroHands,
+                    new ParallelOptions { MaxDegreeOfParallelism = maxDegreeOfParallelism },
+                    () => new Dictionary<PreflopInfoSetKey, InfoSetData>(),
+                    (handClassEntry, _, localInfosets) =>
+                    {
+                        var reach = Enumerable.Repeat(1d, config.PlayerCount).ToArray();
+                        reach[0] *= handClassEntry.Value;
+                        Cfr(tree.Root, [], reach, localInfosets, positions, stackBucket, config, handClassEntry.Key);
+                        return localInfosets;
+                    },
+                    localInfosets =>
+                    {
+                        lock (mergeLock)
+                        {
+                            MergeInfoSets(infosets, localInfosets);
+                        }
+                    });
+            }
+            else
+            {
+                foreach (var (heroHandClass, probability) in heroHands)
+                {
+                    var reach = Enumerable.Repeat(1d, config.PlayerCount).ToArray();
+                    reach[0] *= probability;
+                    Cfr(tree.Root, [], reach, infosets, positions, stackBucket, config, heroHandClass);
+                }
             }
 
             if ((iteration + 1) % progressEveryIterations == 0 || lastProgressLog.ElapsedMilliseconds >= 2000)
@@ -340,6 +370,34 @@ public sealed class CfrPlusPreflopSolver
         }
 
         return result;
+    }
+
+    private static void MergeInfoSets(
+        IDictionary<PreflopInfoSetKey, InfoSetData> target,
+        IReadOnlyDictionary<PreflopInfoSetKey, InfoSetData> source)
+    {
+        foreach (var (key, sourceData) in source)
+        {
+            if (!target.TryGetValue(key, out var targetData))
+            {
+                target[key] = sourceData;
+                continue;
+            }
+
+            MergeInfoSetData(targetData, sourceData);
+        }
+    }
+
+    private static void MergeInfoSetData(InfoSetData target, InfoSetData source)
+    {
+        for (var i = 0; i < target.ActionCount; i++)
+        {
+            target.RegretSum[i] += source.RegretSum[i];
+            target.StrategySum[i] += source.StrategySum[i];
+        }
+
+        target.HeroUtilitySum += source.HeroUtilitySum;
+        target.WeightSum += source.WeightSum;
     }
 
     private static decimal EvaluateHandClassStrength(string handClass)
