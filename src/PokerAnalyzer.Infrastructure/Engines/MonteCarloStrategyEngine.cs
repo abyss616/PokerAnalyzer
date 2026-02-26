@@ -8,7 +8,7 @@ namespace PokerAnalyzer.Infrastructure.Engines;
 /// <summary>
 /// Monte-Carlo based EV approximation engine.
 /// Uses simple opponent range profiles (position + action-history heuristics)
-/// and falls back to <see cref="DummyStrategyEngine"/> when required inputs are missing.
+/// and falls back to a legality-based baseline when required inputs are missing.
 /// </summary>
 public sealed class MonteCarloStrategyEngine : IMonteCarloReferenceEngine
 {
@@ -27,7 +27,6 @@ public sealed class MonteCarloStrategyEngine : IMonteCarloReferenceEngine
         [Position.Unknown] = 0.28m,
     };
 
-    private readonly DummyStrategyEngine _fallback = new();
     private readonly Random _random;
     private readonly int _iterations;
 
@@ -47,18 +46,18 @@ public sealed class MonteCarloStrategyEngine : IMonteCarloReferenceEngine
     {
         var legal = state.GetLegalActions(hero.HeroId);
         if (legal.Count == 0)
-            return BuildReference(_fallback.Recommend(state, hero));
+            return BuildReference(BuildLegalityBaseline(state, hero));
 
         if (hero.HeroHoleCards is null)
-            return BuildReference(_fallback.Recommend(state, hero)) with
+            return BuildReference(BuildLegalityBaseline(state, hero)) with
             {
                 Explanation = "Monte Carlo Reference (non-decision): hero hole cards unavailable.",
-                ReferenceExplanation = "Reference: unavailable (hero hole cards missing); using dummy legality-based baseline."
+                ReferenceExplanation = "Reference: unavailable (hero hole cards missing); using legality-based baseline."
             };
 
         var opponents = state.ActivePlayers.Where(id => id != hero.HeroId).ToArray();
         if (opponents.Length == 0)
-            return BuildReference(_fallback.Recommend(state, hero)) with
+            return BuildReference(BuildLegalityBaseline(state, hero)) with
             {
                 Explanation = "Monte Carlo Reference (non-decision): no active opponents."
             };
@@ -68,7 +67,7 @@ public sealed class MonteCarloStrategyEngine : IMonteCarloReferenceEngine
         var deck = BuildDeck(deadCards);
 
         if (deck.Count < opponents.Length * 2)
-            return BuildReference(_fallback.Recommend(state, hero)) with
+            return BuildReference(BuildLegalityBaseline(state, hero)) with
             {
                 Explanation = "Monte Carlo Reference (non-decision): insufficient remaining deck cards."
             };
@@ -82,6 +81,28 @@ public sealed class MonteCarloStrategyEngine : IMonteCarloReferenceEngine
             ranked,
             "Monte Carlo Reference (non-decision): EV-ranked actions using position + action-history opponent ranges."
         ));
+    }
+
+    private static Recommendation BuildLegalityBaseline(HandState state, HeroContext hero)
+    {
+        var legal = state.GetLegalActions(hero.HeroId);
+
+        if (legal.Count == 0)
+            return new Recommendation(Array.Empty<RecommendedAction>(), "No legal actions detected (hero may have folded).");
+
+        ActionType top =
+            legal.Contains(ActionType.Check) ? ActionType.Check :
+            legal.Contains(ActionType.Call) ? ActionType.Call :
+            legal.Contains(ActionType.Fold) ? ActionType.Fold :
+            legal[0];
+
+        var ranked = new List<RecommendedAction>();
+        ranked.Add(new RecommendedAction(top));
+
+        foreach (var action in legal.Where(action => action != top))
+            ranked.Add(new RecommendedAction(action));
+
+        return new Recommendation(ranked, "Legality baseline: no EV simulation available.");
     }
 
     private Recommendation RecommendPreflopPolicy(
