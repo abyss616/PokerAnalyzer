@@ -149,15 +149,31 @@ public sealed class HandAnalysisController : ControllerBase
     }
 
 
+    private static PokerAnalyzer.Domain.HandHistory.Hand MapToDomainHand(
+        Hand hand,
+        HandHistorySession session)
+    {
+        return MapToDomainHand(hand, session, logger: null, correlationId: null);
+    }
+
     private PokerAnalyzer.Domain.HandHistory.Hand MapToDomainHand(
         Hand hand,
         HandHistorySession session,
         string correlationId)
     {
+        return MapToDomainHand(hand, session, _logger, correlationId);
+    }
+
+    private static PokerAnalyzer.Domain.HandHistory.Hand MapToDomainHand(
+        Hand hand,
+        HandHistorySession session,
+        ILogger? logger,
+        string? correlationId)
+    {
         if (hand.Players.Count == 0)
             throw new InvalidOperationException("Hand has no players.");
 
-        _logger.LogInformation("Mapping stage start. CorrelationId={CorrelationId}, HandId={HandId}", correlationId, hand.Id);
+        logger?.LogInformation("Mapping stage start. CorrelationId={CorrelationId}, HandId={HandId}", correlationId, hand.Id);
 
         var playerIds = hand.Players
             .OrderBy(p => p.Seat)
@@ -175,7 +191,7 @@ public sealed class HandAnalysisController : ControllerBase
             .ToList();
 
         var dealerSeatNumber = hand.Players.FirstOrDefault(p => p.Dealer)?.Seat;
-        _logger.LogInformation("Players mapped. CorrelationId={CorrelationId}, PlayerNames={PlayerNames}, Seats={Seats}, DealerSeat={DealerSeat}, HeroName={HeroName}, HeroSeat={HeroSeat}",
+        logger?.LogInformation("Players mapped. CorrelationId={CorrelationId}, PlayerNames={PlayerNames}, Seats={Seats}, DealerSeat={DealerSeat}, HeroName={HeroName}, HeroSeat={HeroSeat}",
             correlationId,
             hand.Players.Select(p => p.Name).ToArray(),
             hand.Players.Select(p => p.Seat).ToArray(),
@@ -193,9 +209,9 @@ public sealed class HandAnalysisController : ControllerBase
             })
             .ToList();
 
-        _logger.LogInformation("Positions assigned. CorrelationId={CorrelationId}, PositionsBySeat={PositionsBySeat}", correlationId, string.Join(", ", positionsBySeat.Select(kvp => $"{kvp.Key}:{kvp.Value}")));
+        logger?.LogInformation("Positions assigned. CorrelationId={CorrelationId}, PositionsBySeat={PositionsBySeat}", correlationId, string.Join(", ", positionsBySeat.Select(kvp => $"{kvp.Key}:{kvp.Value}")));
         if (seats.Any(seat => seat.Position == Position.Unknown))
-            _logger.LogWarning("Positions assigned warning. CorrelationId={CorrelationId}, UnknownPositions=true", correlationId);
+            logger?.LogWarning("Positions assigned warning. CorrelationId={CorrelationId}, UnknownPositions=true", correlationId);
 
         var hero = hand.Players.FirstOrDefault(p => p.IsHero) ?? hand.Players[0];
         var heroId = playerIds[hero.Name];
@@ -207,7 +223,7 @@ public sealed class HandAnalysisController : ControllerBase
 
         if (hasDuplicateVillainPosition)
         {
-            _logger.LogError("Hero and Villain same position. CorrelationId={CorrelationId}, HeroPosition={HeroPosition}, VillainPositions={VillainPositions}",
+            logger?.LogError("Hero and Villain same position. CorrelationId={CorrelationId}, HeroPosition={HeroPosition}, VillainPositions={VillainPositions}",
                 correlationId,
                 heroSeat.Position,
                 seats.Where(seat => seat.Id != heroId).Select(seat => seat.Position).ToArray());
@@ -215,7 +231,7 @@ public sealed class HandAnalysisController : ControllerBase
         }
 
         var holeCards = ParseHoleCards(hand.HeroHoleCards);
-        _logger.LogInformation("Hole cards parsed. CorrelationId={CorrelationId}, HeroHoleCardsRaw={HeroHoleCardsRaw}, HeroHoleCardsParsed={HeroHoleCardsParsed}", correlationId, hand.HeroHoleCards, holeCards?.ToString());
+        logger?.LogInformation("Hole cards parsed. CorrelationId={CorrelationId}, HeroHoleCardsRaw={HeroHoleCardsRaw}, HeroHoleCardsParsed={HeroHoleCardsParsed}", correlationId, hand.HeroHoleCards, holeCards?.ToString());
 
         var seatsByPlayerId = seats.ToDictionary(seat => seat.Id);
         var sbSeat = seats.FirstOrDefault(seat => seat.Position == Position.SB);
@@ -232,7 +248,7 @@ public sealed class HandAnalysisController : ControllerBase
 
                 if (a.Type == ActionType.PostSmallBlind)
                 {
-                    _logger.LogInformation("Validate blind action mapping. CorrelationId={CorrelationId}, ComputedSbSeat={ComputedSbSeat}, ComputedBbSeat={ComputedBbSeat}, ActorSeat={ActorSeat}, ActionIndex={ActionIndex}", correlationId, sbSeat?.SeatNumber, bbSeat?.SeatNumber, actorSeat, a.ActionIndex);
+                    logger?.LogInformation("Validate blind action mapping. CorrelationId={CorrelationId}, ComputedSbSeat={ComputedSbSeat}, ComputedBbSeat={ComputedBbSeat}, ActorSeat={ActorSeat}, ActionIndex={ActionIndex}", correlationId, sbSeat?.SeatNumber, bbSeat?.SeatNumber, actorSeat, a.ActionIndex);
                     if (sbSeat is null)
                         throw new InvalidOperationException("Invalid action mapping: no SB seat found for PostSmallBlind.");
 
@@ -242,7 +258,7 @@ public sealed class HandAnalysisController : ControllerBase
 
                 if (a.Type == ActionType.PostBigBlind)
                 {
-                    _logger.LogInformation("Validate blind action mapping. CorrelationId={CorrelationId}, ComputedSbSeat={ComputedSbSeat}, ComputedBbSeat={ComputedBbSeat}, ActorSeat={ActorSeat}, ActionIndex={ActionIndex}", correlationId, sbSeat?.SeatNumber, bbSeat?.SeatNumber, actorSeat, a.ActionIndex);
+                    logger?.LogInformation("Validate blind action mapping. CorrelationId={CorrelationId}, ComputedSbSeat={ComputedSbSeat}, ComputedBbSeat={ComputedBbSeat}, ActorSeat={ActorSeat}, ActionIndex={ActionIndex}", correlationId, sbSeat?.SeatNumber, bbSeat?.SeatNumber, actorSeat, a.ActionIndex);
                     if (bbSeat is null)
                         throw new InvalidOperationException("Invalid action mapping: no BB seat found for PostBigBlind.");
 
@@ -260,7 +276,7 @@ public sealed class HandAnalysisController : ControllerBase
             .ToList();
 
         var board = hand.Board ?? new Board();
-        _logger.LogInformation("Actions mapped. CorrelationId={CorrelationId}, TotalActions={TotalActions}, PreflopActions={PreflopActions}, PostBlindsSkippedCount={PostBlindsSkippedCount}",
+        logger?.LogInformation("Actions mapped. CorrelationId={CorrelationId}, TotalActions={TotalActions}, PreflopActions={PreflopActions}, PostBlindsSkippedCount={PostBlindsSkippedCount}",
             correlationId,
             actions.Count,
             actions.Count(action => action.Street == Street.Preflop),
@@ -277,7 +293,7 @@ public sealed class HandAnalysisController : ControllerBase
             actions
         );
 
-        _logger.LogInformation("Domain hand built. CorrelationId={CorrelationId}, DomainHandId={DomainHandId}, Board={Board}, SB={SB}, BB={BB}", correlationId, domainHand.HandId, domainHand.Board, domainHand.SmallBlind.Value, domainHand.BigBlind.Value);
+        logger?.LogInformation("Domain hand built. CorrelationId={CorrelationId}, DomainHandId={DomainHandId}, Board={Board}, SB={SB}, BB={BB}", correlationId, domainHand.HandId, domainHand.Board, domainHand.SmallBlind.Value, domainHand.BigBlind.Value);
         return domainHand;
     }
 
