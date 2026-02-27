@@ -1,25 +1,56 @@
 using System.Collections.Concurrent;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 
 namespace PokerAnalyzer.Infrastructure.PreflopSolver;
 
-public sealed record PreflopSolverCacheKey(int PlayerCount, int EffectiveStackBb, RakeConfig Rake, string SizingFingerprint);
+public sealed record PreflopSolverCacheKey(int CacheVersion, int PlayerCount, int EffectiveStackBb, RakeConfig Rake, string SizingFingerprint);
+
+public sealed class PreflopSolverCacheOptions
+{
+    public int MaxEntries { get; init; } = 64;
+    public TimeSpan Ttl { get; init; } = TimeSpan.FromMinutes(30);
+    public TimeSpan TrimInterval { get; init; } = TimeSpan.FromMinutes(2);
+}
 
 public sealed class PreflopSolverCache : IPreflopStrategyStore
 {
+    private const int CurrentCacheVersion = 2;
+
     private readonly CfrPlusPreflopSolver _solver;
     private readonly ILogger<PreflopSolverCache> _logger;
-    private readonly ConcurrentDictionary<PreflopSolverCacheKey, Lazy<Task<PreflopSolveResult>>> _cache = new();
+    private readonly PreflopSolverCacheOptions _options;
+    private readonly TimeProvider _timeProvider;
+    private readonly ConcurrentDictionary<PreflopSolverCacheKey, CacheEntry> _cache = new();
+    private readonly object _trimGate = new();
+    private long _nextTrimUtcTicks;
 
     public PreflopSolverCache(CfrPlusPreflopSolver solver)
-        : this(solver, Microsoft.Extensions.Logging.Abstractions.NullLogger<PreflopSolverCache>.Instance)
+        : this(
+            solver,
+            Microsoft.Extensions.Logging.Abstractions.NullLogger<PreflopSolverCache>.Instance,
+            new PreflopSolverCacheOptions(),
+            TimeProvider.System)
     {
     }
 
     public PreflopSolverCache(CfrPlusPreflopSolver solver, ILogger<PreflopSolverCache> logger)
+        : this(solver, logger, new PreflopSolverCacheOptions(), TimeProvider.System)
+    {
+    }
+
+    [ActivatorUtilitiesConstructor]
+    public PreflopSolverCache(
+        CfrPlusPreflopSolver solver,
+        ILogger<PreflopSolverCache> logger,
+        PreflopSolverCacheOptions options,
+        TimeProvider timeProvider)
     {
         _solver = solver;
         _logger = logger;
+        _options = options;
+        _timeProvider = timeProvider;
+        _nextTrimUtcTicks = _timeProvider.GetUtcNow().Add(_options.TrimInterval).Ticks;
     }
 
     private int _solveCount;
@@ -28,24 +59,42 @@ public sealed class PreflopSolverCache : IPreflopStrategyStore
 
     public bool ContainsKey(PreflopSolverCacheKey key) => _cache.ContainsKey(key);
 
+    public static PreflopSolverCacheKey BuildCacheKey(PreflopSolverConfig config)
+    {
+        var sizing = config.ResolveSizing();
+        return new PreflopSolverCacheKey(CurrentCacheVersion, config.PlayerCount, (int)Math.Round(config.EffectiveStackBb), config.Rake, Fingerprint(sizing));
+    }
+
+    [Obsolete("Use GetOrSolveAsync; synchronous calls are not supported.")]
     public PreflopSolveResult GetOrSolve(PreflopSolverConfig config)
-        => GetOrSolveAsync(config, CancellationToken.None).GetAwaiter().GetResult();
+        => throw new NotSupportedException("Use GetOrSolveAsync; synchronous calls are not supported.");
 
     public async Task<PreflopSolveResult> GetOrSolveAsync(PreflopSolverConfig config, CancellationToken ct)
     {
+        if (ct.IsCancellationRequested)
+            throw new OperationCanceledException(ct);
+
         var sizing = config.ResolveSizing();
-        var key = new PreflopSolverCacheKey(config.PlayerCount, (int)Math.Round(config.EffectiveStackBb), config.Rake, Fingerprint(sizing));
+        var key = BuildCacheKey(config);
         var hadEntry = _cache.ContainsKey(key);
         _logger.LogInformation("Solve requested. CacheKey={CacheKey}, AlreadySolving={AlreadySolving}, CacheHit={CacheHit}, CacheMiss={CacheMiss}", key, hadEntry, hadEntry, !hadEntry);
         var started = System.Diagnostics.Stopwatch.StartNew();
 
-        var lazy = _cache.GetOrAdd(key, _ => new Lazy<Task<PreflopSolveResult>>(() => Task.Run(() =>
+        var now = _timeProvider.GetUtcNow();
+        var entry = _cache.GetOrAdd(key, _ => new CacheEntry(now));
+        entry.Touch(now);
+
+        if (ShouldTrim(now))
+            TrimCache(now);
+
+        ct.ThrowIfCancellationRequested();
+        var solveTask = entry.GetOrCreateSolveTask(() => Task.Run(() =>
         {
             Interlocked.Increment(ref _solveCount);
             return _solver.SolvePreflop(config with { Sizing = new RaiseSizingAbstraction(sizing.OpenSizesBb, sizing.ThreeBetSizeMultipliers, sizing.FourBetSizeMultipliers, sizing.JamThresholdStackBb) });
-        }, CancellationToken.None)));
+        }));
 
-        var result = await lazy.Value.WaitAsync(ct);
+        var result = await solveTask.WaitAsync(ct);
         started.Stop();
         _logger.LogInformation("Solve finished. DurationMs={DurationMs}, SolveCount={SolveCount}, ConfigSummary={ConfigSummary}",
             started.ElapsedMilliseconds,
@@ -61,7 +110,19 @@ public sealed class PreflopSolverCache : IPreflopStrategyStore
         if (string.IsNullOrWhiteSpace(normalizedHeroHand))
             return new StrategyQueryResult(new Dictionary<PokerAnalyzer.Domain.Game.ActionType, double>(), null, 0m, 0m, key, false, "Missing hero hand class");
 
-        var solvedResults = _cache.Values.Where(v => v.IsValueCreated).Select(v => v.Value.IsCompletedSuccessfully ? v.Value.Result : null).Where(v => v is not null).ToList();
+        var now = _timeProvider.GetUtcNow();
+        var solvedResults = _cache.Values
+            .Select(v =>
+            {
+                v.Touch(now);
+                return v.TryGetCompletedResult();
+            })
+            .Where(v => v is not null)
+            .ToList();
+
+        if (ShouldTrim(now))
+            TrimCache(now);
+
         foreach (var solved in solvedResults)
         {
             foreach (var candidate in BuildLookupCandidates(key, normalizedHeroHand, solved!))
@@ -193,4 +254,95 @@ public sealed class PreflopSolverCache : IPreflopStrategyStore
 
     private static string Fingerprint(PreflopSizingConfig s)
         => $"O:{string.Join(',', s.OpenSizesBb)}|3:{string.Join(',', s.ThreeBetSizeMultipliers)}|4:{string.Join(',', s.FourBetSizeMultipliers)}|J:{s.JamThresholdStackBb}|AJ:{s.AllowExplicitJam}";
+
+    private bool ShouldTrim(DateTimeOffset now) => now.Ticks >= Interlocked.Read(ref _nextTrimUtcTicks);
+
+    private void TrimCache(DateTimeOffset now)
+    {
+        lock (_trimGate)
+        {
+            if (!ShouldTrim(now))
+                return;
+
+            var trimmedForTtl = 0;
+            if (_options.Ttl > TimeSpan.Zero)
+            {
+                foreach (var (key, entry) in _cache)
+                {
+                    if (!entry.IsCompleted)
+                        continue;
+
+                    if (now - entry.LastAccessUtc <= _options.Ttl)
+                        continue;
+
+                    if (_cache.TryRemove(key, out _))
+                        trimmedForTtl++;
+                }
+            }
+
+            var trimmedForSize = 0;
+            if (_options.MaxEntries > 0 && _cache.Count > _options.MaxEntries)
+            {
+                var overflow = _cache.Count - _options.MaxEntries;
+                var evictionCandidates = _cache
+                    .Where(kvp => kvp.Value.IsCompleted)
+                    .OrderBy(kvp => kvp.Value.LastAccessUtc)
+                    .Take(overflow)
+                    .Select(kvp => kvp.Key)
+                    .ToList();
+
+                foreach (var key in evictionCandidates)
+                {
+                    if (_cache.TryRemove(key, out _))
+                        trimmedForSize++;
+                }
+            }
+
+            var totalEvicted = trimmedForTtl + trimmedForSize;
+            if (totalEvicted > 0)
+            {
+                _logger.LogInformation(
+                    "Cache trim executed. EvictedCount={EvictedCount}, TtlEvicted={TtlEvicted}, SizeEvicted={SizeEvicted}, CacheEntries={CacheEntries}",
+                    totalEvicted,
+                    trimmedForTtl,
+                    trimmedForSize,
+                    _cache.Count);
+            }
+
+            Interlocked.Exchange(ref _nextTrimUtcTicks, now.Add(_options.TrimInterval).Ticks);
+        }
+    }
+
+    private sealed class CacheEntry(DateTimeOffset createdUtc)
+    {
+        private readonly Lazy<Task<PreflopSolveResult>> _solveTask = new(() =>
+        {
+            var factory = Interlocked.Exchange(ref _taskFactory, null)
+                ?? throw new InvalidOperationException("Solve task factory was not initialized.");
+            return factory();
+        }, LazyThreadSafetyMode.ExecutionAndPublication);
+        private long _lastAccessUtcTicks = createdUtc.Ticks;
+        private Func<Task<PreflopSolveResult>>? _taskFactory;
+
+        public DateTimeOffset LastAccessUtc => new(Interlocked.Read(ref _lastAccessUtcTicks), TimeSpan.Zero);
+        public bool IsCompleted => _solveTask.IsValueCreated && _solveTask.Value.IsCompleted;
+
+        public void Touch(DateTimeOffset now) => Interlocked.Exchange(ref _lastAccessUtcTicks, now.Ticks);
+
+        public Task<PreflopSolveResult> GetOrCreateSolveTask(Func<Task<PreflopSolveResult>> taskFactory)
+        {
+            Interlocked.CompareExchange(ref _taskFactory, taskFactory, null);
+            return _solveTask.Value;
+        }
+
+        public PreflopSolveResult? TryGetCompletedResult()
+        {
+            if (!_solveTask.IsValueCreated)
+                return null;
+
+            var task = _solveTask.Value;
+            return task.IsCompletedSuccessfully ? task.Result : null;
+        }
+
+    }
 }

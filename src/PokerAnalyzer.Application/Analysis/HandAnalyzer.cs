@@ -1,3 +1,5 @@
+using System.Threading;
+using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
 using PokerAnalyzer.Application.Engines;
 using PokerAnalyzer.Domain.Game;
@@ -24,7 +26,7 @@ public sealed class HandAnalyzer
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
     }
 
-    public HandAnalysisResult Analyze(Domain.HandHistory.Hand hand)
+    public async Task<HandAnalysisResult> AnalyzeAsync(Domain.HandHistory.Hand hand, CancellationToken ct = default)
     {
         var startedAt = DateTimeOffset.UtcNow;
         var stopwatch = System.Diagnostics.Stopwatch.StartNew();
@@ -88,7 +90,7 @@ public sealed class HandAnalyzer
                     ActionHistory = hand.Actions.Take(i).ToArray()
                 };
 
-                var rec = EnsureLegalRecommendation(state, hand.HeroId, _engine.Recommend(state, decisionCtx));
+                var rec = EnsureLegalRecommendation(state, hand.HeroId, await _engine.RecommendAsync(state, decisionCtx, ct));
                 var primaryAction = rec.PrimaryAction ?? rec.RankedActions.FirstOrDefault();
                 var isUnsupported = primaryAction is null;
                 _logger.LogInformation(

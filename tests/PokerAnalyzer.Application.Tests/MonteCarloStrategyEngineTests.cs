@@ -1,3 +1,5 @@
+using System.Threading;
+using System.Threading.Tasks;
 using PokerAnalyzer.Application.Engines;
 using PokerAnalyzer.Domain.Cards;
 using PokerAnalyzer.Domain.Game;
@@ -18,7 +20,7 @@ public class MonteCarloStrategyEngineTests
         ?? throw new InvalidOperationException("Unable to locate ComputeTotalEv.");
 
     [Fact]
-    public void Recommend_FallsBackToLegalityBaseline_WhenHeroCardsMissing()
+    public async Task Recommend_FallsBackToLegalityBaseline_WhenHeroCardsMissing()
     {
         var hero = PlayerId.New();
         var villain = PlayerId.New();
@@ -37,14 +39,14 @@ public class MonteCarloStrategyEngineTests
         var ctx = new HeroContext(hero, new ChipAmount(5), new ChipAmount(10));
         var engine = new MonteCarloStrategyEngine();
 
-        var rec = engine.Recommend(state, ctx);
+        var rec = await engine.RecommendAsync(state, ctx);
 
         Assert.NotEmpty(rec.RankedActions);
         Assert.Contains("Reference", rec.ReferenceExplanation, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
-    public void Recommend_ReturnsEstimatedEv_WithBasicRangeInputs()
+    public async Task Recommend_ReturnsEstimatedEv_WithBasicRangeInputs()
     {
         var hero = PlayerId.New();
         var villain = PlayerId.New();
@@ -75,7 +77,7 @@ public class MonteCarloStrategyEngineTests
         };
 
         var engine = new MonteCarloStrategyEngine();
-        var rec = engine.Recommend(state, ctx);
+        var rec = await engine.RecommendAsync(state, ctx);
 
         Assert.NotEmpty(rec.RankedActions);
         Assert.All(rec.RankedActions, a => Assert.NotNull(a.EstimatedEv));
@@ -83,7 +85,7 @@ public class MonteCarloStrategyEngineTests
     }
 
     [Fact]
-    public void Recommend_PreflopPolicy_PrefersAggression_WithPremiumHandInBigBlindOption()
+    public async Task Recommend_PreflopPolicy_PrefersAggression_WithPremiumHandInBigBlindOption()
     {
         var hero = PlayerId.New();
         var villain = PlayerId.New();
@@ -114,7 +116,7 @@ public class MonteCarloStrategyEngineTests
         };
 
         var engine = new MonteCarloStrategyEngine();
-        var rec = engine.Recommend(state, ctx);
+        var rec = await engine.RecommendAsync(state, ctx);
 
         Assert.NotEmpty(rec.RankedActions);
         Assert.Equal(ActionType.Bet, rec.RankedActions[0].Type);
@@ -122,7 +124,7 @@ public class MonteCarloStrategyEngineTests
     }
 
     [Fact]
-    public void Recommend_PreflopPolicy_RecordsCalibrationSample()
+    public async Task Recommend_PreflopPolicy_RecordsCalibrationSample()
     {
         var hero = PlayerId.New();
         var villain = PlayerId.New();
@@ -153,7 +155,7 @@ public class MonteCarloStrategyEngineTests
         };
 
         var engine = new MonteCarloStrategyEngine();
-        _ = engine.Recommend(state, ctx);
+        _ = await engine.RecommendAsync(state, ctx);
 
         var samples = MonteCarloStrategyEngine.PreflopCalibrationLog.Snapshot();
         Assert.NotEmpty(samples);
@@ -161,7 +163,7 @@ public class MonteCarloStrategyEngineTests
     }
 
     [Fact]
-    public void Recommend_FacingLargeOpen_WithNegativeCallEv_RanksFoldAboveCall()
+    public async Task Recommend_FacingLargeOpen_WithNegativeCallEv_RanksFoldAboveCall()
     {
         var hero = PlayerId.New();
         var villain = PlayerId.New();
@@ -192,7 +194,7 @@ public class MonteCarloStrategyEngineTests
         };
 
         var engine = new MonteCarloStrategyEngine();
-        var rec = engine.Recommend(state, ctx);
+        var rec = await engine.RecommendAsync(state, ctx);
 
         var fold = Assert.Single(rec.RankedActions.Where(a => a.Type == ActionType.Fold));
         var call = Assert.Single(rec.RankedActions.Where(a => a.Type == ActionType.Call));
@@ -204,7 +206,7 @@ public class MonteCarloStrategyEngineTests
     }
 
     [Fact]
-    public void ComputeTotalEv_MatchesHeadsUpFormula_WhenBetGetsCalled()
+    public async Task ComputeTotalEv_MatchesHeadsUpFormula_WhenBetGetsCalled()
     {
         const decimal pot = 15m;
         const decimal foldEquity = 0.20m;
@@ -219,7 +221,7 @@ public class MonteCarloStrategyEngineTests
     }
 
     [Fact]
-    public void ComputePotAfterCall_UnopenedPot_BetAddsOnlyHeroContribution()
+    public async Task ComputePotAfterCall_UnopenedPot_BetAddsOnlyHeroContribution()
     {
         var hero = PlayerId.New();
         var villain = PlayerId.New();
@@ -239,7 +241,7 @@ public class MonteCarloStrategyEngineTests
     }
 
     [Fact]
-    public void ComputePotAfterCall_FacingBet_CallAddsOnlyHeroCallAmount()
+    public async Task ComputePotAfterCall_FacingBet_CallAddsOnlyHeroCallAmount()
     {
         var hero = PlayerId.New();
         var villain = PlayerId.New();
@@ -261,7 +263,7 @@ public class MonteCarloStrategyEngineTests
     }
 
     [Fact]
-    public void ComputePotAfterCall_MultiwayRaise_DoesNotAssumeAllOpponentsCall()
+    public async Task ComputePotAfterCall_MultiwayRaise_DoesNotAssumeAllOpponentsCall()
     {
         var hero = PlayerId.New();
         var villainA = PlayerId.New();

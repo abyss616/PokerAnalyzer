@@ -1,3 +1,5 @@
+using System.Threading;
+using System.Threading.Tasks;
 using PokerAnalyzer.Application.Analysis;
 using PokerAnalyzer.Application.Engines;
 using PokerAnalyzer.Domain.Cards;
@@ -11,12 +13,12 @@ public class HandAnalyzerTests
 {
     private sealed class AlwaysCheckEngine : IStrategyEngine
     {
-        public Recommendation Recommend(HandState state, HeroContext hero)
-            => new(new[] { new RecommendedAction(ActionType.Check) }, "Always-check test engine.");
+        public Task<Recommendation> RecommendAsync(HandState state, HeroContext hero, CancellationToken ct = default)
+            => Task.FromResult(new Recommendation(new[] { new RecommendedAction(ActionType.Check) }, "Always-check test engine."));
     }
 
     [Fact]
-    public void Analyzer_ReturnsDecisionForHeroActions()
+    public async Task Analyzer_ReturnsDecisionForHeroActions()
     {
         var hero = PlayerId.New();
         var villain = PlayerId.New();
@@ -43,14 +45,14 @@ public class HandAnalyzerTests
         );
 
         var analyzer = new HandAnalyzer(new AlwaysCheckEngine());
-        var result = analyzer.Analyze(hand);
+        var result = await analyzer.AnalyzeAsync(hand);
 
         Assert.Single(result.Decisions);
         Assert.Equal(DecisionSeverity.Ok, result.Decisions[0].Severity);
     }
 
     [Fact]
-    public void Analyzer_IgnoresForcedBlindPosts()
+    public async Task Analyzer_IgnoresForcedBlindPosts()
     {
         var hero = PlayerId.New();
         var villain = PlayerId.New();
@@ -78,14 +80,14 @@ public class HandAnalyzerTests
         );
 
         var analyzer = new HandAnalyzer(new AlwaysCheckEngine());
-        var result = analyzer.Analyze(hand);
+        var result = await analyzer.AnalyzeAsync(hand);
 
         Assert.Single(result.Decisions);
         Assert.Equal(ActionType.Call, result.Decisions[0].ActualAction.Type);
     }
 
     [Fact]
-    public void Analyzer_TransitionsStreetBeforePostflopDecision()
+    public async Task Analyzer_TransitionsStreetBeforePostflopDecision()
     {
         var hero = PlayerId.New();
         var villain = PlayerId.New();
@@ -114,14 +116,14 @@ public class HandAnalyzerTests
         );
 
         var analyzer = new HandAnalyzer(new AlwaysCheckEngine());
-        var result = analyzer.Analyze(hand);
+        var result = await analyzer.AnalyzeAsync(hand);
 
         Assert.Equal(2, result.Decisions.Count);
         Assert.Equal(Street.Flop, result.Decisions[1].Street);
     }
 
     [Fact]
-    public void Analyzer_AllowsHeadsUpSmallBlindVsBigBlind()
+    public async Task Analyzer_AllowsHeadsUpSmallBlindVsBigBlind()
     {
         var hero = PlayerId.New();
         var villain = PlayerId.New();
@@ -144,13 +146,13 @@ public class HandAnalyzerTests
             });
 
         var analyzer = new HandAnalyzer(new AlwaysCheckEngine());
-        var result = analyzer.Analyze(hand);
+        var result = await analyzer.AnalyzeAsync(hand);
 
         Assert.Single(result.Decisions);
     }
 
     [Fact]
-    public void Analyzer_AllowsSixMaxUtgVsBigBlind()
+    public async Task Analyzer_AllowsSixMaxUtgVsBigBlind()
     {
         var hero = PlayerId.New();
         var bb = PlayerId.New();
@@ -181,13 +183,13 @@ public class HandAnalyzerTests
             });
 
         var analyzer = new HandAnalyzer(new AlwaysCheckEngine());
-        var result = analyzer.Analyze(hand);
+        var result = await analyzer.AnalyzeAsync(hand);
 
         Assert.Single(result.Decisions);
     }
 
     [Fact]
-    public void Preflop_UtgFacingBigBlind_CannotCheck()
+    public async Task Preflop_UtgFacingBigBlind_CannotCheck()
     {
         var utg = PlayerId.New();
         var hj = PlayerId.New();
@@ -219,7 +221,7 @@ public class HandAnalyzerTests
     }
 
     [Fact]
-    public void CreateNewHand_HeadsUpBtnPostsSmallBlind_WhenNoExplicitSbSeat()
+    public async Task CreateNewHand_HeadsUpBtnPostsSmallBlind_WhenNoExplicitSbSeat()
     {
         var btn = PlayerId.New();
         var bb = PlayerId.New();
@@ -240,7 +242,7 @@ public class HandAnalyzerTests
     }
 
     [Fact]
-    public void HeadsUp_BtnSmallBlind_HasNoPreflopCheckOption()
+    public async Task HeadsUp_BtnSmallBlind_HasNoPreflopCheckOption()
     {
         var btn = PlayerId.New();
         var bb = PlayerId.New();
@@ -261,7 +263,7 @@ public class HandAnalyzerTests
     }
 
     [Fact]
-    public void Analyzer_RejectsIllegalCheckRecommendation_WhenFacingBet()
+    public async Task Analyzer_RejectsIllegalCheckRecommendation_WhenFacingBet()
     {
         var hero = PlayerId.New();
         var villain = PlayerId.New();
@@ -284,7 +286,7 @@ public class HandAnalyzerTests
             });
 
         var analyzer = new HandAnalyzer(new AlwaysCheckEngine());
-        var result = analyzer.Analyze(hand);
+        var result = await analyzer.AnalyzeAsync(hand);
 
         var recommendation = Assert.Single(result.Decisions).Recommendation;
         Assert.Empty(recommendation.RankedActions);
@@ -292,7 +294,7 @@ public class HandAnalyzerTests
     }
 
     [Fact]
-    public void Analyzer_ThrowsWhenHeroAndVillainSharePosition()
+    public async Task Analyzer_ThrowsWhenHeroAndVillainSharePosition()
     {
         var hero = PlayerId.New();
         var villain = PlayerId.New();
@@ -313,7 +315,7 @@ public class HandAnalyzerTests
 
         var analyzer = new HandAnalyzer(new AlwaysCheckEngine());
 
-        var ex = Assert.Throws<InvalidOperationException>(() => analyzer.Analyze(hand));
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() => analyzer.AnalyzeAsync(hand));
         Assert.Contains("Hero and Villain cannot have the same position", ex.Message);
     }
 }

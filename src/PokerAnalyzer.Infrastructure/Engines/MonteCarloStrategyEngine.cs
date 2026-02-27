@@ -1,3 +1,5 @@
+using System.Threading;
+using System.Threading.Tasks;
 using System.Collections.Concurrent;
 using PokerAnalyzer.Application.Engines;
 using PokerAnalyzer.Domain.Cards;
@@ -40,7 +42,8 @@ public sealed class MonteCarloStrategyEngine : IMonteCarloReferenceEngine
         _iterations = Math.Max(100, iterations);
     }
 
-    public Recommendation Recommend(HandState state, HeroContext hero) => EvaluateReference(state, hero);
+    public Task<Recommendation> RecommendAsync(HandState state, HeroContext hero, CancellationToken ct = default)
+        => Task.FromResult(EvaluateReference(state, hero));
 
     public Recommendation EvaluateReference(HandState state, HeroContext hero)
     {

@@ -1,3 +1,5 @@
+using System.Threading;
+using System.Threading.Tasks;
 using PokerAnalyzer.Application.Engines;
 using PokerAnalyzer.Domain.Cards;
 using PokerAnalyzer.Domain.Game;
@@ -20,7 +22,7 @@ public class CfrPlusPreflopSolverTests
     [InlineData(4)]
     [InlineData(5)]
     [InlineData(6)]
-    public void TreeBuilds_UnopenedFirstIn_ForSupportedPlayerCounts(int playerCount)
+    public async Task TreeBuilds_UnopenedFirstIn_ForSupportedPlayerCounts(int playerCount)
     {
         var builder = new PreflopGameTreeBuilder(playerCount, 100m, 0.5m, 1m, Rake, SolverSizingConfig.Default);
         var nodes = builder.Build();
@@ -30,7 +32,7 @@ public class CfrPlusPreflopSolverTests
     }
 
     [Fact]
-    public void HeadsUp_ActionOrder_IsBtnThenBb()
+    public async Task HeadsUp_ActionOrder_IsBtnThenBb()
     {
         var nodes = new PreflopGameTreeBuilder(2, 100m, 0.5m, 1m, Rake, SolverSizingConfig.Default).Build();
         Assert.Contains(nodes, n => n.InfoSet.HistorySignature == "UNOPENED" && n.InfoSet.ActingPosition == Position.BTN);
@@ -43,7 +45,7 @@ public class CfrPlusPreflopSolverTests
     [InlineData(4)]
     [InlineData(5)]
     [InlineData(6)]
-    public void TreeContains_VsOpen_Vs3Bet_Vs4Bet_AndAllIn(int playerCount)
+    public async Task TreeContains_VsOpen_Vs3Bet_Vs4Bet_AndAllIn(int playerCount)
     {
         var nodes = new PreflopGameTreeBuilder(playerCount, 100m, 0.5m, 1m, Rake, SolverSizingConfig.Default).Build();
         Assert.Contains(nodes, n => n.InfoSet.HistorySignature is "OPEN" or "OPEN_CALL");
@@ -53,21 +55,21 @@ public class CfrPlusPreflopSolverTests
     }
 
     [Fact]
-    public void SolverCache_SolvesOnce_PerConfiguration()
+    public async Task SolverCache_SolvesOnce_PerConfiguration()
     {
         var solver = new CfrPlusPreflopSolver(new PreflopTerminalEvaluator(new ApproxMonteCarloContinuationValueProvider()));
         var cache = new PreflopSolverCache(solver);
         var config = new PreflopSolverConfig(30, 100m, Rake, 6, RaiseSizingAbstraction.Default);
 
-        var first = cache.GetOrSolve(config);
-        var second = cache.GetOrSolve(config);
+        var first = await cache.GetOrSolveAsync(config, CancellationToken.None);
+        var second = await cache.GetOrSolveAsync(config, CancellationToken.None);
 
         Assert.Same(first, second);
         Assert.Equal(1, cache.SolveCount);
     }
 
     [Fact]
-    public void Engine_UsesSolverWhenSupported_AndProvidesReferenceSeparately()
+    public async Task Engine_UsesSolverWhenSupported_AndProvidesReferenceSeparately()
     {
         var hero = PlayerId.New();
         var villain = PlayerId.New();
@@ -86,7 +88,7 @@ public class CfrPlusPreflopSolverTests
             new PreflopSolverConfig(40, 100m, Rake, 2, RaiseSizingAbstraction.Default),
             Microsoft.Extensions.Logging.Abstractions.NullLogger<CfrPlusPreflopStrategyEngine>.Instance);
 
-        var rec = engine.Recommend(state, new HeroContext(hero, new ChipAmount(5), new ChipAmount(10))
+        var rec = await engine.RecommendAsync(state, new HeroContext(hero, new ChipAmount(5), new ChipAmount(10))
         {
             HeroHoleCards = HoleCards.Parse("AsAh"),
             PlayerPositions = new Dictionary<PlayerId, Position> { [hero] = Position.BTN, [villain] = Position.BB },
@@ -107,7 +109,7 @@ public class CfrPlusPreflopSolverTests
         Assert.Equal(1, extracted.Key.ToCallBb);
 
         var normalized = extracted.Key with { PlayerCount = 2, EffectiveStackBb = 100 };
-        var query = engine.QueryStrategy(normalized, "AsAh");
+        var query = await engine.QueryStrategyAsync(normalized, "AsAh");
         Assert.NotEmpty(query.ActionFrequencies);
 
         Assert.NotNull(rec.PrimaryEV);
@@ -116,7 +118,7 @@ public class CfrPlusPreflopSolverTests
     }
 
     [Fact]
-    public void StateExtractor_HeadsUpSmallBlindAlias_MapsToButtonAndRoundsToCallUp()
+    public async Task StateExtractor_HeadsUpSmallBlindAlias_MapsToButtonAndRoundsToCallUp()
     {
         var hero = PlayerId.New();
         var villain = PlayerId.New();
@@ -141,7 +143,7 @@ public class CfrPlusPreflopSolverTests
     }
 
     [Fact]
-    public void StateExtractor_ProducesUnifiedInfoSetKey()
+    public async Task StateExtractor_ProducesUnifiedInfoSetKey()
     {
         var hero = PlayerId.New();
         var villain = PlayerId.New();
@@ -166,7 +168,7 @@ public class CfrPlusPreflopSolverTests
 
 
     [Fact]
-    public void PreflopSizingNormalizer_OpenSize_BucketsToNearestConfiguredSize()
+    public async Task PreflopSizingNormalizer_OpenSize_BucketsToNearestConfiguredSize()
     {
         var normalizer = new PreflopSizingNormalizer();
         var sizing = new SolverSizingConfig(OpenSizesBb: [2.0m, 2.5m], ThreeBetSizeMultipliers: [3.0m], FourBetSizeMultipliers: [2.2m]);
@@ -179,7 +181,7 @@ public class CfrPlusPreflopSolverTests
     }
 
     [Fact]
-    public void SolverCache_Lookup_ReturnsNormalizedMix_ForHeadsUpBbVsLimp()
+    public async Task SolverCache_Lookup_ReturnsNormalizedMix_ForHeadsUpBbVsLimp()
     {
         var solver = new CfrPlusPreflopSolver(new PreflopTerminalEvaluator(new ApproxMonteCarloContinuationValueProvider()));
         var cache = new PreflopSolverCache(solver);
@@ -191,7 +193,7 @@ public class CfrPlusPreflopSolverTests
             Sizing: RaiseSizingAbstraction.Default,
             MaxTreeDepth: 8);
 
-        cache.GetOrSolve(config);
+        await cache.GetOrSolveAsync(config, CancellationToken.None);
 
         var key = new PreflopInfoSetKey(2, Position.BB, "LIMPED", 0, 100);
         var query = cache.Lookup(key, "AsKh");
@@ -203,7 +205,7 @@ public class CfrPlusPreflopSolverTests
     }
 
     [Fact]
-    public void Solver_ProducesNormalizedStrategies_OnTinyDepthTree()
+    public async Task Solver_ProducesNormalizedStrategies_OnTinyDepthTree()
     {
         var solver = new CfrPlusPreflopSolver(new PreflopTerminalEvaluator(new ApproxMonteCarloContinuationValueProvider()));
         var config = new PreflopSolverConfig(
@@ -228,7 +230,7 @@ public class CfrPlusPreflopSolverTests
 
 
     [Fact]
-    public void Solver_LimpedBbVsBtnOpen_HasStableBestAction()
+    public async Task Solver_LimpedBbVsBtnOpen_HasStableBestAction()
     {
         var solver = new CfrPlusPreflopSolver(new PreflopTerminalEvaluator(new ApproxMonteCarloContinuationValueProvider()));
         var config = new PreflopSolverConfig(
@@ -249,7 +251,7 @@ public class CfrPlusPreflopSolverTests
     }
 
     [Fact]
-    public void EngineQueryStrategy_ReturnsUnsupported_WhenHeroHandClassMissing()
+    public async Task EngineQueryStrategy_ReturnsUnsupported_WhenHeroHandClassMissing()
     {
         var engine = new CfrPlusPreflopStrategyEngine(
             new MonteCarloStrategyEngine(),
@@ -257,7 +259,7 @@ public class CfrPlusPreflopSolverTests
             new PreflopSolverConfig(30, 50m, Rake, 2, RaiseSizingAbstraction.Default),
             Microsoft.Extensions.Logging.Abstractions.NullLogger<CfrPlusPreflopStrategyEngine>.Instance);
 
-        var query = engine.QueryStrategy(new PreflopInfoSetKey(2, Position.BTN, "UNOPENED", 1, 50), string.Empty);
+        var query = await engine.QueryStrategyAsync(new PreflopInfoSetKey(2, Position.BTN, "UNOPENED", 1, 50), string.Empty);
 
         Assert.False(query.Supported);
         Assert.Contains("Missing hero hand class", query.UnsupportedReason, StringComparison.OrdinalIgnoreCase);
@@ -265,7 +267,7 @@ public class CfrPlusPreflopSolverTests
     }
 
     [Fact]
-    public void EngineQueryStrategy_ReturnsUnsupported_WhenHandConditionedKeyMisses()
+    public async Task EngineQueryStrategy_ReturnsUnsupported_WhenHandConditionedKeyMisses()
     {
         var solver = new CfrPlusPreflopSolver(new PreflopTerminalEvaluator(new ApproxMonteCarloContinuationValueProvider()));
         var cache = new PreflopSolverCache(solver);
@@ -276,7 +278,7 @@ public class CfrPlusPreflopSolverTests
             PlayerCount: 2,
             Sizing: RaiseSizingAbstraction.Default,
             MaxTreeDepth: 4);
-        cache.GetOrSolve(config);
+        await cache.GetOrSolveAsync(config, CancellationToken.None);
 
         var engine = new CfrPlusPreflopStrategyEngine(
             new MonteCarloStrategyEngine(),
@@ -285,7 +287,7 @@ public class CfrPlusPreflopSolverTests
             Microsoft.Extensions.Logging.Abstractions.NullLogger<CfrPlusPreflopStrategyEngine>.Instance);
 
         var missingKey = new PreflopInfoSetKey(2, Position.UTG, "UNOPENED", 1, 40);
-        var query = engine.QueryStrategy(missingKey, "2c7d");
+        var query = await engine.QueryStrategyAsync(missingKey, "2c7d");
 
         Assert.False(query.Supported);
         Assert.Equal("No solved strategy for key (did you change key format? clear cache / rerun solve).", query.UnsupportedReason);
@@ -293,7 +295,7 @@ public class CfrPlusPreflopSolverTests
     }
 
     [Fact]
-    public void AddPokerAnalyzer_ResolvesCfrEngine_WithSixMaxRecommendationAndFiniteEv()
+    public async Task AddPokerAnalyzer_ResolvesCfrEngine_WithSixMaxRecommendationAndFiniteEv()
     {
         var services = new ServiceCollection();
         services.AddPokerAnalyzer();
@@ -319,7 +321,7 @@ public class CfrPlusPreflopSolverTests
             new ChipAmount(5),
             new ChipAmount(10));
 
-        var recommendation = engine.Recommend(state, new HeroContext(hero, new ChipAmount(5), new ChipAmount(10))
+        var recommendation = await engine.RecommendAsync(state, new HeroContext(hero, new ChipAmount(5), new ChipAmount(10))
         {
             HeroHoleCards = HoleCards.Parse("Ah5h"),
             PlayerPositions = players.ToDictionary(p => p.Id, p => p.Position),
@@ -334,7 +336,7 @@ public class CfrPlusPreflopSolverTests
 
 
     [Fact]
-    public void DecisionPointEv_UsesReachWeightedAverage_InHeadsUp()
+    public async Task DecisionPointEv_UsesReachWeightedAverage_InHeadsUp()
     {
         var highUtilityReach = CfrPlusPreflopSolver.ComputeInfosetReachWeight([1d, 0.1d]);
         var lowUtilityReach = CfrPlusPreflopSolver.ComputeInfosetReachWeight([1d, 1d]);
@@ -350,7 +352,7 @@ public class CfrPlusPreflopSolverTests
     }
 
     [Fact]
-    public void InfosetReachWeight_UsesFullInfosetProbabilityMass_InMultiway()
+    public async Task InfosetReachWeight_UsesFullInfosetProbabilityMass_InMultiway()
     {
         var reachWeight = CfrPlusPreflopSolver.ComputeInfosetReachWeight([0.5d, 0.25d, 0.2d]);
 
@@ -358,7 +360,7 @@ public class CfrPlusPreflopSolverTests
     }
 
     [Fact]
-    public void DecisionPointEv_IsZero_WhenReachProbabilitySumIsZero()
+    public async Task DecisionPointEv_IsZero_WhenReachProbabilitySumIsZero()
     {
         var decisionPointEv = CfrPlusPreflopSolver.ComputeDecisionPointEvBb(reachWeightedUtilitySum: 123d, reachProbabilitySum: 0d);
 
@@ -366,7 +368,7 @@ public class CfrPlusPreflopSolverTests
     }
 
     [Fact]
-    public void UnconditionalContribution_MatchesReachWeightedUtilitySum()
+    public async Task UnconditionalContribution_MatchesReachWeightedUtilitySum()
     {
         var contribution = CfrPlusPreflopSolver.ComputeUnconditionalContributionBb(reachWeightedUtilitySum: -4.25d);
 
@@ -374,7 +376,7 @@ public class CfrPlusPreflopSolverTests
     }
 
     [Fact]
-    public void InfosetReachWeight_IncludesChanceMultiplierWhenEmbeddedInPlayerReach()
+    public async Task InfosetReachWeight_IncludesChanceMultiplierWhenEmbeddedInPlayerReach()
     {
         const double heroChance = 0.4d;
         var reachWeight = CfrPlusPreflopSolver.ComputeInfosetReachWeight([heroChance, 0.5d]);
@@ -383,7 +385,7 @@ public class CfrPlusPreflopSolverTests
     }
 
     [Fact]
-    public void Solver_TerminalCacheAndUncached_ProduceEquivalentStrategies()
+    public async Task Solver_TerminalCacheAndUncached_ProduceEquivalentStrategies()
     {
         var solver = new CfrPlusPreflopSolver(new PreflopTerminalEvaluator(new ApproxMonteCarloContinuationValueProvider()));
         var cachedConfig = new PreflopSolverConfig(
@@ -415,7 +417,7 @@ public class CfrPlusPreflopSolverTests
     }
 
     [Fact]
-    public void Solver_TerminalCache_WorksForParallelAndSingleThreadSolveModes()
+    public async Task Solver_TerminalCache_WorksForParallelAndSingleThreadSolveModes()
     {
         var solver = new CfrPlusPreflopSolver(new PreflopTerminalEvaluator(new ApproxMonteCarloContinuationValueProvider()));
         var singleThreadConfig = new PreflopSolverConfig(
@@ -445,7 +447,7 @@ public class CfrPlusPreflopSolverTests
     }
 
     [Fact]
-    public void Solver_ParallelLocalMergeMode_StaysCloseToSingleThread()
+    public async Task Solver_ParallelLocalMergeMode_StaysCloseToSingleThread()
     {
         var solver = new CfrPlusPreflopSolver(new PreflopTerminalEvaluator(new ApproxMonteCarloContinuationValueProvider()));
         var singleThreadConfig = new PreflopSolverConfig(
@@ -485,7 +487,7 @@ public class CfrPlusPreflopSolverTests
     }
 
     [Fact]
-    public void Solver_ParallelMergePathWithOneWorker_DoesNotLoseInfosets()
+    public async Task Solver_ParallelMergePathWithOneWorker_DoesNotLoseInfosets()
     {
         var solver = new CfrPlusPreflopSolver(new PreflopTerminalEvaluator(new ApproxMonteCarloContinuationValueProvider()));
         var singleThreadConfig = new PreflopSolverConfig(
@@ -504,6 +506,101 @@ public class CfrPlusPreflopSolverTests
 
         Assert.Equal(singleThread.NodeStrategies.Count, mergePath.NodeStrategies.Count);
         Assert.True(mergePath.NodeStrategies.Keys.All(singleThread.NodeStrategies.ContainsKey));
+    }
+
+
+    [Fact]
+    public async Task SolverCache_Cancellation_CancelsWaiterWithoutCancelingSharedSolve()
+    {
+        var solver = new CfrPlusPreflopSolver(new PreflopTerminalEvaluator(new ApproxMonteCarloContinuationValueProvider()));
+        var cache = new PreflopSolverCache(solver);
+        var config = new PreflopSolverConfig(300, 100m, Rake, 6, RaiseSizingAbstraction.Default);
+
+        var sharedSolve = cache.GetOrSolveAsync(config, CancellationToken.None);
+        await Task.Delay(25);
+
+        using var cts = new CancellationTokenSource();
+        cts.Cancel();
+
+        await Assert.ThrowsAsync<OperationCanceledException>(() => cache.GetOrSolveAsync(config, cts.Token));
+
+        var solved = await sharedSolve;
+        var cached = await cache.GetOrSolveAsync(config, CancellationToken.None);
+        Assert.Same(solved, cached);
+        Assert.Equal(1, cache.SolveCount);
+    }
+
+    [Fact]
+    public async Task SolverCache_ConcurrentCallers_ShareSingleSolve()
+    {
+        var solver = new CfrPlusPreflopSolver(new PreflopTerminalEvaluator(new ApproxMonteCarloContinuationValueProvider()));
+        var cache = new PreflopSolverCache(solver);
+        var config = new PreflopSolverConfig(80, 100m, Rake, 2, RaiseSizingAbstraction.Default);
+
+        var tasks = Enumerable.Range(0, 8)
+            .Select(_ => cache.GetOrSolveAsync(config, CancellationToken.None))
+            .ToArray();
+
+        await Task.WhenAll(tasks);
+
+        Assert.Equal(1, cache.SolveCount);
+        Assert.True(tasks.Skip(1).All(task => ReferenceEquals(tasks[0].Result, task.Result)));
+    }
+
+    [Fact]
+    public async Task SolverCache_MaxEntries_EvictsLeastRecentlyUsedCompletedEntries()
+    {
+        var solver = new CfrPlusPreflopSolver(new PreflopTerminalEvaluator(new ApproxMonteCarloContinuationValueProvider()));
+        var clock = new MutableTimeProvider(DateTimeOffset.UtcNow);
+        var cache = new PreflopSolverCache(
+            solver,
+            Microsoft.Extensions.Logging.Abstractions.NullLogger<PreflopSolverCache>.Instance,
+            new PreflopSolverCacheOptions { MaxEntries = 2, Ttl = TimeSpan.FromHours(1), TrimInterval = TimeSpan.Zero },
+            clock);
+
+        var config1 = new PreflopSolverConfig(10, 30m, Rake, 2, RaiseSizingAbstraction.Default, MaxTreeDepth: 3);
+        var config2 = config1 with { EffectiveStackBb = 40m };
+        var config3 = config1 with { EffectiveStackBb = 50m };
+
+        await cache.GetOrSolveAsync(config1, CancellationToken.None);
+        clock.Advance(TimeSpan.FromMinutes(1));
+        await cache.GetOrSolveAsync(config2, CancellationToken.None);
+        clock.Advance(TimeSpan.FromMinutes(1));
+        await cache.GetOrSolveAsync(config3, CancellationToken.None);
+
+        Assert.True(cache.CacheEntries <= 2);
+        Assert.False(cache.ContainsKey(PreflopSolverCache.BuildCacheKey(config1)));
+    }
+
+    [Fact]
+    public async Task SolverCache_Ttl_EvictsExpiredEntries()
+    {
+        var solver = new CfrPlusPreflopSolver(new PreflopTerminalEvaluator(new ApproxMonteCarloContinuationValueProvider()));
+        var clock = new MutableTimeProvider(DateTimeOffset.UtcNow);
+        var cache = new PreflopSolverCache(
+            solver,
+            Microsoft.Extensions.Logging.Abstractions.NullLogger<PreflopSolverCache>.Instance,
+            new PreflopSolverCacheOptions { MaxEntries = 10, Ttl = TimeSpan.FromMinutes(1), TrimInterval = TimeSpan.Zero },
+            clock);
+
+        var oldConfig = new PreflopSolverConfig(10, 30m, Rake, 2, RaiseSizingAbstraction.Default, MaxTreeDepth: 3);
+        var freshConfig = oldConfig with { EffectiveStackBb = 35m };
+
+        await cache.GetOrSolveAsync(oldConfig, CancellationToken.None);
+        clock.Advance(TimeSpan.FromMinutes(2));
+        await cache.GetOrSolveAsync(freshConfig, CancellationToken.None);
+
+        Assert.False(cache.ContainsKey(PreflopSolverCache.BuildCacheKey(oldConfig)));
+        Assert.True(cache.ContainsKey(PreflopSolverCache.BuildCacheKey(freshConfig)));
+    }
+
+    private sealed class MutableTimeProvider(DateTimeOffset initialUtc) : TimeProvider
+    {
+        private DateTimeOffset _utcNow = initialUtc;
+
+        public override DateTimeOffset GetUtcNow() => _utcNow;
+
+        public void Advance(TimeSpan by) => _utcNow = _utcNow.Add(by);
     }
 
 }
