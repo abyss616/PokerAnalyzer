@@ -287,6 +287,31 @@ public class CfrPlusPreflopSolverTests
         Assert.True(double.IsFinite((double)recommendation.PrimaryEV!.Value));
     }
 
+
+    [Fact]
+    public void InfosetEstimatedEv_UsesReachWeightedAverage_InHeadsUp()
+    {
+        var highUtilityReach = CfrPlusPreflopSolver.ComputeInfosetReachWeight([1d, 0.1d]);
+        var lowUtilityReach = CfrPlusPreflopSolver.ComputeInfosetReachWeight([1d, 1d]);
+
+        var heroUtilitySum = (10d * highUtilityReach) + (-1d * lowUtilityReach);
+        var weightSum = highUtilityReach + lowUtilityReach;
+
+        var weightedEstimatedEv = CfrPlusPreflopSolver.ComputeEstimatedEvBb(heroUtilitySum, weightSum);
+        var naiveEstimatedEv = (10m + (-1m)) / 2m;
+
+        Assert.Equal(0m, weightedEstimatedEv);
+        Assert.NotEqual(naiveEstimatedEv, weightedEstimatedEv);
+    }
+
+    [Fact]
+    public void InfosetEstimatedEv_IsZero_WhenWeightSumIsZero()
+    {
+        var estimatedEv = CfrPlusPreflopSolver.ComputeEstimatedEvBb(heroUtilitySum: 123d, weightSum: 0d);
+
+        Assert.Equal(0m, estimatedEv);
+    }
+
     [Fact]
     public void Solver_TerminalCacheAndUncached_ProduceEquivalentStrategies()
     {
