@@ -93,10 +93,14 @@ public sealed class CfrPlusPreflopStrategyEngine : IStrategyEngine
             topFrequencies,
             query.EstimatedEvBb);
 
-        if (query.ActionFrequencies.Count == 0)
+        if (!query.Supported)
         {
-            _logger.LogWarning("Lookup failed after normalization. LookupKey={LookupKey}, SupportedSizing={SupportedSizing}", normalizedKey, _config.ResolveSizing().Fingerprint());
-            return BuildUnsupportedRecommendation(reference, "Unsupported preflop state for solver abstraction");
+            _logger.LogWarning(
+                "Lookup failed after normalization. LookupKey={LookupKey}, SupportedSizing={SupportedSizing}, Reason={Reason}",
+                normalizedKey,
+                _config.ResolveSizing().Fingerprint(),
+                query.UnsupportedReason);
+            return BuildUnsupportedRecommendation(reference, query.UnsupportedReason ?? "Unsupported preflop state for solver abstraction");
         }
 
         var ranked = query.ActionFrequencies.OrderByDescending(k => k.Value)
@@ -115,8 +119,14 @@ public sealed class CfrPlusPreflopStrategyEngine : IStrategyEngine
 
     public StrategyQueryResult QueryStrategy(PreflopInfoSetKey key, string heroHand)
     {
+        if (string.IsNullOrWhiteSpace(heroHand))
+            return new StrategyQueryResult(new Dictionary<ActionType, double>(), null, 0m, key, false, "Missing hero hand class");
+
         _cache.GetOrSolve(_config);
-        return _cache.Lookup(key, heroHand);
+        var query = _cache.Lookup(key, heroHand);
+        return query.Supported
+            ? query
+            : query with { UnsupportedReason = query.UnsupportedReason ?? "No solved strategy for key (did you change key format? clear cache / rerun solve)." };
     }
 
     private Recommendation BuildUnsupportedRecommendation(Recommendation reference, string reason)
