@@ -79,8 +79,9 @@ public sealed class CfrPlusPreflopSolver
                     handClassEntry =>
                     {
                         var reach = Enumerable.Repeat(1d, config.PlayerCount).ToArray();
+                        var history = new List<ActionType>();
                         reach[0] *= handClassEntry.Value;
-                        Cfr(tree.Root, [], reach, infosets, positions, stackBucket, config, handClassEntry.Key);
+                        Cfr(tree.Root, history, reach, infosets, positions, stackBucket, config, handClassEntry.Key);
                     });
             }
             else
@@ -88,8 +89,9 @@ public sealed class CfrPlusPreflopSolver
                 foreach (var (heroHandClass, probability) in heroHands)
                 {
                     var reach = Enumerable.Repeat(1d, config.PlayerCount).ToArray();
+                    var history = new List<ActionType>();
                     reach[0] *= probability;
-                    Cfr(tree.Root, [], reach, infosets, positions, stackBucket, config, heroHandClass);
+                    Cfr(tree.Root, history, reach, infosets, positions, stackBucket, config, heroHandClass);
                 }
             }
 
@@ -136,7 +138,7 @@ public sealed class CfrPlusPreflopSolver
 
     private double Cfr(
         PreflopGameTreeNode node,
-        IReadOnlyList<ActionType> history,
+        List<ActionType> history,
         double[] reach,
         IDictionary<PreflopInfoSetKey, InfoSetData> infosets,
         IReadOnlyList<Position> positions,
@@ -172,12 +174,12 @@ public sealed class CfrPlusPreflopSolver
             if (!node.Children.TryGetValue(data.NodeActions[actionIndex], out var child))
                 continue;
 
-            var nextHistory = new List<ActionType>(history.Count + 1);
-            nextHistory.AddRange(history);
-            nextHistory.Add(action);
-            var nextReach = (double[])reach.Clone();
-            nextReach[actor] *= strategy[actionIndex];
-            var utility = Cfr(child, nextHistory, nextReach, infosets, positions, effectiveStackBucket, config, heroHandClass);
+            history.Add(action);
+            var previousActorReach = reach[actor];
+            reach[actor] = previousActorReach * strategy[actionIndex];
+            var utility = Cfr(child, history, reach, infosets, positions, effectiveStackBucket, config, heroHandClass);
+            reach[actor] = previousActorReach;
+            history.RemoveAt(history.Count - 1);
             actionUtilities[actionIndex] = utility;
             nodeUtility += strategy[actionIndex] * utility;
         }
