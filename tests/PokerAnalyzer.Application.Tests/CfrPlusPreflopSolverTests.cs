@@ -334,19 +334,19 @@ public class CfrPlusPreflopSolverTests
 
 
     [Fact]
-    public void InfosetEstimatedEv_UsesReachWeightedAverage_InHeadsUp()
+    public void DecisionPointEv_UsesReachWeightedAverage_InHeadsUp()
     {
         var highUtilityReach = CfrPlusPreflopSolver.ComputeInfosetReachWeight([1d, 0.1d]);
         var lowUtilityReach = CfrPlusPreflopSolver.ComputeInfosetReachWeight([1d, 1d]);
 
-        var heroUtilitySum = (10d * highUtilityReach) + (-1d * lowUtilityReach);
-        var weightSum = highUtilityReach + lowUtilityReach;
+        var reachWeightedUtilitySum = (10d * highUtilityReach) + (-1d * lowUtilityReach);
+        var reachProbabilitySum = highUtilityReach + lowUtilityReach;
 
-        var weightedEstimatedEv = CfrPlusPreflopSolver.ComputeEstimatedEvBb(heroUtilitySum, weightSum);
+        var decisionPointEv = CfrPlusPreflopSolver.ComputeDecisionPointEvBb(reachWeightedUtilitySum, reachProbabilitySum);
         var naiveEstimatedEv = (10m + (-1m)) / 2m;
 
-        Assert.Equal(0m, weightedEstimatedEv);
-        Assert.NotEqual(naiveEstimatedEv, weightedEstimatedEv);
+        Assert.Equal(0m, decisionPointEv);
+        Assert.NotEqual(naiveEstimatedEv, decisionPointEv);
     }
 
     [Fact]
@@ -358,11 +358,28 @@ public class CfrPlusPreflopSolverTests
     }
 
     [Fact]
-    public void InfosetEstimatedEv_IsZero_WhenWeightSumIsZero()
+    public void DecisionPointEv_IsZero_WhenReachProbabilitySumIsZero()
     {
-        var estimatedEv = CfrPlusPreflopSolver.ComputeEstimatedEvBb(heroUtilitySum: 123d, weightSum: 0d);
+        var decisionPointEv = CfrPlusPreflopSolver.ComputeDecisionPointEvBb(reachWeightedUtilitySum: 123d, reachProbabilitySum: 0d);
 
-        Assert.Equal(0m, estimatedEv);
+        Assert.Equal(0m, decisionPointEv);
+    }
+
+    [Fact]
+    public void UnconditionalContribution_MatchesReachWeightedUtilitySum()
+    {
+        var contribution = CfrPlusPreflopSolver.ComputeUnconditionalContributionBb(reachWeightedUtilitySum: -4.25d);
+
+        Assert.Equal(-4.25m, contribution);
+    }
+
+    [Fact]
+    public void InfosetReachWeight_IncludesChanceMultiplierWhenEmbeddedInPlayerReach()
+    {
+        const double heroChance = 0.4d;
+        var reachWeight = CfrPlusPreflopSolver.ComputeInfosetReachWeight([heroChance, 0.5d]);
+
+        Assert.Equal(0.2d, reachWeight, precision: 10);
     }
 
     [Fact]
@@ -387,7 +404,7 @@ public class CfrPlusPreflopSolverTests
         foreach (var (key, uncachedNode) in uncached.NodeStrategies)
         {
             Assert.True(cached.NodeStrategies.TryGetValue(key, out var cachedNode));
-            Assert.InRange(Math.Abs(cachedNode.EstimatedEvBb - uncachedNode.EstimatedEvBb), 0m, 0.0001m);
+            Assert.InRange(Math.Abs(cachedNode.DecisionPointEvBb - uncachedNode.DecisionPointEvBb), 0m, 0.0001m);
 
             foreach (var action in uncachedNode.PopulationMix.Keys)
             {
@@ -463,7 +480,7 @@ public class CfrPlusPreflopSolverTests
                 Assert.InRange(Math.Abs(parallelNode.PopulationMix[action] - singleFrequency), 0d, 0.06d);
             }
 
-            Assert.InRange(Math.Abs(parallelNode.EstimatedEvBb - singleNode.EstimatedEvBb), 0m, 0.20m);
+            Assert.InRange(Math.Abs(parallelNode.DecisionPointEvBb - singleNode.DecisionPointEvBb), 0m, 0.20m);
         }
     }
 

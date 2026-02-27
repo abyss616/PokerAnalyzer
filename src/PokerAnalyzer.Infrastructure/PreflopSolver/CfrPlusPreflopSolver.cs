@@ -157,8 +157,9 @@ public sealed class CfrPlusPreflopSolver
             kvp =>
             {
                 var average = NormalizeAverageStrategy(kvp.Value.LegalActions, kvp.Value.StrategySum);
-                var estimatedEv = ComputeEstimatedEvBb(kvp.Value.HeroUtilitySum, kvp.Value.WeightSum);
-                return new NodeStrategyResult(kvp.Key, average, estimatedEv);
+                var decisionPointEv = ComputeDecisionPointEvBb(kvp.Value.ReachWeightedUtilitySum, kvp.Value.ReachProbabilitySum);
+                var contribution = ComputeUnconditionalContributionBb(kvp.Value.ReachWeightedUtilitySum);
+                return new NodeStrategyResult(kvp.Key, average, decisionPointEv, contribution);
             });
 
         totalStopwatch.Stop();
@@ -171,7 +172,7 @@ public sealed class CfrPlusPreflopSolver
     {
         var normalizedHeroHand = Normalize(heroHand);
         if (string.IsNullOrWhiteSpace(normalizedHeroHand))
-            return new StrategyQueryResult(new Dictionary<ActionType, double>(), null, 0m, key, false, "Missing hero hand class");
+            return new StrategyQueryResult(new Dictionary<ActionType, double>(), null, 0m, 0m, key, false, "Missing hero hand class");
 
         var handConditionedKey = key with { HeroHandClass = normalizedHeroHand };
         var mix = result.QueryStrategy(handConditionedKey);
@@ -180,13 +181,16 @@ public sealed class CfrPlusPreflopSolver
                 new Dictionary<ActionType, double>(),
                 null,
                 0m,
+                0m,
                 handConditionedKey,
                 false,
                 "No solved strategy for key (did you change key format? clear cache / rerun solve).");
 
         var best = mix.OrderByDescending(k => k.Value).Select(k => (ActionType?)k.Key).FirstOrDefault();
-        var ev = result.NodeStrategies.TryGetValue(handConditionedKey, out var node) ? node.EstimatedEvBb : 0m;
-        return new StrategyQueryResult(mix, best, ev, handConditionedKey);
+        if (!result.NodeStrategies.TryGetValue(handConditionedKey, out var node))
+            return new StrategyQueryResult(mix, best, 0m, 0m, handConditionedKey);
+
+        return new StrategyQueryResult(mix, best, node.DecisionPointEvBb, node.UnconditionalContributionBb, handConditionedKey);
     }
 
     private double Cfr(
@@ -240,9 +244,11 @@ public sealed class CfrPlusPreflopSolver
             nodeUtility += strategy[actionIndex] * utility;
         }
 
+        // nodeUtility is the expected utility conditional on being at this infoset.
+        // Reach-weighting + normalization later yields decision-point EV (EV given reached).
         var reachWeight = ComputeInfosetReachWeight(reach);
-        data.HeroUtilitySum += nodeUtility * reachWeight;
-        data.WeightSum += reachWeight;
+        data.ReachWeightedUtilitySum += nodeUtility * reachWeight;
+        data.ReachProbabilitySum += reachWeight;
 
         var actorViewNodeUtility = actor == 0 ? nodeUtility : -nodeUtility;
         var otherReach = 1d;
@@ -502,8 +508,8 @@ public sealed class CfrPlusPreflopSolver
             target.StrategySum[i] += source.StrategySum[i];
         }
 
-        target.HeroUtilitySum += source.HeroUtilitySum;
-        target.WeightSum += source.WeightSum;
+        target.ReachWeightedUtilitySum += source.ReachWeightedUtilitySum;
+        target.ReachProbabilitySum += source.ReachProbabilitySum;
     }
 
     private static double[] RegretMatchingPlus(IReadOnlyList<double> regrets)
@@ -566,9 +572,9 @@ public sealed class CfrPlusPreflopSolver
 
     internal static double ComputeInfosetReachWeight(IReadOnlyList<double> reach)
     {
-        // Infoset EV must be weighted by full reach probability mass.
-        // This intentionally avoids historical hero-only reach weighting (reach[0] only)
-        // and any naïve unweighted visit counting.
+        // Infoset reach probability is the product of all player reaches.
+        // Any chance multipliers injected into per-player reach earlier in traversal
+        // (for example hero hand class probability) are therefore included automatically.
         if (reach.Count == 0)
             return 0d;
 
@@ -579,8 +585,11 @@ public sealed class CfrPlusPreflopSolver
         return weight;
     }
 
-    internal static decimal ComputeEstimatedEvBb(double heroUtilitySum, double weightSum)
-        => weightSum <= 0d ? 0m : (decimal)(heroUtilitySum / weightSum);
+    internal static decimal ComputeDecisionPointEvBb(double reachWeightedUtilitySum, double reachProbabilitySum)
+        => reachProbabilitySum <= 0d ? 0m : (decimal)(reachWeightedUtilitySum / reachProbabilitySum);
+
+    internal static decimal ComputeUnconditionalContributionBb(double reachWeightedUtilitySum)
+        => (decimal)reachWeightedUtilitySum;
 
     private sealed class InfoSetData
     {
@@ -602,17 +611,17 @@ public sealed class CfrPlusPreflopSolver
 
         public double[] StrategySum { get; }
 
-        public double HeroUtilitySum { get; set; }
+        public double ReachWeightedUtilitySum { get; set; }
 
-        public double WeightSum { get; set; }
+        public double ReachProbabilitySum { get; set; }
 
         public InfoSetData Clone()
         {
             var clone = new InfoSetData(LegalActions.ToArray(), NodeActions);
             Array.Copy(RegretSum, clone.RegretSum, RegretSum.Length);
             Array.Copy(StrategySum, clone.StrategySum, StrategySum.Length);
-            clone.HeroUtilitySum = HeroUtilitySum;
-            clone.WeightSum = WeightSum;
+            clone.ReachWeightedUtilitySum = ReachWeightedUtilitySum;
+            clone.ReachProbabilitySum = ReachProbabilitySum;
             return clone;
         }
     }

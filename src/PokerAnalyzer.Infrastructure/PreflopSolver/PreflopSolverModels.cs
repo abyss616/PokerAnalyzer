@@ -80,7 +80,8 @@ public readonly record struct TerminalCacheKey(
 public sealed record NodeStrategyResult(
     PreflopInfoSetKey InfoSet,
     IReadOnlyDictionary<ActionType, double> PopulationMix,
-    decimal EstimatedEvBb);
+    decimal DecisionPointEvBb,
+    decimal UnconditionalContributionBb);
 
 public sealed record PreflopSolveResult(
     IReadOnlyDictionary<PreflopInfoSetKey, NodeStrategyResult> NodeStrategies)
@@ -97,7 +98,8 @@ public sealed record PreflopSolveResult(
 public sealed record StrategyQueryResult(
     IReadOnlyDictionary<ActionType, double> ActionFrequencies,
     ActionType? BestAction,
-    decimal EstimatedEvBb,
+    decimal DecisionPointEvBb,
+    decimal UnconditionalContributionBb,
     PreflopInfoSetKey InfoSet,
     bool Supported = true,
     string? UnsupportedReason = null);

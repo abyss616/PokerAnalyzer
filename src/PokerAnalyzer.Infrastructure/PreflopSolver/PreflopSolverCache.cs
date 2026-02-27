@@ -59,7 +59,7 @@ public sealed class PreflopSolverCache : IPreflopStrategyStore
     {
         var normalizedHeroHand = NormalizeHeroHand(heroHand);
         if (string.IsNullOrWhiteSpace(normalizedHeroHand))
-            return new StrategyQueryResult(new Dictionary<PokerAnalyzer.Domain.Game.ActionType, double>(), null, 0m, key, false, "Missing hero hand class");
+            return new StrategyQueryResult(new Dictionary<PokerAnalyzer.Domain.Game.ActionType, double>(), null, 0m, 0m, key, false, "Missing hero hand class");
 
         var solvedResults = _cache.Values.Where(v => v.IsValueCreated).Select(v => v.Value.IsCompletedSuccessfully ? v.Value.Result : null).Where(v => v is not null).ToList();
         foreach (var solved in solvedResults)
@@ -77,6 +77,7 @@ public sealed class PreflopSolverCache : IPreflopStrategyStore
                     new Dictionary<PokerAnalyzer.Domain.Game.ActionType, double>(),
                     null,
                     0m,
+                    0m,
                     key,
                     false,
                     "No solved strategy for key (did you change key format? clear cache / rerun solve).");
@@ -86,6 +87,7 @@ public sealed class PreflopSolverCache : IPreflopStrategyStore
         return new StrategyQueryResult(
             new Dictionary<PokerAnalyzer.Domain.Game.ActionType, double>(),
             null,
+            0m,
             0m,
             key with { HeroHandClass = normalizedHeroHand },
             false,

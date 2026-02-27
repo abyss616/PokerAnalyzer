@@ -88,10 +88,11 @@ public sealed class CfrPlusPreflopStrategyEngine : IStrategyEngine
             .Take(3)
             .Select(k => $"{k.Key}:{k.Value:0.###}"));
         _logger.LogInformation(
-            "Query result. BestAction={BestAction}, TopFrequencies={TopFrequencies}, EstimatedEvBb={EstimatedEvBb}",
+            "Query result. BestAction={BestAction}, TopFrequencies={TopFrequencies}, DecisionPointEvBb={DecisionPointEvBb}, UnconditionalContributionBb={UnconditionalContributionBb}",
             query.BestAction,
             topFrequencies,
-            query.EstimatedEvBb);
+            query.DecisionPointEvBb,
+            query.UnconditionalContributionBb);
 
         if (!query.Supported)
         {
@@ -109,9 +110,9 @@ public sealed class CfrPlusPreflopStrategyEngine : IStrategyEngine
         return new Recommendation(
             RankedActions: ranked,
             PrimaryAction: ranked.FirstOrDefault(),
-            PrimaryEV: query.EstimatedEvBb,
+            PrimaryEV: query.DecisionPointEvBb,
             ReferenceEV: reference.ReferenceEV,
-            PrimaryExplanation: $"CFR+ preflop solver key={query.InfoSet.HistorySignature}/{query.InfoSet.ActingPosition}, best={query.BestAction}, ev={query.EstimatedEvBb:0.###}bb",
+            PrimaryExplanation: $"CFR+ preflop solver key={query.InfoSet.HistorySignature}/{query.InfoSet.ActingPosition}, best={query.BestAction}, decision-point-ev(given reached)={query.DecisionPointEvBb:0.###}bb",
             ReferenceExplanation: reference.ReferenceExplanation);
     }
 
@@ -120,7 +121,7 @@ public sealed class CfrPlusPreflopStrategyEngine : IStrategyEngine
     public StrategyQueryResult QueryStrategy(PreflopInfoSetKey key, string heroHand)
     {
         if (string.IsNullOrWhiteSpace(heroHand))
-            return new StrategyQueryResult(new Dictionary<ActionType, double>(), null, 0m, key, false, "Missing hero hand class");
+            return new StrategyQueryResult(new Dictionary<ActionType, double>(), null, 0m, 0m, key, false, "Missing hero hand class");
 
         _cache.GetOrSolve(_config);
         var query = _cache.Lookup(key, heroHand);
