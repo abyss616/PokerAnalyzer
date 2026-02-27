@@ -161,9 +161,7 @@ public sealed class CfrPlusPreflopSolver
             {
                 var average = NormalizeAverageStrategy(kvp.Value.LegalActions, kvp.Value.StrategySum);
                 var conditionedByHand = BuildHandConditionedMixes(kvp.Value.LegalActions, average);
-                var estimatedEv = kvp.Value.WeightSum <= 0
-                    ? 0m
-                    : (decimal)(kvp.Value.HeroUtilitySum / kvp.Value.WeightSum);
+                var estimatedEv = ComputeEstimatedEvBb(kvp.Value.HeroUtilitySum, kvp.Value.WeightSum);
                 var handMix = handClasses.ToDictionary(
                     hand => hand,
                     hand => conditionedByHand.TryGetValue(hand, out var conditioned)
@@ -239,8 +237,9 @@ public sealed class CfrPlusPreflopSolver
             nodeUtility += strategy[actionIndex] * utility;
         }
 
-        data.HeroUtilitySum += nodeUtility * reach[0];
-        data.WeightSum += reach[0];
+        var reachWeight = ComputeInfosetReachWeight(reach);
+        data.HeroUtilitySum += nodeUtility * reachWeight;
+        data.WeightSum += reachWeight;
 
         var actorViewNodeUtility = actor == 0 ? nodeUtility : -nodeUtility;
         var otherReach = 1d;
@@ -656,6 +655,20 @@ public sealed class CfrPlusPreflopSolver
         Rank.Ace => 'A',
         _ => '?'
     };
+
+    internal static double ComputeInfosetReachWeight(IReadOnlyList<double> reach)
+    {
+        if (reach.Count == 0)
+            return 0d;
+
+        if (reach.Count == 1)
+            return reach[0];
+
+        return reach[0] * reach[1];
+    }
+
+    internal static decimal ComputeEstimatedEvBb(double heroUtilitySum, double weightSum)
+        => weightSum <= 0d ? 0m : (decimal)(heroUtilitySum / weightSum);
 
     private sealed class InfoSetData
     {
