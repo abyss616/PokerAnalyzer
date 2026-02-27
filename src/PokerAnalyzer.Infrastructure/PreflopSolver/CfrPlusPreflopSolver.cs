@@ -55,9 +55,7 @@ public sealed class CfrPlusPreflopSolver
         var stackBucket = (int)Math.Round(config.EffectiveStackBb);
         var villainRange = PreflopRange.BuildClassDistribution().ToDictionary(k => k.Key.Label, v => v.Value);
 
-        IDictionary<PreflopInfoSetKey, InfoSetData> infosets = config.EnableParallelSolve
-                  ? new ConcurrentDictionary<PreflopInfoSetKey, InfoSetData>()
-                  : new Dictionary<PreflopInfoSetKey, InfoSetData>();
+        var infosets = new Dictionary<PreflopInfoSetKey, InfoSetData>();
         var terminalCache = !config.EnableTerminalCache
             ? TerminalValueCache.Disabled
             : config.EnableParallelSolve
@@ -76,6 +74,12 @@ public sealed class CfrPlusPreflopSolver
             maxDegreeOfParallelism,
             heroHands.Length);
 
+        long cfrElapsedTicks = 0;
+        long mergeElapsedTicks = 0;
+        long mergeWaitElapsedTicks = 0;
+        long totalLocalInfosetsCreated = 0;
+        var mergeLock = new object();
+
         for (var iteration = 0; iteration < config.Iterations; iteration++)
         {
             if (config.EnableParallelSolve && heroHands.Length > 1)
@@ -85,10 +89,26 @@ public sealed class CfrPlusPreflopSolver
                     new ParallelOptions { MaxDegreeOfParallelism = maxDegreeOfParallelism },
                     handClassEntry =>
                     {
+                        var localInfosets = new Dictionary<PreflopInfoSetKey, InfoSetData>();
                         var reach = Enumerable.Repeat(1d, config.PlayerCount).ToArray();
                         var history = new List<ActionType>();
                         reach[0] *= handClassEntry.Value;
-                        Cfr(tree.Root, history, reach, infosets, positions, stackBucket, config, handClassEntry.Key, villainRange, terminalCache, terminalMetrics);
+
+                        var cfrStart = System.Diagnostics.Stopwatch.GetTimestamp();
+                        Cfr(tree.Root, history, reach, localInfosets, positions, stackBucket, config, handClassEntry.Key, villainRange, terminalCache, terminalMetrics);
+                        var cfrEnd = System.Diagnostics.Stopwatch.GetTimestamp();
+                        Interlocked.Add(ref cfrElapsedTicks, cfrEnd - cfrStart);
+                        Interlocked.Add(ref totalLocalInfosetsCreated, localInfosets.Count);
+
+                        var lockWaitStart = System.Diagnostics.Stopwatch.GetTimestamp();
+                        lock (mergeLock)
+                        {
+                            var mergeStart = System.Diagnostics.Stopwatch.GetTimestamp();
+                            Interlocked.Add(ref mergeWaitElapsedTicks, mergeStart - lockWaitStart);
+                            MergeInfoSets(infosets, localInfosets);
+                            var mergeEnd = System.Diagnostics.Stopwatch.GetTimestamp();
+                            Interlocked.Add(ref mergeElapsedTicks, mergeEnd - mergeStart);
+                        }
                     });
             }
             else
@@ -98,8 +118,13 @@ public sealed class CfrPlusPreflopSolver
                     var reach = Enumerable.Repeat(1d, config.PlayerCount).ToArray();
                     var history = new List<ActionType>();
                     reach[0] *= probability;
+
+                    var cfrStart = System.Diagnostics.Stopwatch.GetTimestamp();
                     Cfr(tree.Root, history, reach, infosets, positions, stackBucket, config, heroHandClass, villainRange, terminalCache, terminalMetrics);
+                    var cfrEnd = System.Diagnostics.Stopwatch.GetTimestamp();
+                    cfrElapsedTicks += cfrEnd - cfrStart;
                 }
+
             }
 
             if ((iteration + 1) % progressEveryIterations == 0 || lastProgressLog.ElapsedMilliseconds >= 2000)
@@ -117,6 +142,17 @@ public sealed class CfrPlusPreflopSolver
             terminalCache.Count,
             terminalMetrics.TerminalPathElapsedMs,
             terminalMetrics.MissComputeElapsedMs);
+
+        if (!config.EnableParallelSolve)
+            totalLocalInfosetsCreated = infosets.Count;
+
+        _logger.LogInformation(
+            "CFR aggregation stats. TotalLocalInfosetsCreated={TotalLocalInfosetsCreated}, GlobalInfosetCount={GlobalInfosetCount}, CfrElapsedMs={CfrElapsedMs}, MergeElapsedMs={MergeElapsedMs}, MergeLockWaitMs={MergeLockWaitMs}",
+            totalLocalInfosetsCreated,
+            infosets.Count,
+            TimeSpan.FromSeconds((double)cfrElapsedTicks / System.Diagnostics.Stopwatch.Frequency).TotalMilliseconds,
+            TimeSpan.FromSeconds((double)mergeElapsedTicks / System.Diagnostics.Stopwatch.Frequency).TotalMilliseconds,
+            TimeSpan.FromSeconds((double)mergeWaitElapsedTicks / System.Diagnostics.Stopwatch.Frequency).TotalMilliseconds);
 
         var handClasses = PreflopRange.BuildClassDistribution().Keys.Select(h => h.Label).OrderBy(h => h).ToArray();
         var nodeResults = infosets.ToDictionary(
@@ -533,7 +569,7 @@ public sealed class CfrPlusPreflopSolver
         {
             if (!target.TryGetValue(key, out var targetData))
             {
-                target[key] = sourceData;
+                target[key] = sourceData.Clone();
                 continue;
             }
 
@@ -644,5 +680,15 @@ public sealed class CfrPlusPreflopSolver
         public double HeroUtilitySum { get; set; }
 
         public double WeightSum { get; set; }
+
+        public InfoSetData Clone()
+        {
+            var clone = new InfoSetData(LegalActions.ToArray(), NodeActions);
+            Array.Copy(RegretSum, clone.RegretSum, RegretSum.Length);
+            Array.Copy(StrategySum, clone.StrategySum, StrategySum.Length);
+            clone.HeroUtilitySum = HeroUtilitySum;
+            clone.WeightSum = WeightSum;
+            return clone;
+        }
     }
 }
