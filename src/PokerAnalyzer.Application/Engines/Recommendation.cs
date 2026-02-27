@@ -9,7 +9,8 @@ public sealed record Recommendation(
     decimal? PrimaryEV = null,
     decimal? ReferenceEV = null,
     string? PrimaryExplanation = null,
-    string? ReferenceExplanation = null
+    string? ReferenceExplanation = null,
+    string? EvType = null
 )
 {
     public RecommendedAction? EffectivePrimaryAction => PrimaryAction ?? RankedActions.FirstOrDefault();

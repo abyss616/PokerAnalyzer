@@ -146,7 +146,13 @@
                                         <td>@(invalidPositionMapping ? "Invalid Position Mapping" : decision.VillainAction ?? "N/A")</td>
                                         <td>@decision.HeroAction</td>
                                         <td>@(invalidPositionMapping ? "Invalid Position Mapping" : decision.RecommendedAction)</td>
-                                        <td>@(invalidPositionMapping ? "Invalid Position Mapping" : decision.PrimaryEv?.ToString("0.###") ?? "N/A")</td>
+                                        <td>@(invalidPositionMapping
+                                            ? "Invalid Position Mapping"
+                                            : decision.PrimaryEv is null
+                                                ? "N/A"
+                                                : string.Equals(decision.EvType, "RangeEv", StringComparison.OrdinalIgnoreCase)
+                                                    ? $"{decision.PrimaryEv.Value:0.###} (Solver EV (range))"
+                                                    : $"{decision.PrimaryEv.Value:0.###}")</td>
                                         <td>@(invalidPositionMapping ? "Invalid Position Mapping" : decision.ReferenceEv?.ToString("0.###") ?? "N/A")</td>
                                     </tr>
                                     @if (!invalidPositionMapping && !string.IsNullOrWhiteSpace(decision.PrimaryExplanation))

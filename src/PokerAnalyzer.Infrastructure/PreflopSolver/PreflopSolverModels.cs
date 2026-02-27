@@ -37,7 +37,8 @@ public sealed record PreflopSolverConfig(
     RaiseSizingAbstraction? Sizing = null,
     bool EnableParallelSolve = false,
     int MaxDegreeOfParallelism = 0,
-    int MaxTreeDepth = 24)
+    int MaxTreeDepth = 24,
+    PreflopSolveMode SolveMode = PreflopSolveMode.PopulationRange)
 {
     public int ResolveMaxDegreeOfParallelism()
         => MaxDegreeOfParallelism <= 0 ? Environment.ProcessorCount : MaxDegreeOfParallelism;
@@ -66,19 +67,27 @@ public sealed record NodeStrategyResult(
     PreflopInfoSetKey InfoSet,
     IReadOnlyDictionary<string, IReadOnlyDictionary<ActionType, double>> HandMix,
     IReadOnlyDictionary<ActionType, double> PopulationMix,
-    decimal EstimatedEvBb);
+    decimal EstimatedEvBb,
+    EvType EvType,
+    MixType HandMixType);
 
 public sealed record PreflopSolveResult(
-    IReadOnlyDictionary<PreflopInfoSetKey, NodeStrategyResult> NodeStrategies)
+    IReadOnlyDictionary<PreflopInfoSetKey, NodeStrategyResult> NodeStrategies,
+    int TraversalCount,
+    PreflopSolveMode SolveMode)
 {
     public IReadOnlyDictionary<ActionType, double> QueryStrategy(PreflopInfoSetKey key, string handClass)
     {
         if (!NodeStrategies.TryGetValue(key, out var node))
             return new Dictionary<ActionType, double>();
 
-        return node.HandMix.TryGetValue(handClass.ToUpperInvariant(), out var mix)
-            ? mix
-            : new Dictionary<ActionType, double>();
+        if (node.HandMix.TryGetValue(handClass.ToUpperInvariant(), out var mix))
+            return mix;
+
+        if (node.HandMix.TryGetValue(handClass, out mix))
+            return mix;
+
+        return node.PopulationMix;
     }
 }
 
@@ -86,7 +95,27 @@ public sealed record StrategyQueryResult(
     IReadOnlyDictionary<ActionType, double> ActionFrequencies,
     ActionType? BestAction,
     decimal EstimatedEvBb,
-    PreflopInfoSetKey InfoSet);
+    PreflopInfoSetKey InfoSet,
+    EvType EvType,
+    MixType MixType);
+
+public enum PreflopSolveMode
+{
+    PopulationRange,
+    HandConditioned
+}
+
+public enum EvType
+{
+    RangeEv,
+    HandEv
+}
+
+public enum MixType
+{
+    ExactHandMix,
+    ApproximateHandMix
+}
 
 public interface IPreflopStrategyStore
 {

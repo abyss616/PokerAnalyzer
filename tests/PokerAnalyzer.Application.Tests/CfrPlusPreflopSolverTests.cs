@@ -113,6 +113,7 @@ public class CfrPlusPreflopSolverTests
         Assert.NotNull(rec.PrimaryEV);
         Assert.NotNull(rec.ReferenceEV);
         Assert.NotEmpty(rec.RankedActions);
+        Assert.Equal("RangeEv", rec.EvType);
     }
 
     [Fact]
@@ -247,6 +248,96 @@ public class CfrPlusPreflopSolverTests
         Assert.Equal(ActionType.Raise, query.BestAction);
     }
 
+
+    [Fact]
+    public void Solver_PopulationMode_RunsSingleTraversalPerIteration()
+    {
+        var solver = new CfrPlusPreflopSolver(new PreflopTerminalEvaluator(new ApproxMonteCarloContinuationValueProvider()));
+        var iterations = 12;
+        var config = new PreflopSolverConfig(
+            Iterations: iterations,
+            EffectiveStackBb: 30m,
+            Rake: Rake,
+            PlayerCount: 2,
+            Sizing: RaiseSizingAbstraction.Default,
+            MaxTreeDepth: 4,
+            SolveMode: PreflopSolveMode.PopulationRange);
+
+        var solved = solver.SolvePreflop(config);
+
+        Assert.Equal(iterations, solved.TraversalCount);
+        Assert.Equal(PreflopSolveMode.PopulationRange, solved.SolveMode);
+    }
+
+    [Fact]
+    public void Solver_HandConditionedMode_RunsTraversalPerHandPerIteration()
+    {
+        var solver = new CfrPlusPreflopSolver(new PreflopTerminalEvaluator(new ApproxMonteCarloContinuationValueProvider()));
+        var iterations = 3;
+        var nonZeroHandClasses = PreflopRange.BuildClassDistribution().Count(kvp => kvp.Value > 0m);
+        var config = new PreflopSolverConfig(
+            Iterations: iterations,
+            EffectiveStackBb: 20m,
+            Rake: Rake,
+            PlayerCount: 2,
+            Sizing: new RaiseSizingAbstraction([2m], [6m], [14m], 20m),
+            MaxTreeDepth: 3,
+            SolveMode: PreflopSolveMode.HandConditioned);
+
+        var solved = solver.SolvePreflop(config);
+
+        Assert.Equal(iterations * nonZeroHandClasses, solved.TraversalCount);
+        Assert.Equal(PreflopSolveMode.HandConditioned, solved.SolveMode);
+    }
+
+    [Fact]
+    public void QueryStrategy_PopulationMode_ReturnsRangeEvAndApproximateMixMetadata()
+    {
+        var solver = new CfrPlusPreflopSolver(new PreflopTerminalEvaluator(new ApproxMonteCarloContinuationValueProvider()));
+        var config = new PreflopSolverConfig(
+            Iterations: 30,
+            EffectiveStackBb: 20m,
+            Rake: Rake,
+            PlayerCount: 2,
+            Sizing: new RaiseSizingAbstraction([2m], [6m], [14m], 20m),
+            MaxTreeDepth: 3,
+            SolveMode: PreflopSolveMode.PopulationRange);
+
+        var solved = solver.SolvePreflop(config);
+        var key = new PreflopInfoSetKey(2, Position.BTN, "UNOPENED", 1, 20);
+        var query = solver.QueryStrategy(solved, key, "AsAh");
+
+        Assert.Equal(EvType.RangeEv, query.EvType);
+        Assert.Equal(MixType.ApproximateHandMix, query.MixType);
+        Assert.InRange(query.ActionFrequencies.Values.Sum(), 0.999, 1.001);
+    }
+
+    [Fact]
+    public void Solver_PopulationMode_EvTrend_IsStableWithMoreIterations()
+    {
+        var solver = new CfrPlusPreflopSolver(new PreflopTerminalEvaluator(new ApproxMonteCarloContinuationValueProvider()));
+        decimal SolveEv(int iterations)
+        {
+            var config = new PreflopSolverConfig(
+                Iterations: iterations,
+                EffectiveStackBb: 30m,
+                Rake: Rake,
+                PlayerCount: 2,
+                Sizing: RaiseSizingAbstraction.Default,
+                MaxTreeDepth: 4,
+                SolveMode: PreflopSolveMode.PopulationRange);
+            var solved = solver.SolvePreflop(config);
+            var key = new PreflopInfoSetKey(2, Position.BTN, "UNOPENED", 1, 30, "");
+            return solved.NodeStrategies[key].EstimatedEvBb;
+        }
+
+        var ev20 = SolveEv(20);
+        var ev40 = SolveEv(40);
+        var ev80 = SolveEv(80);
+
+        Assert.True(Math.Abs(ev80 - ev40) <= Math.Abs(ev40 - ev20) + 0.15m);
+    }
+
     [Fact]
     public void AddPokerAnalyzer_ResolvesCfrEngine_WithSixMaxRecommendationAndFiniteEv()
     {
@@ -285,5 +376,6 @@ public class CfrPlusPreflopSolverTests
         Assert.NotNull(recommendation.PrimaryAction);
         Assert.NotNull(recommendation.PrimaryEV);
         Assert.True(double.IsFinite((double)recommendation.PrimaryEV!.Value));
+        Assert.Equal("RangeEv", recommendation.EvType);
     }
 }
