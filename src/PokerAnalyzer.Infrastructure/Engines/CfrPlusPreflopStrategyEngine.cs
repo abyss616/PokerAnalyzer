@@ -17,7 +17,7 @@ public sealed class CfrPlusPreflopStrategyEngine : IStrategyEngine
         : this(
             monteCarloReference,
             new PreflopSolverCache(new CfrPlusPreflopSolver(new PreflopTerminalEvaluator(new ApproxMonteCarloContinuationValueProvider()))),
-            new PreflopSolverConfig(140, 100m, new RakeConfig(0.05m, 1.0m, NoFlopNoDrop: true), 6, RaiseSizingAbstraction.Default, EnableParallelSolve: true, MaxDegreeOfParallelism: Math.Min(12, Environment.ProcessorCount)),
+            new PreflopSolverConfig(140, 100m, new RakeConfig(0.05m, 1.0m, NoFlopNoDrop: true), 6, RaiseSizingAbstraction.Default, EnableParallelSolve: true, MaxDegreeOfParallelism: Math.Min(12, Environment.ProcessorCount), SolveMode: PreflopSolveMode.PopulationRange),
             Microsoft.Extensions.Logging.Abstractions.NullLogger<CfrPlusPreflopStrategyEngine>.Instance)
     {
     }
@@ -74,7 +74,7 @@ public sealed class CfrPlusPreflopStrategyEngine : IStrategyEngine
 
         _logger.LogInformation("Ensuring preflop strategy solved for {Players} players", _config.PlayerCount);
         _cache.GetOrSolve(_config);
-        var cacheKey = new PreflopSolverCacheKey(_config.PlayerCount, (int)Math.Round(_config.EffectiveStackBb), _config.Rake, _config.ResolveSizing().Fingerprint());
+        var cacheKey = new PreflopSolverCacheKey(_config.PlayerCount, (int)Math.Round(_config.EffectiveStackBb), _config.Rake, _config.ResolveSizing().Fingerprint(), _config.SolveMode);
         _logger.LogInformation(
             "Cache lookup. CacheKey={CacheKey}, CacheHit={CacheHit}, SolveCount={SolveCount}, CacheEntries={CacheEntries}",
             cacheKey,
@@ -107,7 +107,8 @@ public sealed class CfrPlusPreflopStrategyEngine : IStrategyEngine
             PrimaryAction: ranked.FirstOrDefault(),
             PrimaryEV: query.EstimatedEvBb,
             ReferenceEV: reference.ReferenceEV,
-            PrimaryExplanation: $"CFR+ preflop solver key={query.InfoSet.HistorySignature}/{query.InfoSet.ActingPosition}, best={query.BestAction}, ev={query.EstimatedEvBb:0.###}bb",
+            PrimaryExplanation: $"CFR+ preflop solver key={query.InfoSet.HistorySignature}/{query.InfoSet.ActingPosition}, best={query.BestAction}, ev={query.EstimatedEvBb:0.###}bb ({(query.EvType == EvType.RangeEv ? "range" : "hand")})",
+            EvType: query.EvType.ToString(),
             ReferenceExplanation: reference.ReferenceExplanation);
     }
 

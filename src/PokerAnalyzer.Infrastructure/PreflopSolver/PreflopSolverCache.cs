@@ -3,7 +3,7 @@ using Microsoft.Extensions.Logging;
 
 namespace PokerAnalyzer.Infrastructure.PreflopSolver;
 
-public sealed record PreflopSolverCacheKey(int PlayerCount, int EffectiveStackBb, RakeConfig Rake, string SizingFingerprint);
+public sealed record PreflopSolverCacheKey(int PlayerCount, int EffectiveStackBb, RakeConfig Rake, string SizingFingerprint, PreflopSolveMode SolveMode);
 
 public sealed class PreflopSolverCache : IPreflopStrategyStore
 {
@@ -34,7 +34,7 @@ public sealed class PreflopSolverCache : IPreflopStrategyStore
     public async Task<PreflopSolveResult> GetOrSolveAsync(PreflopSolverConfig config, CancellationToken ct)
     {
         var sizing = config.ResolveSizing();
-        var key = new PreflopSolverCacheKey(config.PlayerCount, (int)Math.Round(config.EffectiveStackBb), config.Rake, Fingerprint(sizing));
+        var key = new PreflopSolverCacheKey(config.PlayerCount, (int)Math.Round(config.EffectiveStackBb), config.Rake, Fingerprint(sizing), config.SolveMode);
         var hadEntry = _cache.ContainsKey(key);
         _logger.LogInformation("Solve requested. CacheKey={CacheKey}, AlreadySolving={AlreadySolving}, CacheHit={CacheHit}, CacheMiss={CacheMiss}", key, hadEntry, hadEntry, !hadEntry);
         var started = System.Diagnostics.Stopwatch.StartNew();
@@ -68,7 +68,7 @@ public sealed class PreflopSolverCache : IPreflopStrategyStore
             }
         }
 
-        return new StrategyQueryResult(new Dictionary<PokerAnalyzer.Domain.Game.ActionType, double>(), null, 0m, key);
+        return new StrategyQueryResult(new Dictionary<PokerAnalyzer.Domain.Game.ActionType, double>(), null, 0m, key, EvType.RangeEv, MixType.ApproximateHandMix);
     }
 
     private static IEnumerable<PreflopInfoSetKey> BuildLookupCandidates(PreflopInfoSetKey key, PreflopSolveResult solved)

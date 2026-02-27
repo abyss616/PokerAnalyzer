@@ -60,6 +60,7 @@ public sealed class CfrPlusPreflopSolver
         var heroDist = PreflopRange.BuildClassDistribution()
             .ToDictionary(k => Normalize(k.Key.Label), v => (double)v.Value);
         var heroHands = heroDist.Where(kvp => kvp.Value > 0d).ToArray();
+        var traversalCount = 0;
         var lastProgressLog = System.Diagnostics.Stopwatch.StartNew();
         var progressEveryIterations = Math.Max(1, config.Iterations / 10);
         var maxDegreeOfParallelism = Math.Max(1, config.ResolveMaxDegreeOfParallelism());
@@ -71,28 +72,40 @@ public sealed class CfrPlusPreflopSolver
 
         for (var iteration = 0; iteration < config.Iterations; iteration++)
         {
-            if (config.EnableParallelSolve && heroHands.Length > 1)
+            if (config.SolveMode == PreflopSolveMode.HandConditioned)
             {
-                Parallel.ForEach(
-                    heroHands,
-                    new ParallelOptions { MaxDegreeOfParallelism = maxDegreeOfParallelism },
-                    handClassEntry =>
+                if (config.EnableParallelSolve && heroHands.Length > 1)
+                {
+                    Parallel.ForEach(
+                        heroHands,
+                        new ParallelOptions { MaxDegreeOfParallelism = maxDegreeOfParallelism },
+                        handClassEntry =>
+                        {
+                            var reach = Enumerable.Repeat(1d, config.PlayerCount).ToArray();
+                            var history = new List<ActionType>();
+                            reach[0] *= handClassEntry.Value;
+                            Cfr(tree.Root, history, reach, infosets, positions, stackBucket, config, heroDist, handClassEntry.Key);
+                        });
+                    traversalCount += heroHands.Length;
+                }
+                else
+                {
+                    foreach (var (heroHandClass, probability) in heroHands)
                     {
                         var reach = Enumerable.Repeat(1d, config.PlayerCount).ToArray();
                         var history = new List<ActionType>();
-                        reach[0] *= handClassEntry.Value;
-                        Cfr(tree.Root, history, reach, infosets, positions, stackBucket, config, handClassEntry.Key);
-                    });
+                        reach[0] *= probability;
+                        Cfr(tree.Root, history, reach, infosets, positions, stackBucket, config, heroDist, heroHandClass);
+                        traversalCount++;
+                    }
+                }
             }
             else
             {
-                foreach (var (heroHandClass, probability) in heroHands)
-                {
-                    var reach = Enumerable.Repeat(1d, config.PlayerCount).ToArray();
-                    var history = new List<ActionType>();
-                    reach[0] *= probability;
-                    Cfr(tree.Root, history, reach, infosets, positions, stackBucket, config, heroHandClass);
-                }
+                var reach = Enumerable.Repeat(1d, config.PlayerCount).ToArray();
+                var history = new List<ActionType>();
+                Cfr(tree.Root, history, reach, infosets, positions, stackBucket, config, heroDist, null);
+                traversalCount++;
             }
 
             if ((iteration + 1) % progressEveryIterations == 0 || lastProgressLog.ElapsedMilliseconds >= 2000)
@@ -102,38 +115,62 @@ public sealed class CfrPlusPreflopSolver
             }
         }
 
-        var handClasses = PreflopRange.BuildClassDistribution().Keys.Select(h => h.Label).OrderBy(h => h).ToArray();
+        var handClasses = PreflopRange.BuildClassDistribution().Keys.Select(h => Normalize(h.Label)).OrderBy(h => h).ToArray();
         var nodeResults = infosets.ToDictionary(
             kvp => kvp.Key,
             kvp =>
             {
                 var average = NormalizeAverageStrategy(kvp.Value.LegalActions, kvp.Value.StrategySum);
-                var conditionedByHand = BuildHandConditionedMixes(kvp.Value.LegalActions, average);
                 var estimatedEv = kvp.Value.WeightSum <= 0
                     ? 0m
                     : (decimal)(kvp.Value.HeroUtilitySum / kvp.Value.WeightSum);
-                var handMix = handClasses.ToDictionary(
-                    hand => hand,
-                    hand => conditionedByHand.TryGetValue(hand, out var conditioned)
-                        ? (IReadOnlyDictionary<ActionType, double>)conditioned
-                        : new Dictionary<ActionType, double>(average));
-                return new NodeStrategyResult(kvp.Key, handMix, average, estimatedEv);
+
+                var evType = config.SolveMode == PreflopSolveMode.PopulationRange ? EvType.RangeEv : EvType.HandEv;
+                var handMixType = config.SolveMode == PreflopSolveMode.PopulationRange ? MixType.ApproximateHandMix : MixType.ExactHandMix;
+                IReadOnlyDictionary<string, IReadOnlyDictionary<ActionType, double>> handMix;
+
+                if (config.SolveMode == PreflopSolveMode.PopulationRange)
+                {
+                    var conditionedByHand = BuildHandConditionedMixes(kvp.Value.LegalActions, average);
+                    handMix = handClasses.ToDictionary(
+                        hand => hand,
+                        hand => conditionedByHand.TryGetValue(hand, out var conditioned)
+                            ? (IReadOnlyDictionary<ActionType, double>)conditioned
+                            : new Dictionary<ActionType, double>(average));
+                }
+                else
+                {
+                    handMix = new Dictionary<string, IReadOnlyDictionary<ActionType, double>>
+                    {
+                        [kvp.Key.HeroHandClass] = new Dictionary<ActionType, double>(average)
+                    };
+                }
+
+                return new NodeStrategyResult(kvp.Key, handMix, average, estimatedEv, evType, handMixType);
             });
 
         totalStopwatch.Stop();
         _logger.LogInformation("SolvePreflop done. TotalDurationMs={TotalDurationMs}, InfosetCount={InfosetCount}, StrategyNodes={StrategyNodes}", totalStopwatch.ElapsedMilliseconds, infosets.Count, nodeResults.Count);
 
-        return new PreflopSolveResult(nodeResults);
+        return new PreflopSolveResult(nodeResults, traversalCount, config.SolveMode);
     }
 
     public StrategyQueryResult QueryStrategy(PreflopSolveResult result, PreflopInfoSetKey key, string heroHand)
     {
         var normalizedHeroHand = Normalize(heroHand);
-        var handConditionedKey = key with { HeroHandClass = normalizedHeroHand };
-        var mix = result.QueryStrategy(handConditionedKey, normalizedHeroHand);
+        var resolvedKey = result.SolveMode == PreflopSolveMode.PopulationRange
+            ? key with { HeroHandClass = string.Empty }
+            : key with { HeroHandClass = normalizedHeroHand };
+
+        var mix = result.QueryStrategy(resolvedKey, normalizedHeroHand);
+        if (mix.Count == 0 && result.NodeStrategies.TryGetValue(resolvedKey, out var fallback))
+            mix = fallback.PopulationMix;
+
         var best = mix.OrderByDescending(k => k.Value).Select(k => (ActionType?)k.Key).FirstOrDefault();
-        var ev = result.NodeStrategies.TryGetValue(handConditionedKey, out var node) ? node.EstimatedEvBb : 0m;
-        return new StrategyQueryResult(mix, best, ev, handConditionedKey);
+        var ev = result.NodeStrategies.TryGetValue(resolvedKey, out var node) ? node.EstimatedEvBb : 0m;
+        var evType = result.SolveMode == PreflopSolveMode.PopulationRange ? EvType.RangeEv : EvType.HandEv;
+        var mixType = result.SolveMode == PreflopSolveMode.PopulationRange ? MixType.ApproximateHandMix : MixType.ExactHandMix;
+        return new StrategyQueryResult(mix, best, ev, resolvedKey, evType, mixType);
     }
 
     private double Cfr(
@@ -144,20 +181,21 @@ public sealed class CfrPlusPreflopSolver
         IReadOnlyList<Position> positions,
         int effectiveStackBucket,
         PreflopSolverConfig config,
-        string heroHandClass)
+        IReadOnlyDictionary<string, double> heroDist,
+        string? heroHandClass)
     {
         if (node.IsTerminal || PreflopRules.IsTerminal(node.State, out _))
         {
-            return (double)EvaluateTerminalUtility(node.State, config, heroHandClass);
+            return (double)EvaluateTerminalUtility(node.State, config, heroDist, heroHandClass);
         }
 
         var actor = node.State.ActingIndex;
         var legalActions = node.LegalActions;
 
         if (legalActions.Length == 0)
-            return (double)EvaluateTerminalUtility(node.State, config, heroHandClass);
+            return (double)EvaluateTerminalUtility(node.State, config, heroDist, heroHandClass);
 
-        var infoSet = BuildInfoSetKey(node.State, history, positions, effectiveStackBucket, heroHandClass);
+        var infoSet = BuildInfoSetKey(node.State, history, positions, effectiveStackBucket, heroHandClass ?? string.Empty);
         if (!infosets.TryGetValue(infoSet, out var data))
         {
             data = new InfoSetData(legalActions, node.Children.Keys.OrderBy(action => action, PreflopActionComparer.Instance).ToArray());
@@ -177,7 +215,7 @@ public sealed class CfrPlusPreflopSolver
             history.Add(action);
             var previousActorReach = reach[actor];
             reach[actor] = previousActorReach * strategy[actionIndex];
-            var utility = Cfr(child, history, reach, infosets, positions, effectiveStackBucket, config, heroHandClass);
+            var utility = Cfr(child, history, reach, infosets, positions, effectiveStackBucket, config, heroDist, heroHandClass);
             reach[actor] = previousActorReach;
             history.RemoveAt(history.Count - 1);
             actionUtilities[actionIndex] = utility;
@@ -206,7 +244,21 @@ public sealed class CfrPlusPreflopSolver
         return nodeUtility;
     }
 
-    private decimal EvaluateTerminalUtility(PreflopPublicState state, PreflopSolverConfig config, string heroHandClass)
+    private decimal EvaluateTerminalUtility(PreflopPublicState state, PreflopSolverConfig config, IReadOnlyDictionary<string, double> heroDist, string? heroHandClass)
+    {
+        if (config.SolveMode == PreflopSolveMode.PopulationRange)
+        {
+            var rangeEv = 0m;
+            foreach (var (handClass, weight) in heroDist)
+                rangeEv += EvaluateTerminalUtilityForHand(state, config, handClass) * (decimal)weight;
+
+            return rangeEv;
+        }
+
+        return EvaluateTerminalUtilityForHand(state, config, heroHandClass ?? string.Empty);
+    }
+
+    private decimal EvaluateTerminalUtilityForHand(PreflopPublicState state, PreflopSolverConfig config, string heroHandClass)
     {
         var heroIndex = 0;
         var villainRange = PreflopRange.BuildClassDistribution().ToDictionary(k => k.Key.Label, v => v.Value);
