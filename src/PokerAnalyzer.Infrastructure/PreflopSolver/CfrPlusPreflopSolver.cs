@@ -53,10 +53,17 @@ public sealed class CfrPlusPreflopSolver
 
         var positions = PreflopGameTreeBuilder.GetTablePositions(config.PlayerCount);
         var stackBucket = (int)Math.Round(config.EffectiveStackBb);
+        var villainRange = PreflopRange.BuildClassDistribution().ToDictionary(k => k.Key.Label, v => v.Value);
 
         IDictionary<PreflopInfoSetKey, InfoSetData> infosets = config.EnableParallelSolve
                   ? new ConcurrentDictionary<PreflopInfoSetKey, InfoSetData>()
                   : new Dictionary<PreflopInfoSetKey, InfoSetData>();
+        var terminalCache = !config.EnableTerminalCache
+            ? TerminalValueCache.Disabled
+            : config.EnableParallelSolve
+                ? new TerminalValueCache(new ConcurrentDictionary<TerminalCacheKey, decimal>())
+                : new TerminalValueCache(new Dictionary<TerminalCacheKey, decimal>());
+        var terminalMetrics = new TerminalMetrics();
         var heroDist = PreflopRange.BuildClassDistribution()
             .ToDictionary(k => Normalize(k.Key.Label), v => (double)v.Value);
         var heroHands = heroDist.Where(kvp => kvp.Value > 0d).ToArray();
@@ -81,7 +88,7 @@ public sealed class CfrPlusPreflopSolver
                         var reach = Enumerable.Repeat(1d, config.PlayerCount).ToArray();
                         var history = new List<ActionType>();
                         reach[0] *= handClassEntry.Value;
-                        Cfr(tree.Root, history, reach, infosets, positions, stackBucket, config, handClassEntry.Key);
+                        Cfr(tree.Root, history, reach, infosets, positions, stackBucket, config, handClassEntry.Key, villainRange, terminalCache, terminalMetrics);
                     });
             }
             else
@@ -91,7 +98,7 @@ public sealed class CfrPlusPreflopSolver
                     var reach = Enumerable.Repeat(1d, config.PlayerCount).ToArray();
                     var history = new List<ActionType>();
                     reach[0] *= probability;
-                    Cfr(tree.Root, history, reach, infosets, positions, stackBucket, config, heroHandClass);
+                    Cfr(tree.Root, history, reach, infosets, positions, stackBucket, config, heroHandClass, villainRange, terminalCache, terminalMetrics);
                 }
             }
 
@@ -101,6 +108,15 @@ public sealed class CfrPlusPreflopSolver
                 lastProgressLog.Restart();
             }
         }
+
+        _logger.LogInformation(
+            "Terminal evaluation stats. CacheHits={CacheHits}, CacheMisses={CacheMisses}, HitRate={HitRate:P2}, CacheSize={CacheSize}, TerminalPathMs={TerminalPathMs}, MissComputeMs={MissComputeMs}",
+            terminalMetrics.Hits,
+            terminalMetrics.Misses,
+            terminalMetrics.HitRate,
+            terminalCache.Count,
+            terminalMetrics.TerminalPathElapsedMs,
+            terminalMetrics.MissComputeElapsedMs);
 
         var handClasses = PreflopRange.BuildClassDistribution().Keys.Select(h => h.Label).OrderBy(h => h).ToArray();
         var nodeResults = infosets.ToDictionary(
@@ -144,18 +160,21 @@ public sealed class CfrPlusPreflopSolver
         IReadOnlyList<Position> positions,
         int effectiveStackBucket,
         PreflopSolverConfig config,
-        string heroHandClass)
+        string heroHandClass,
+        IReadOnlyDictionary<string, double> villainRange,
+        TerminalValueCache terminalCache,
+        TerminalMetrics terminalMetrics)
     {
         if (node.IsTerminal || PreflopRules.IsTerminal(node.State, out _))
         {
-            return (double)EvaluateTerminalUtility(node.State, config, heroHandClass);
+            return (double)EvaluateTerminalUtility(node.State, config, effectiveStackBucket, heroHandClass, villainRange, terminalCache, terminalMetrics);
         }
 
         var actor = node.State.ActingIndex;
         var legalActions = node.LegalActions;
 
         if (legalActions.Length == 0)
-            return (double)EvaluateTerminalUtility(node.State, config, heroHandClass);
+            return (double)EvaluateTerminalUtility(node.State, config, effectiveStackBucket, heroHandClass, villainRange, terminalCache, terminalMetrics);
 
         var infoSet = BuildInfoSetKey(node.State, history, positions, effectiveStackBucket, heroHandClass);
         if (!infosets.TryGetValue(infoSet, out var data))
@@ -177,7 +196,7 @@ public sealed class CfrPlusPreflopSolver
             history.Add(action);
             var previousActorReach = reach[actor];
             reach[actor] = previousActorReach * strategy[actionIndex];
-            var utility = Cfr(child, history, reach, infosets, positions, effectiveStackBucket, config, heroHandClass);
+            var utility = Cfr(child, history, reach, infosets, positions, effectiveStackBucket, config, heroHandClass, villainRange, terminalCache, terminalMetrics);
             reach[actor] = previousActorReach;
             history.RemoveAt(history.Count - 1);
             actionUtilities[actionIndex] = utility;
@@ -206,23 +225,163 @@ public sealed class CfrPlusPreflopSolver
         return nodeUtility;
     }
 
-    private decimal EvaluateTerminalUtility(PreflopPublicState state, PreflopSolverConfig config, string heroHandClass)
+    private decimal EvaluateTerminalUtility(
+        PreflopPublicState state,
+        PreflopSolverConfig config,
+        int effectiveStackBucket,
+        string heroHandClass,
+        IReadOnlyDictionary<string, double> villainRange,
+        TerminalValueCache terminalCache,
+        TerminalMetrics terminalMetrics)
     {
+        var pathStopwatch = System.Diagnostics.Stopwatch.StartNew();
+        var key = BuildTerminalCacheKey(state, effectiveStackBucket, config.Rake, heroHandClass);
+        if (terminalCache.Enabled && terminalCache.TryGetValue(key, out var cachedValue))
+        {
+            terminalMetrics.RecordHit(pathStopwatch.ElapsedTicks);
+            return cachedValue;
+        }
+
+        var evalStopwatch = System.Diagnostics.Stopwatch.StartNew();
         var heroIndex = 0;
-        var villainRange = PreflopRange.BuildClassDistribution().ToDictionary(k => k.Key.Label, v => v.Value);
-        var nodeState = BuildNodeState(state, heroIndex, config.PlayerCount, (int)Math.Round(config.EffectiveStackBb));
+        var nodeState = BuildNodeState(state, heroIndex, config.PlayerCount, effectiveStackBucket);
+        decimal value;
 
         if (state.InHand.Count(inHand => inHand) <= 1)
+            value = _terminal.EvaluateFold(nodeState, heroFolds: !state.InHand[heroIndex]);
+        else if (state.InHand[heroIndex] && state.StackBb[heroIndex] == 0)
+            value = _terminal.EvaluateAllIn(nodeState, heroHandClass, villainRange, config.Rake);
+        else
+            value = _terminal.EvaluateCallToFlop(nodeState, heroHandClass, villainRange);
+
+        evalStopwatch.Stop();
+        if (terminalCache.Enabled)
+            terminalCache.Set(key, value);
+
+        terminalMetrics.RecordMiss(pathStopwatch.ElapsedTicks, evalStopwatch.ElapsedTicks);
+        return value;
+    }
+
+    private static TerminalCacheKey BuildTerminalCacheKey(PreflopPublicState state, int effectiveStackBucket, RakeConfig rake, string heroHandClass)
+    {
+        const ulong offset = 1469598103934665603UL;
+        const ulong prime = 1099511628211UL;
+
+        var inHandBitset = 0UL;
+        for (var i = 0; i < state.InHand.Length && i < 64; i++)
         {
-            return _terminal.EvaluateFold(nodeState, heroFolds: !state.InHand[heroIndex]);
+            if (state.InHand[i])
+                inHandBitset |= 1UL << i;
         }
 
-        if (state.InHand[heroIndex] && state.StackBb[heroIndex] == 0)
+        var contribHash = offset;
+        for (var i = 0; i < state.ContribBb.Length; i++)
+            contribHash = (contribHash ^ unchecked((uint)state.ContribBb[i])) * prime;
+
+        var stackHash = offset;
+        for (var i = 0; i < state.StackBb.Length; i++)
+            stackHash = (stackHash ^ unchecked((uint)state.StackBb[i])) * prime;
+
+        var handHash = 2166136261U;
+        for (var i = 0; i < heroHandClass.Length; i++)
         {
-            return _terminal.EvaluateAllIn(nodeState, heroHandClass, villainRange, config.Rake);
+            handHash ^= char.ToUpperInvariant(heroHandClass[i]);
+            handHash *= 16777619;
         }
 
-        return _terminal.EvaluateCallToFlop(nodeState, heroHandClass, villainRange);
+        return new TerminalCacheKey(
+            state.PlayerCount,
+            effectiveStackBucket,
+            rake.Percent,
+            rake.CapBb,
+            rake.NoFlopNoDrop,
+            state.PotBb,
+            state.CurrentToCallBb,
+            state.ActingIndex,
+            inHandBitset,
+            contribHash,
+            stackHash,
+            handHash);
+    }
+
+    private sealed class TerminalValueCache
+    {
+        private readonly ConcurrentDictionary<TerminalCacheKey, decimal>? _concurrent;
+        private readonly Dictionary<TerminalCacheKey, decimal>? _single;
+
+        private TerminalValueCache()
+        {
+        }
+
+        public static TerminalValueCache Disabled { get; } = new();
+
+        public bool Enabled => _concurrent is not null || _single is not null;
+
+        public TerminalValueCache(ConcurrentDictionary<TerminalCacheKey, decimal> cache) => _concurrent = cache;
+
+        public TerminalValueCache(Dictionary<TerminalCacheKey, decimal> cache) => _single = cache;
+
+        public bool TryGetValue(TerminalCacheKey key, out decimal value)
+        {
+            value = 0m;
+            if (_concurrent is not null)
+                return _concurrent.TryGetValue(key, out value);
+
+            return _single is not null && _single.TryGetValue(key, out value);
+        }
+
+        public void Set(TerminalCacheKey key, decimal value)
+        {
+            if (_concurrent is not null)
+            {
+                _concurrent[key] = value;
+                return;
+            }
+
+            _single![key] = value;
+        }
+
+        public int Count => _concurrent?.Count ?? _single?.Count ?? 0;
+    }
+
+    private sealed class TerminalMetrics
+    {
+        private long _hits;
+        private long _misses;
+        private long _terminalPathElapsedTicks;
+        private long _missComputeElapsedTicks;
+
+        public long Hits => Interlocked.Read(ref _hits);
+
+        public long Misses => Interlocked.Read(ref _misses);
+
+        public double HitRate
+        {
+            get
+            {
+                var hits = Hits;
+                var misses = Misses;
+                var total = hits + misses;
+                return total == 0 ? 0d : (double)hits / total;
+            }
+        }
+
+        public double TerminalPathElapsedMs => TimeSpan.FromTicks(Interlocked.Read(ref _terminalPathElapsedTicks)).TotalMilliseconds;
+
+        public double MissComputeElapsedMs => TimeSpan.FromTicks(Interlocked.Read(ref _missComputeElapsedTicks)).TotalMilliseconds;
+
+        public void RecordHit(long terminalPathElapsedTicks)
+        {
+            Interlocked.Increment(ref _hits);
+            Interlocked.Add(ref _terminalPathElapsedTicks, terminalPathElapsedTicks);
+        }
+
+        public void RecordMiss(long terminalPathElapsedTicks, long missComputeElapsedTicks)
+        {
+            Interlocked.Increment(ref _misses);
+            Interlocked.Add(ref _terminalPathElapsedTicks, terminalPathElapsedTicks);
+            Interlocked.Add(ref _missComputeElapsedTicks, missComputeElapsedTicks);
+        }
     }
 
     private static int CountNodes(PreflopGameTreeNode root)
