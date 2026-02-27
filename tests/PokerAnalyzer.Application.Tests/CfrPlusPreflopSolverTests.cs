@@ -350,6 +350,14 @@ public class CfrPlusPreflopSolverTests
     }
 
     [Fact]
+    public void InfosetReachWeight_UsesFullInfosetProbabilityMass_InMultiway()
+    {
+        var reachWeight = CfrPlusPreflopSolver.ComputeInfosetReachWeight([0.5d, 0.25d, 0.2d]);
+
+        Assert.Equal(0.025d, reachWeight, precision: 10);
+    }
+
+    [Fact]
     public void InfosetEstimatedEv_IsZero_WhenWeightSumIsZero()
     {
         var estimatedEv = CfrPlusPreflopSolver.ComputeEstimatedEvBb(heroUtilitySum: 123d, weightSum: 0d);
