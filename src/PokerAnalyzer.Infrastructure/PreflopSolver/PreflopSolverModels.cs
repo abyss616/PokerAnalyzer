@@ -79,21 +79,18 @@ public readonly record struct TerminalCacheKey(
 
 public sealed record NodeStrategyResult(
     PreflopInfoSetKey InfoSet,
-    IReadOnlyDictionary<string, IReadOnlyDictionary<ActionType, double>> HandMix,
     IReadOnlyDictionary<ActionType, double> PopulationMix,
     decimal EstimatedEvBb);
 
 public sealed record PreflopSolveResult(
     IReadOnlyDictionary<PreflopInfoSetKey, NodeStrategyResult> NodeStrategies)
 {
-    public IReadOnlyDictionary<ActionType, double> QueryStrategy(PreflopInfoSetKey key, string handClass)
+    public IReadOnlyDictionary<ActionType, double> QueryStrategy(PreflopInfoSetKey key)
     {
         if (!NodeStrategies.TryGetValue(key, out var node))
             return new Dictionary<ActionType, double>();
 
-        return node.HandMix.TryGetValue(handClass.ToUpperInvariant(), out var mix)
-            ? mix
-            : new Dictionary<ActionType, double>();
+        return node.PopulationMix;
     }
 }
 
@@ -101,7 +98,9 @@ public sealed record StrategyQueryResult(
     IReadOnlyDictionary<ActionType, double> ActionFrequencies,
     ActionType? BestAction,
     decimal EstimatedEvBb,
-    PreflopInfoSetKey InfoSet);
+    PreflopInfoSetKey InfoSet,
+    bool Supported = true,
+    string? UnsupportedReason = null);
 
 public interface IPreflopStrategyStore
 {

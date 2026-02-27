@@ -57,31 +57,53 @@ public sealed class PreflopSolverCache : IPreflopStrategyStore
 
     public StrategyQueryResult Lookup(PreflopInfoSetKey key, string heroHand)
     {
+        var normalizedHeroHand = NormalizeHeroHand(heroHand);
+        if (string.IsNullOrWhiteSpace(normalizedHeroHand))
+            return new StrategyQueryResult(new Dictionary<PokerAnalyzer.Domain.Game.ActionType, double>(), null, 0m, key, false, "Missing hero hand class");
+
         var solvedResults = _cache.Values.Where(v => v.IsValueCreated).Select(v => v.Value.IsCompletedSuccessfully ? v.Value.Result : null).Where(v => v is not null).ToList();
         foreach (var solved in solvedResults)
         {
-            foreach (var candidate in BuildLookupCandidates(key, solved!))
+            foreach (var candidate in BuildLookupCandidates(key, normalizedHeroHand, solved!))
             {
-                var result = _solver.QueryStrategy(solved!, candidate, heroHand);
-                if (result.ActionFrequencies.Count > 0)
+                var result = _solver.QueryStrategy(solved!, candidate, normalizedHeroHand);
+                if (result.Supported)
                     return Normalize(result);
+            }
+
+            if (HasLegacyEntryWithoutHeroHandClass(key, solved!))
+            {
+                return new StrategyQueryResult(
+                    new Dictionary<PokerAnalyzer.Domain.Game.ActionType, double>(),
+                    null,
+                    0m,
+                    key,
+                    false,
+                    "No solved strategy for key (did you change key format? clear cache / rerun solve).");
             }
         }
 
-        return new StrategyQueryResult(new Dictionary<PokerAnalyzer.Domain.Game.ActionType, double>(), null, 0m, key);
+        return new StrategyQueryResult(
+            new Dictionary<PokerAnalyzer.Domain.Game.ActionType, double>(),
+            null,
+            0m,
+            key with { HeroHandClass = normalizedHeroHand },
+            false,
+            "No solved strategy for key (did you change key format? clear cache / rerun solve).");
     }
 
-    private static IEnumerable<PreflopInfoSetKey> BuildLookupCandidates(PreflopInfoSetKey key, PreflopSolveResult solved)
+    private static IEnumerable<PreflopInfoSetKey> BuildLookupCandidates(PreflopInfoSetKey key, string normalizedHeroHand, PreflopSolveResult solved)
     {
-        yield return key;
+        yield return key with { HeroHandClass = normalizedHeroHand };
 
         var normalizedHistory = NormalizeHistory(key.HistorySignature);
         if (!string.Equals(normalizedHistory, key.HistorySignature, StringComparison.OrdinalIgnoreCase))
-            yield return key with { HistorySignature = normalizedHistory };
+            yield return key with { HistorySignature = normalizedHistory, HeroHandClass = normalizedHeroHand };
 
         var nearest = solved.NodeStrategies.Keys
             .Where(k => k.PlayerCount == key.PlayerCount &&
                         k.ActingPosition == key.ActingPosition &&
+                        string.Equals(k.HeroHandClass, normalizedHeroHand, StringComparison.OrdinalIgnoreCase) &&
                         string.Equals(NormalizeHistory(k.HistorySignature), normalizedHistory, StringComparison.OrdinalIgnoreCase))
             .OrderBy(k => Math.Abs(k.ToCallBb - key.ToCallBb))
             .ThenBy(k => Math.Abs(k.EffectiveStackBb - key.EffectiveStackBb))
@@ -89,6 +111,60 @@ public sealed class PreflopSolverCache : IPreflopStrategyStore
 
         if (nearest is not null)
             yield return nearest;
+    }
+
+    private static bool HasLegacyEntryWithoutHeroHandClass(PreflopInfoSetKey key, PreflopSolveResult solved)
+    {
+        var normalizedHistory = NormalizeHistory(key.HistorySignature);
+        return solved.NodeStrategies.Keys.Any(k =>
+            k.PlayerCount == key.PlayerCount &&
+            k.ActingPosition == key.ActingPosition &&
+            string.IsNullOrWhiteSpace(k.HeroHandClass) &&
+            string.Equals(NormalizeHistory(k.HistorySignature), normalizedHistory, StringComparison.OrdinalIgnoreCase));
+    }
+
+    private static string NormalizeHeroHand(string heroHand)
+    {
+        if (string.IsNullOrWhiteSpace(heroHand))
+            return string.Empty;
+
+        var normalized = heroHand.Trim().ToUpperInvariant();
+        if (normalized.Length == 4)
+        {
+            var first = normalized[0];
+            var second = normalized[2];
+            var suited = char.ToUpperInvariant(normalized[1]) == char.ToUpperInvariant(normalized[3]);
+            var ordered = OrderRanks(first, second);
+            return ordered.high == ordered.low ? $"{ordered.high}{ordered.low}" : $"{ordered.high}{ordered.low}{(suited ? "S" : "O")}";
+        }
+
+        return normalized;
+    }
+
+    private static (char high, char low) OrderRanks(char first, char second)
+    {
+        return RankValue(first) >= RankValue(second) ? (first, second) : (second, first);
+    }
+
+    private static int RankValue(char rank)
+    {
+        return char.ToUpperInvariant(rank) switch
+        {
+            'A' => 14,
+            'K' => 13,
+            'Q' => 12,
+            'J' => 11,
+            'T' => 10,
+            '9' => 9,
+            '8' => 8,
+            '7' => 7,
+            '6' => 6,
+            '5' => 5,
+            '4' => 4,
+            '3' => 3,
+            '2' => 2,
+            _ => 0
+        };
     }
 
     private static string NormalizeHistory(string history)

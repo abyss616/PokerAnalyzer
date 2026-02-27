@@ -8,8 +8,6 @@ namespace PokerAnalyzer.Infrastructure.PreflopSolver;
 
 public sealed class CfrPlusPreflopSolver
 {
-    private static readonly IReadOnlyDictionary<string, decimal> HandStrengthByClass =
-        PreflopRange.AllClasses.ToDictionary(h => h.Label, h => EvaluateHandClassStrength(h.Label));
     private readonly PreflopTerminalEvaluator _terminal;
     private readonly ILogger<CfrPlusPreflopSolver> _logger;
 
@@ -154,20 +152,13 @@ public sealed class CfrPlusPreflopSolver
             TimeSpan.FromSeconds((double)mergeElapsedTicks / System.Diagnostics.Stopwatch.Frequency).TotalMilliseconds,
             TimeSpan.FromSeconds((double)mergeWaitElapsedTicks / System.Diagnostics.Stopwatch.Frequency).TotalMilliseconds);
 
-        var handClasses = PreflopRange.BuildClassDistribution().Keys.Select(h => h.Label).OrderBy(h => h).ToArray();
         var nodeResults = infosets.ToDictionary(
             kvp => kvp.Key,
             kvp =>
             {
                 var average = NormalizeAverageStrategy(kvp.Value.LegalActions, kvp.Value.StrategySum);
-                var conditionedByHand = BuildHandConditionedMixes(kvp.Value.LegalActions, average);
                 var estimatedEv = ComputeEstimatedEvBb(kvp.Value.HeroUtilitySum, kvp.Value.WeightSum);
-                var handMix = handClasses.ToDictionary(
-                    hand => hand,
-                    hand => conditionedByHand.TryGetValue(hand, out var conditioned)
-                        ? (IReadOnlyDictionary<ActionType, double>)conditioned
-                        : new Dictionary<ActionType, double>(average));
-                return new NodeStrategyResult(kvp.Key, handMix, average, estimatedEv);
+                return new NodeStrategyResult(kvp.Key, average, estimatedEv);
             });
 
         totalStopwatch.Stop();
@@ -179,8 +170,20 @@ public sealed class CfrPlusPreflopSolver
     public StrategyQueryResult QueryStrategy(PreflopSolveResult result, PreflopInfoSetKey key, string heroHand)
     {
         var normalizedHeroHand = Normalize(heroHand);
+        if (string.IsNullOrWhiteSpace(normalizedHeroHand))
+            return new StrategyQueryResult(new Dictionary<ActionType, double>(), null, 0m, key, false, "Missing hero hand class");
+
         var handConditionedKey = key with { HeroHandClass = normalizedHeroHand };
-        var mix = result.QueryStrategy(handConditionedKey, normalizedHeroHand);
+        var mix = result.QueryStrategy(handConditionedKey);
+        if (mix.Count == 0)
+            return new StrategyQueryResult(
+                new Dictionary<ActionType, double>(),
+                null,
+                0m,
+                handConditionedKey,
+                false,
+                "No solved strategy for key (did you change key format? clear cache / rerun solve).");
+
         var best = mix.OrderByDescending(k => k.Value).Select(k => (ActionType?)k.Key).FirstOrDefault();
         var ev = result.NodeStrategies.TryGetValue(handConditionedKey, out var node) ? node.EstimatedEvBb : 0m;
         return new StrategyQueryResult(mix, best, ev, handConditionedKey);
@@ -475,91 +478,6 @@ public sealed class CfrPlusPreflopSolver
             .ToDictionary(x => x.action, x => strategySum[x.index] / total);
     }
 
-    private static Dictionary<string, Dictionary<ActionType, double>> BuildHandConditionedMixes(
-    IReadOnlyList<ActionType> legalActions,
-    IReadOnlyDictionary<ActionType, double> populationAverage)
-    {
-        var aggressiveActions = new HashSet<ActionType> { ActionType.Raise, ActionType.AllIn, ActionType.Bet };
-        var passiveActions = new HashSet<ActionType> { ActionType.Check, ActionType.Call };
-        var foldPresent = legalActions.Contains(ActionType.Fold);
-        var checkPresent = legalActions.Contains(ActionType.Check);
-        var maxStrength = HandStrengthByClass.Values.Max();
-        var minStrength = HandStrengthByClass.Values.Min();
-        var span = Math.Max(0.001m, maxStrength - minStrength);
-
-        var result = new Dictionary<string, Dictionary<ActionType, double>>(HandStrengthByClass.Count);
-        foreach (var (hand, strength) in HandStrengthByClass)
-        {
-            var normalizedStrength = (double)((strength - minStrength) / span);
-            var uniform = 1d / legalActions.Count;
-            var priorWeight = checkPresent ? 0.30d : 0.15d;
-            var mix = legalActions.ToDictionary(
-                action => action,
-                action => (populationAverage.GetValueOrDefault(action) * (1d - priorWeight)) + (uniform * priorWeight));
-
-            foreach (var action in legalActions)
-            {
-                if (aggressiveActions.Contains(action))
-                {
-                    if (action == ActionType.Raise)
-                    {
-                        // In limp/check nodes, strong hands should prefer taking initiative over checking back.
-                        // Increase raise amplification when check is available to stabilize best-action selection.
-                        if (checkPresent)
-                            mix[action] *= 1.10 + (normalizedStrength * 2.15);
-                        else
-                            mix[action] *= 0.75 + (normalizedStrength * 0.95);
-                    }
-                    else if (action == ActionType.AllIn)
-                    {
-                        if (checkPresent)
-                            mix[action] *= 0.12 + (normalizedStrength * 0.18);
-                        else
-                            mix[action] *= 0.45 + (normalizedStrength * 0.65);
-                    }
-                    else
-                    {
-                        mix[action] *= 0.70 + (normalizedStrength * 0.90);
-                    }
-                }
-                else if (passiveActions.Contains(action))
-                {
-                    // For stronger holdings, de-emphasize passive lines so value-heavy raises surface.
-                    if (action == ActionType.Check && legalActions.Contains(ActionType.Raise))
-                    {
-                        // Extra suppression of check in nodes where a raise is available.
-                        mix[action] *= 0.28 + ((1d - normalizedStrength) * 0.52);
-                    }
-                    else
-                    {
-                        mix[action] *= 0.62 + ((1d - normalizedStrength) * 0.45);
-                    }
-                }
-                else if (foldPresent && action == ActionType.Fold)
-                {
-                    if (checkPresent)
-                        mix[action] *= 0.03 + ((1d - normalizedStrength) * 0.07);
-                    else
-                        mix[action] *= 0.55 + ((1d - normalizedStrength) * 1.10);
-                }
-            }
-
-            var sum = mix.Values.Sum();
-            if (sum <= 0)
-            {
-                mix = legalActions.ToDictionary(action => action, _ => uniform);
-            }
-            else
-            {
-                mix = mix.ToDictionary(kvp => kvp.Key, kvp => kvp.Value / sum);
-            }
-
-            result[hand] = mix;
-        }
-
-        return result;
-    }
-
     private static void MergeInfoSets(
         IDictionary<PreflopInfoSetKey, InfoSetData> target,
         IReadOnlyDictionary<PreflopInfoSetKey, InfoSetData> source)
@@ -586,16 +504,6 @@ public sealed class CfrPlusPreflopSolver
 
         target.HeroUtilitySum += source.HeroUtilitySum;
         target.WeightSum += source.WeightSum;
-    }
-
-    private static decimal EvaluateHandClassStrength(string handClass)
-    {
-        var hc = HandClass.Parse(handClass);
-        var high = (int)hc.High;
-        var low = (int)hc.Low;
-        var pair = hc.High == hc.Low ? 16 : 0;
-        var suited = hc.Suited == true ? 2 : 0;
-        return high + (low * 0.35m) + pair + suited;
     }
 
     private static double[] RegretMatchingPlus(IReadOnlyList<double> regrets)

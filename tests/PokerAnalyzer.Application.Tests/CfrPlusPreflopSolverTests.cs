@@ -243,8 +243,53 @@ public class CfrPlusPreflopSolverTests
         var key = new PreflopInfoSetKey(2, Position.BB, "LIMPED", 0, 100);
         var query = solver.QueryStrategy(solved, key, "AsKh");
 
+        Assert.True(query.Supported);
         Assert.InRange(query.ActionFrequencies.Values.Sum(), 0.999, 1.001);
-        Assert.Equal(ActionType.Raise, query.BestAction);
+        Assert.NotNull(query.BestAction);
+    }
+
+    [Fact]
+    public void EngineQueryStrategy_ReturnsUnsupported_WhenHeroHandClassMissing()
+    {
+        var engine = new CfrPlusPreflopStrategyEngine(
+            new MonteCarloStrategyEngine(),
+            new PreflopSolverCache(new CfrPlusPreflopSolver(new PreflopTerminalEvaluator(new ApproxMonteCarloContinuationValueProvider()))),
+            new PreflopSolverConfig(30, 50m, Rake, 2, RaiseSizingAbstraction.Default),
+            Microsoft.Extensions.Logging.Abstractions.NullLogger<CfrPlusPreflopStrategyEngine>.Instance);
+
+        var query = engine.QueryStrategy(new PreflopInfoSetKey(2, Position.BTN, "UNOPENED", 1, 50), string.Empty);
+
+        Assert.False(query.Supported);
+        Assert.Contains("Missing hero hand class", query.UnsupportedReason, StringComparison.OrdinalIgnoreCase);
+        Assert.Empty(query.ActionFrequencies);
+    }
+
+    [Fact]
+    public void EngineQueryStrategy_ReturnsUnsupported_WhenHandConditionedKeyMisses()
+    {
+        var solver = new CfrPlusPreflopSolver(new PreflopTerminalEvaluator(new ApproxMonteCarloContinuationValueProvider()));
+        var cache = new PreflopSolverCache(solver);
+        var config = new PreflopSolverConfig(
+            Iterations: 30,
+            EffectiveStackBb: 40m,
+            Rake: Rake,
+            PlayerCount: 2,
+            Sizing: RaiseSizingAbstraction.Default,
+            MaxTreeDepth: 4);
+        cache.GetOrSolve(config);
+
+        var engine = new CfrPlusPreflopStrategyEngine(
+            new MonteCarloStrategyEngine(),
+            cache,
+            config,
+            Microsoft.Extensions.Logging.Abstractions.NullLogger<CfrPlusPreflopStrategyEngine>.Instance);
+
+        var missingKey = new PreflopInfoSetKey(2, Position.UTG, "UNOPENED", 1, 40);
+        var query = engine.QueryStrategy(missingKey, "2c7d");
+
+        Assert.False(query.Supported);
+        Assert.Equal("No solved strategy for key (did you change key format? clear cache / rerun solve).", query.UnsupportedReason);
+        Assert.Empty(query.ActionFrequencies);
     }
 
     [Fact]
