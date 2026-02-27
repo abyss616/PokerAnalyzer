@@ -349,4 +349,66 @@ public class CfrPlusPreflopSolverTests
         }
     }
 
+    [Fact]
+    public void Solver_ParallelLocalMergeMode_StaysCloseToSingleThread()
+    {
+        var solver = new CfrPlusPreflopSolver(new PreflopTerminalEvaluator(new ApproxMonteCarloContinuationValueProvider()));
+        var singleThreadConfig = new PreflopSolverConfig(
+            Iterations: 45,
+            EffectiveStackBb: 25m,
+            Rake: Rake,
+            PlayerCount: 2,
+            Sizing: RaiseSizingAbstraction.Default,
+            MaxTreeDepth: 4,
+            EnableParallelSolve: false,
+            EnableTerminalCache: true);
+        var parallelConfig = singleThreadConfig with { EnableParallelSolve = true, MaxDegreeOfParallelism = 2 };
+
+        var singleThread = solver.SolvePreflop(singleThreadConfig);
+        var parallel = solver.SolvePreflop(parallelConfig);
+
+        Assert.Equal(singleThread.NodeStrategies.Count, parallel.NodeStrategies.Count);
+
+        foreach (var (key, singleNode) in singleThread.NodeStrategies)
+        {
+            Assert.True(parallel.NodeStrategies.TryGetValue(key, out var parallelNode));
+
+            if (singleNode.PopulationMix.Count > 0)
+                Assert.InRange(singleNode.PopulationMix.Values.Sum(), 0.999, 1.001);
+
+            if (parallelNode.PopulationMix.Count > 0)
+                Assert.InRange(parallelNode.PopulationMix.Values.Sum(), 0.999, 1.001);
+
+            foreach (var (action, singleFrequency) in singleNode.PopulationMix)
+            {
+                Assert.True(parallelNode.PopulationMix.ContainsKey(action));
+                Assert.InRange(Math.Abs(parallelNode.PopulationMix[action] - singleFrequency), 0d, 0.06d);
+            }
+
+            Assert.InRange(Math.Abs(parallelNode.EstimatedEvBb - singleNode.EstimatedEvBb), 0m, 0.20m);
+        }
+    }
+
+    [Fact]
+    public void Solver_ParallelMergePathWithOneWorker_DoesNotLoseInfosets()
+    {
+        var solver = new CfrPlusPreflopSolver(new PreflopTerminalEvaluator(new ApproxMonteCarloContinuationValueProvider()));
+        var singleThreadConfig = new PreflopSolverConfig(
+            Iterations: 30,
+            EffectiveStackBb: 30m,
+            Rake: Rake,
+            PlayerCount: 3,
+            Sizing: RaiseSizingAbstraction.Default,
+            MaxTreeDepth: 4,
+            EnableParallelSolve: false,
+            EnableTerminalCache: true);
+        var mergePathConfig = singleThreadConfig with { EnableParallelSolve = true, MaxDegreeOfParallelism = 1 };
+
+        var singleThread = solver.SolvePreflop(singleThreadConfig);
+        var mergePath = solver.SolvePreflop(mergePathConfig);
+
+        Assert.Equal(singleThread.NodeStrategies.Count, mergePath.NodeStrategies.Count);
+        Assert.True(mergePath.NodeStrategies.Keys.All(singleThread.NodeStrategies.ContainsKey));
+    }
+
 }
