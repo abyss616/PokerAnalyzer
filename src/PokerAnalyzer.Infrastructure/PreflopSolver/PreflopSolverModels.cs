@@ -37,7 +37,8 @@ public sealed record PreflopSolverConfig(
     RaiseSizingAbstraction? Sizing = null,
     bool EnableParallelSolve = false,
     int MaxDegreeOfParallelism = 0,
-    int MaxTreeDepth = 24)
+    int MaxTreeDepth = 24,
+    bool EnableTerminalCache = true)
 {
     public int ResolveMaxDegreeOfParallelism()
         => MaxDegreeOfParallelism <= 0 ? Environment.ProcessorCount : MaxDegreeOfParallelism;
@@ -61,6 +62,20 @@ public sealed record PreflopNodeState(
     decimal HeroCommittedBb,
     decimal VillainCommittedBb,
     decimal EffectiveStackBb);
+
+public readonly record struct TerminalCacheKey(
+    int PlayerCount,
+    int EffectiveStackBucket,
+    decimal RakePercent,
+    decimal RakeCapBb,
+    bool RakeNoFlopNoDrop,
+    int PotBb,
+    int CurrentToCallBb,
+    int ActingIndex,
+    ulong InHandBitset,
+    ulong ContribHash,
+    ulong StackHash,
+    uint HeroHandClassHash);
 
 public sealed record NodeStrategyResult(
     PreflopInfoSetKey InfoSet,
