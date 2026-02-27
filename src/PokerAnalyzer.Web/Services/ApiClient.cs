@@ -73,8 +73,7 @@ public sealed class ApiClient
         decimal? PrimaryEv,
         decimal? ReferenceEv,
         string? PrimaryExplanation,
-        string? ReferenceExplanation,
-        string? EvType);
+        string? ReferenceExplanation);
 
     public async Task<UploadHandHistoryResult> UploadHandHistoryXmlAsync(
         IBrowserFile file,
