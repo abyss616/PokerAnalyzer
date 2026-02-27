@@ -57,13 +57,30 @@ public class CfrPlusPreflopSolverTests
     {
         var solver = new CfrPlusPreflopSolver(new PreflopTerminalEvaluator(new ApproxMonteCarloContinuationValueProvider()));
         var cache = new PreflopSolverCache(solver);
-        var config = new PreflopSolverConfig(30, 100m, Rake, 6, RaiseSizingAbstraction.Default);
+        var config = new PreflopSolverConfig(30, 100m, Rake, 2, RaiseSizingAbstraction.Default);
 
         var first = cache.GetOrSolve(config);
         var second = cache.GetOrSolve(config);
 
         Assert.Same(first, second);
         Assert.Equal(1, cache.SolveCount);
+    }
+
+
+    [Fact]
+    public void Solver_RejectsNonHeadsUpPlayerCount()
+    {
+        var solver = new CfrPlusPreflopSolver(new PreflopTerminalEvaluator(new ApproxMonteCarloContinuationValueProvider()));
+        var config = new PreflopSolverConfig(
+            Iterations: 20,
+            EffectiveStackBb: 40m,
+            Rake: Rake,
+            PlayerCount: 6,
+            Sizing: RaiseSizingAbstraction.Default);
+
+        var ex = Assert.Throws<ArgumentException>(() => solver.SolvePreflop(config));
+        Assert.Contains("heads-up only", ex.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("PlayerCount=6", ex.Message, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
@@ -248,14 +265,14 @@ public class CfrPlusPreflopSolverTests
     }
 
     [Fact]
-    public void AddPokerAnalyzer_ResolvesCfrEngine_WithSixMaxRecommendationAndFiniteEv()
+    public void AddPokerAnalyzer_ResolvesCfrEngine_WithHeadsUpRecommendationAndFiniteEv()
     {
         var services = new ServiceCollection();
         services.AddPokerAnalyzer();
         using var provider = services.BuildServiceProvider();
 
         var config = provider.GetRequiredService<PreflopSolverConfig>();
-        Assert.Equal(6, config.PlayerCount);
+        Assert.Equal(2, config.PlayerCount);
 
         var engine = provider.GetRequiredService<IStrategyEngine>();
         var hero = PlayerId.New();
@@ -327,7 +344,7 @@ public class CfrPlusPreflopSolverTests
             Iterations: 35,
             EffectiveStackBb: 20m,
             Rake: Rake,
-            PlayerCount: 3,
+            PlayerCount: 2,
             Sizing: RaiseSizingAbstraction.Default,
             MaxTreeDepth: 4,
             EnableParallelSolve: false,
@@ -397,7 +414,7 @@ public class CfrPlusPreflopSolverTests
             Iterations: 30,
             EffectiveStackBb: 30m,
             Rake: Rake,
-            PlayerCount: 3,
+            PlayerCount: 2,
             Sizing: RaiseSizingAbstraction.Default,
             MaxTreeDepth: 4,
             EnableParallelSolve: false,

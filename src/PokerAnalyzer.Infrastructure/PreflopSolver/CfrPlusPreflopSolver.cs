@@ -8,6 +8,7 @@ namespace PokerAnalyzer.Infrastructure.PreflopSolver;
 
 public sealed class CfrPlusPreflopSolver
 {
+    private const int HeadsUpPlayerCount = 2;
     private static readonly IReadOnlyDictionary<string, decimal> HandStrengthByClass =
         PreflopRange.AllClasses.ToDictionary(h => h.Label, h => EvaluateHandClassStrength(h.Label));
     private readonly PreflopTerminalEvaluator _terminal;
@@ -26,6 +27,8 @@ public sealed class CfrPlusPreflopSolver
 
     public PreflopSolveResult SolvePreflop(PreflopSolverConfig config)
     {
+        EnsureHeadsUpConfig(config);
+
         var totalStopwatch = System.Diagnostics.Stopwatch.StartNew();
         var sizing = config.ResolveSizing();
         _logger.LogInformation(
@@ -47,6 +50,7 @@ public sealed class CfrPlusPreflopSolver
             sizing,
             new PreflopTreeBuildConfig(MaxDepth: config.MaxTreeDepth, RaiseSizing: config.Sizing));
         var tree = builder.BuildTree();
+        EnsureHeadsUpTree(tree.Root);
         buildStopwatch.Stop();
         var nodeCount = CountNodes(tree.Root);
         _logger.LogInformation("Tree built. NodeCount={NodeCount}, BuildDurationMs={BuildDurationMs}", nodeCount, buildStopwatch.ElapsedMilliseconds);
@@ -242,6 +246,8 @@ public sealed class CfrPlusPreflopSolver
         data.HeroUtilitySum += nodeUtility * reach[0];
         data.WeightSum += reach[0];
 
+        // This sign-flip transformation is only valid for strict 2-player zero-sum games.
+        // SolvePreflop enforces PlayerCount == 2 and validates the generated tree accordingly.
         var actorViewNodeUtility = actor == 0 ? nodeUtility : -nodeUtility;
         var otherReach = 1d;
         for (var player = 0; player < reach.Length; player++)
@@ -259,6 +265,32 @@ public sealed class CfrPlusPreflopSolver
         }
 
         return nodeUtility;
+    }
+
+    private static void EnsureHeadsUpConfig(PreflopSolverConfig config)
+    {
+        if (config.PlayerCount != HeadsUpPlayerCount)
+            throw new ArgumentException(
+                $"CfrPlusPreflopSolver currently supports heads-up only (PlayerCount={HeadsUpPlayerCount}). Received PlayerCount={config.PlayerCount}.",
+                nameof(config));
+    }
+
+    private static void EnsureHeadsUpTree(PreflopGameTreeNode root)
+    {
+        var stack = new Stack<PreflopGameTreeNode>();
+        stack.Push(root);
+
+        while (stack.Count > 0)
+        {
+            var node = stack.Pop();
+            var state = node.State;
+            if (state.PlayerCount != HeadsUpPlayerCount || state.InHand.Length != HeadsUpPlayerCount)
+                throw new InvalidOperationException(
+                    $"CfrPlusPreflopSolver requires a heads-up game tree. Found node with PlayerCount={state.PlayerCount}, InHandLength={state.InHand.Length}.");
+
+            foreach (var child in node.Children.Values)
+                stack.Push(child);
+        }
     }
 
     private decimal EvaluateTerminalUtility(

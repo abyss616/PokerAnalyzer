@@ -17,7 +17,7 @@ public sealed class CfrPlusPreflopStrategyEngine : IStrategyEngine
         : this(
             monteCarloReference,
             new PreflopSolverCache(new CfrPlusPreflopSolver(new PreflopTerminalEvaluator(new ApproxMonteCarloContinuationValueProvider()))),
-            new PreflopSolverConfig(140, 100m, new RakeConfig(0.05m, 1.0m, NoFlopNoDrop: true), 6, RaiseSizingAbstraction.Default, EnableParallelSolve: true, MaxDegreeOfParallelism: Math.Min(12, Environment.ProcessorCount)),
+            new PreflopSolverConfig(140, 100m, new RakeConfig(0.05m, 1.0m, NoFlopNoDrop: true), 2, RaiseSizingAbstraction.Default, EnableParallelSolve: true, MaxDegreeOfParallelism: Math.Min(12, Environment.ProcessorCount)),
             Microsoft.Extensions.Logging.Abstractions.NullLogger<CfrPlusPreflopStrategyEngine>.Instance)
     {
     }
