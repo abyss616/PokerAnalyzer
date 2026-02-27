@@ -19,7 +19,7 @@ public static class ServiceCollectionExtensions
             140,
             100m,
             new RakeConfig(0.05m, 1.0m, NoFlopNoDrop: true),
-            6,
+            2, // HU-only CFR+ preflop solver
             RaiseSizingAbstraction.Default,
             EnableParallelSolve: true,
             MaxDegreeOfParallelism: Math.Min(12, Environment.ProcessorCount)));
