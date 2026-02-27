@@ -313,16 +313,22 @@ public sealed class PreflopSolverCache : IPreflopStrategyStore
         }
     }
 
-    private sealed class CacheEntry(DateTimeOffset createdUtc)
+    private sealed class CacheEntry
     {
-        private readonly Lazy<Task<PreflopSolveResult>> _solveTask = new(() =>
-        {
-            var factory = Interlocked.Exchange(ref _taskFactory, null)
-                ?? throw new InvalidOperationException("Solve task factory was not initialized.");
-            return factory();
-        }, LazyThreadSafetyMode.ExecutionAndPublication);
-        private long _lastAccessUtcTicks = createdUtc.Ticks;
+        private readonly Lazy<Task<PreflopSolveResult>> _solveTask;
+        private long _lastAccessUtcTicks;
         private Func<Task<PreflopSolveResult>>? _taskFactory;
+
+        public CacheEntry(DateTimeOffset createdUtc)
+        {
+            _lastAccessUtcTicks = createdUtc.Ticks;
+            _solveTask = new Lazy<Task<PreflopSolveResult>>(() =>
+            {
+                var factory = Interlocked.Exchange(ref _taskFactory, null)
+                    ?? throw new InvalidOperationException("Solve task factory was not initialized.");
+                return factory();
+            }, LazyThreadSafetyMode.ExecutionAndPublication);
+        }
 
         public DateTimeOffset LastAccessUtc => new(Interlocked.Read(ref _lastAccessUtcTicks), TimeSpan.Zero);
         public bool IsCompleted => _solveTask.IsValueCreated && _solveTask.Value.IsCompleted;
