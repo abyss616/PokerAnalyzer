@@ -346,7 +346,8 @@ public sealed class HandAnalysisController : ControllerBase
                     decision.Recommendation.PrimaryEV ?? primaryRecommendation?.EstimatedEv,
                     decision.Recommendation.ReferenceEV,
                     decision.Recommendation.PrimaryExplanation,
-                    decision.Recommendation.ReferenceExplanation
+                    decision.Recommendation.ReferenceExplanation,
+                    decision.Recommendation.EvType
                 );
             })
             .ToList();
@@ -526,5 +527,6 @@ public sealed class HandAnalysisController : ControllerBase
         decimal? PrimaryEv,
         decimal? ReferenceEv,
         string? PrimaryExplanation,
-        string? ReferenceExplanation);
+        string? ReferenceExplanation,
+        string? EvType);
 }
