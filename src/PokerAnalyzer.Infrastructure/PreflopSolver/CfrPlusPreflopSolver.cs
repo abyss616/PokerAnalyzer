@@ -566,13 +566,17 @@ public sealed class CfrPlusPreflopSolver
 
     internal static double ComputeInfosetReachWeight(IReadOnlyList<double> reach)
     {
+        // Infoset EV must be weighted by full reach probability mass.
+        // This intentionally avoids historical hero-only reach weighting (reach[0] only)
+        // and any naïve unweighted visit counting.
         if (reach.Count == 0)
             return 0d;
 
-        if (reach.Count == 1)
-            return reach[0];
+        var weight = 1d;
+        for (var i = 0; i < reach.Count; i++)
+            weight *= reach[i];
 
-        return reach[0] * reach[1];
+        return weight;
     }
 
     internal static decimal ComputeEstimatedEvBb(double heroUtilitySum, double weightSum)
