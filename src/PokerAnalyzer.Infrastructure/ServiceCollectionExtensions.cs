@@ -24,6 +24,8 @@ public static class ServiceCollectionExtensions
             EnableParallelSolve: true,
             MaxDegreeOfParallelism: Math.Min(12, Environment.ProcessorCount)));
         services.AddSingleton(new PreflopTerminalEvaluator(new ApproxMonteCarloContinuationValueProvider()));
+        services.AddSingleton(new PreflopSolverCacheOptions());
+        services.AddSingleton(TimeProvider.System);
         services.AddSingleton<CfrPlusPreflopSolver>();
         services.AddSingleton<PreflopSolverCache>();
         services.AddSingleton<CfrPlusPreflopStrategyEngine>();

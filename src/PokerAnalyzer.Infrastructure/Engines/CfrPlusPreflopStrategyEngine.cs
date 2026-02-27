@@ -1,3 +1,5 @@
+using System.Threading;
+using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.DependencyInjection;
 using PokerAnalyzer.Application.Engines;
@@ -35,7 +37,7 @@ public sealed class CfrPlusPreflopStrategyEngine : IStrategyEngine
         _logger = logger;
     }
 
-    public Recommendation Recommend(HandState state, HeroContext hero)
+    public async Task<Recommendation> RecommendAsync(HandState state, HeroContext hero, CancellationToken ct = default)
     {
         var reference = _monteCarloReference.EvaluateReference(state, hero);
         if (state.Street != Street.Preflop || hero.HeroHoleCards is null)
@@ -73,8 +75,8 @@ public sealed class CfrPlusPreflopStrategyEngine : IStrategyEngine
             _config.EffectiveStackBb);
 
         _logger.LogInformation("Ensuring preflop strategy solved for {Players} players", _config.PlayerCount);
-        _cache.GetOrSolve(_config);
-        var cacheKey = new PreflopSolverCacheKey(_config.PlayerCount, (int)Math.Round(_config.EffectiveStackBb), _config.Rake, _config.ResolveSizing().Fingerprint());
+        await _cache.GetOrSolveAsync(_config, ct);
+        var cacheKey = PreflopSolverCache.BuildCacheKey(_config);
         _logger.LogInformation(
             "Cache lookup. CacheKey={CacheKey}, CacheHit={CacheHit}, SolveCount={SolveCount}, CacheEntries={CacheEntries}",
             cacheKey,
@@ -116,14 +118,14 @@ public sealed class CfrPlusPreflopStrategyEngine : IStrategyEngine
             ReferenceExplanation: reference.ReferenceExplanation);
     }
 
-    public PreflopSolveResult SolvePreflop(PreflopSolverConfig config) => _cache.GetOrSolve(config);
+    public Task<PreflopSolveResult> SolvePreflopAsync(PreflopSolverConfig config, CancellationToken ct = default) => _cache.GetOrSolveAsync(config, ct);
 
-    public StrategyQueryResult QueryStrategy(PreflopInfoSetKey key, string heroHand)
+    public async Task<StrategyQueryResult> QueryStrategyAsync(PreflopInfoSetKey key, string heroHand, CancellationToken ct = default)
     {
         if (string.IsNullOrWhiteSpace(heroHand))
             return new StrategyQueryResult(new Dictionary<ActionType, double>(), null, 0m, 0m, key, false, "Missing hero hand class");
 
-        _cache.GetOrSolve(_config);
+        await _cache.GetOrSolveAsync(_config, ct);
         var query = _cache.Lookup(key, heroHand);
         return query.Supported
             ? query

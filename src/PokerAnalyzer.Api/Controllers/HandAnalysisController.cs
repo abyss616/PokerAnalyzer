@@ -112,7 +112,7 @@ public sealed class HandAnalysisController : ControllerBase
                 return NotFound("Hand not found in session.");
 
             var domainHand = MapToDomainHand(hand, session, correlationId);
-            var solverResult = _handAnalyzer.Analyze(domainHand);
+            var solverResult = await _handAnalyzer.AnalyzeAsync(domainHand, ct);
             var preflopSummary = BuildPreflopSummary(hand);
 
             var engineSummary = BuildEngineResult("CFR+ Solver", solverResult, domainHand);

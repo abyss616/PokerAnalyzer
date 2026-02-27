@@ -1,3 +1,5 @@
+using System.Threading;
+using System.Threading.Tasks;
 using PokerAnalyzer.Domain.Cards;
 using PokerAnalyzer.Domain.Game;
 
@@ -5,7 +7,7 @@ namespace PokerAnalyzer.Application.Engines;
 
 public interface IStrategyEngine
 {
-    Recommendation Recommend(HandState state, HeroContext hero);
+    Task<Recommendation> RecommendAsync(HandState state, HeroContext hero, CancellationToken ct = default);
 }
 
 public sealed record HeroContext(

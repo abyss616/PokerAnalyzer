@@ -31,10 +31,10 @@ using (var scope = app.Services.CreateScope())
 app.UseSwagger();
 app.UseSwaggerUI();
 
-app.MapPost("/analyze", (AnalyzeHandRequest request, HandAnalyzer analyzer) =>
+app.MapPost("/analyze", async (AnalyzeHandRequest request, HandAnalyzer analyzer, CancellationToken ct) =>
 {
     var hand = request.ToDomain();
-    var result = analyzer.Analyze(hand);
+    var result = await analyzer.AnalyzeAsync(hand, ct);
     return Results.Ok(result);
 })
 .WithName("AnalyzeHand")
