@@ -72,8 +72,13 @@ public sealed class PreflopStateExtractor
         var potBb = bigBlind == 0 ? 0 : decimal.Round(pot / bigBlind, 2);
 
         var historySignature = BuildSignature(actingSeat.Position, raiseDepth);
-        Position? facingPos = lastAggressor.HasValue ? byId[lastAggressor.Value].Position : null;
-        var facingStack = lastAggressor.HasValue ? stacks[lastAggressor.Value] : stacks.Values.Max();
+        var bigBlindSeat = seats.FirstOrDefault(s => s.Position == Position.BB);
+        Position? facingPos = lastAggressor.HasValue
+            ? byId[lastAggressor.Value].Position
+            : bigBlindSeat?.Position;
+        var facingStack = lastAggressor.HasValue
+            ? stacks[lastAggressor.Value]
+            : (bigBlindSeat is not null ? stacks[bigBlindSeat.Id] : stacks.Values.Max());
         var effectiveStackBb = decimal.Round(Math.Min(stacks[actingPlayerId], facingStack) / bigBlind, 2);
 
         var openBucket = PreflopSizingNormalizer.Bucket(currentBetBb);
