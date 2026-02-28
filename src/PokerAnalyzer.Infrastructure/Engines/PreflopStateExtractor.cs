@@ -82,7 +82,7 @@ public sealed class PreflopStateExtractor
         var potBb = bigBlind == 0 ? 0 : decimal.Round(pot / bigBlind, 2);
 
         var historySignature = BuildSignature(actingSeat.Position, raiseDepth);
-        var facingPos = lastAggressor.HasValue ? byId[lastAggressor.Value].Position : null;
+        Position? facingPos = lastAggressor.HasValue ? byId[lastAggressor.Value].Position : null;
         var facingStack = lastAggressor.HasValue ? stacks[lastAggressor.Value] : stacks.Values.Max();
         var effectiveStackBb = decimal.Round(Math.Min(stacks[actingPlayerId], facingStack) / bigBlind, 2);
 
