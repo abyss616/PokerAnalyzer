@@ -2,6 +2,7 @@ using Microsoft.Extensions.Logging;
 using PokerAnalyzer.Domain.Cards;
 using PokerAnalyzer.Domain.Game;
 using PokerAnalyzer.Domain.PreflopTree;
+using PokerAnalyzer.Infrastructure.Engines;
 using System.Collections.Concurrent;
 
 namespace PokerAnalyzer.Infrastructure.PreflopSolver;
@@ -455,7 +456,9 @@ public sealed class CfrPlusPreflopSolver
         var actingPosition = positions[state.ActingIndex];
         var toCall = Math.Max(0, state.CurrentToCallBb - state.ContribBb[state.ActingIndex]);
         var toCallBucket = (int)Math.Round((decimal)toCall, MidpointRounding.AwayFromZero);
-        return new PreflopInfoSetKey(state.PlayerCount, actingPosition, PreflopHistorySignature.Build(history), toCallBucket, effectiveStackBucket, Normalize(heroHandClass));
+        var context = PreflopSpotContextBuilder.FromPublicState(state, positions, effectiveStackBucket);
+        var signature = PreflopHistorySignatureV2.Build(context);
+        return new PreflopInfoSetKey(state.PlayerCount, actingPosition, signature, toCallBucket, effectiveStackBucket, Normalize(heroHandClass));
     }
 
     private static PreflopNodeState BuildNodeState(PreflopPublicState state, int heroIndex, int playerCount, int effectiveStackBucket)

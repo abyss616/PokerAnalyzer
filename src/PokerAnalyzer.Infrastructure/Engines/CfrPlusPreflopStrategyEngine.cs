@@ -45,6 +45,7 @@ public sealed class CfrPlusPreflopStrategyEngine : IStrategyEngine
 
         var extraction = PreflopStateExtractor.TryExtract(state, hero, _config.ResolveSizing());
         var key = extraction?.Key;
+        var context = extraction?.SpotContext;
         _logger.LogInformation(
             "Extract solver key. PlayerCount={PlayerCount}, HeroPosNormalized={HeroPosNormalized}, HistorySignature={HistorySignature}, RealToCallBb={RealToCallBb}, NormalizedToCallBb={NormalizedToCallBb}, EffectiveStackBb={EffectiveStackBb}, RealOpenBb={RealOpenBb}, Real3Bet={Real3Bet}, Real4Bet={Real4Bet}, NormalizedOpenBb={NormalizedOpenBb}, Normalized3Bet={Normalized3Bet}, Normalized4Bet={Normalized4Bet}, NormalizationNote={NormalizationNote}",
             key?.PlayerCount,
@@ -60,6 +61,32 @@ public sealed class CfrPlusPreflopStrategyEngine : IStrategyEngine
             extraction?.NormalizedThreeBetSizeBb,
             extraction?.NormalizedFourBetSizeBb,
             extraction?.NormalizationNote);
+
+        if (extraction is not null && context is not null && !context.IsSupported)
+        {
+            _logger.LogWarning(
+                "Unsupported preflop spot classification. Reason={Reason}, RaiseDepth={RaiseDepth}, ToCallBb={ToCallBb}, LastRaiseSizeBb={LastRaiseSizeBb}, FacingPosition={FacingPosition}, ActingPosition={ActingPosition}, RawHistory={RawHistory}",
+                context.UnsupportedReason,
+                context.RaiseDepth,
+                context.ToCallBb,
+                context.LastRaiseSizeBb,
+                context.FacingPosition,
+                context.ActingPosition,
+                string.Join(" | ", hero.ActionHistory?.Where(a => a.Street == Street.Preflop)
+                    .Select(a => $"{a.ActorId}:{a.Type}:{a.Amount.Value}") ?? []));
+            return BuildUnsupportedRecommendation(reference, context.UnsupportedReason ?? "Unsupported preflop state for solver abstraction");
+        }
+
+        if (context is not null)
+        {
+            if (key?.HistorySignature == "OPEN" && context.ToCallBb > 0)
+                return BuildUnsupportedRecommendation(reference, "Invalid preflop signature OPEN with toCall > 0");
+            if (key?.HistorySignature.StartsWith("VS_", StringComparison.Ordinal) == true && context.ToCallBb <= 0)
+                return BuildUnsupportedRecommendation(reference, "Invalid preflop signature VS_* with toCall == 0");
+            if (context.RaiseDepth is < 0 or > 3)
+                return BuildUnsupportedRecommendation(reference, $"Unsupported raise depth {context.RaiseDepth}");
+        }
+
         if (key is null)
             return BuildUnsupportedRecommendation(reference, "Unsupported preflop state for solver abstraction");
 

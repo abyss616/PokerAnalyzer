@@ -79,6 +79,7 @@ public sealed class PreflopSizingNormalizer
 
 public sealed record PreflopExtractionResult(
     PreflopInfoSetKey Key,
+    PreflopSpotContext SpotContext,
     decimal? RealOpenSizeBb,
     decimal? RealThreeBetSizeBb,
     decimal? RealFourBetSizeBb,
@@ -102,6 +103,9 @@ public static class PreflopStateExtractor
         var effectiveStackBb = (int)Math.Round(state.Stacks[hero.HeroId].Value / (decimal)hero.BigBlind.Value);
 
         var history = hero.ActionHistory?.Where(a => a.Street == Street.Preflop).ToList() ?? [];
+        var facingPosition = state.LastAggressor is { } aggressorId && hero.PlayerPositions.TryGetValue(aggressorId, out var pos)
+            ? pos
+            : null;
         if (history.Count == 0)
         {
             // Solver unopened keys use the table's current preflop price (BB level),
@@ -109,8 +113,9 @@ public static class PreflopStateExtractor
             var realToCall = hero.BigBlind.Value <= 0
                 ? 0
                 : PreflopSizingNormalizer.RoundBb(state.BetToCall.Value / (decimal)hero.BigBlind.Value);
-            var key = new PreflopInfoSetKey(playerCount, normalizedHeroPos, "UNOPENED", realToCall, effectiveStackBb);
-            return new PreflopExtractionResult(key, null, null, null, realToCall, null, null, null, realToCall, "No preflop raises to normalize");
+            var context = new PreflopSpotContext(normalizedHeroPos, facingPosition, 0, true, realToCall, effectiveStackBb, 0, null, null, null, true, null);
+            var key = new PreflopInfoSetKey(playerCount, normalizedHeroPos, PreflopHistorySignatureV2.Build(context), realToCall, effectiveStackBb);
+            return new PreflopExtractionResult(key, context, null, null, null, realToCall, null, null, null, realToCall, "No preflop raises to normalize");
         }
 
         var playerIds = hero.PlayerPositions.Keys.ToHashSet();
@@ -209,11 +214,11 @@ public static class PreflopStateExtractor
             ? 0
             : PreflopSizingNormalizer.RoundBb(state.GetToCall(hero.HeroId).Value / (decimal)hero.BigBlind.Value);
 
-        var actionTypes = history.Select(a => a.Type).ToList();
+        var contextFromHistory = PreflopSpotContextBuilder.FromHistory(state, hero, sizing, normalizer, normalizedHeroPos, facingPosition);
         var infoSet = new PreflopInfoSetKey(
             playerCount,
             normalizedHeroPos,
-            PreflopHistorySignature.Build(actionTypes),
+            PreflopHistorySignatureV2.Build(contextFromHistory),
             normalizedToCallBb,
             effectiveStackBb);
 
@@ -221,6 +226,7 @@ public static class PreflopStateExtractor
 
         return new PreflopExtractionResult(
             infoSet,
+            contextFromHistory,
             realOpen,
             realThreeBet,
             realFourBet,
