@@ -14,6 +14,7 @@ public sealed class CfrPlusPreflopStrategyEngine : IStrategyEngine
     private readonly PreflopSolverCache _cache;
     private readonly PreflopSolverConfig _config;
     private readonly ILogger<CfrPlusPreflopStrategyEngine> _logger;
+    private readonly PreflopKeyValidator _preflopKeyValidator = new();
 
     public CfrPlusPreflopStrategyEngine(IMonteCarloReferenceEngine monteCarloReference)
         : this(
@@ -77,18 +78,26 @@ public sealed class CfrPlusPreflopStrategyEngine : IStrategyEngine
             return BuildUnsupportedRecommendation(reference, context.UnsupportedReason ?? "Unsupported preflop state for solver abstraction");
         }
 
-        if (context is not null)
-        {
-            if (key?.HistorySignature == "OPEN" && context.ToCallBb > 0)
-                return BuildUnsupportedRecommendation(reference, "Invalid preflop signature OPEN with toCall > 0");
-            if (key?.HistorySignature.StartsWith("VS_", StringComparison.Ordinal) == true && context.ToCallBb <= 0)
-                return BuildUnsupportedRecommendation(reference, "Invalid preflop signature VS_* with toCall == 0");
-            if (context.RaiseDepth is < 0 or > 3)
-                return BuildUnsupportedRecommendation(reference, $"Unsupported raise depth {context.RaiseDepth}");
-        }
-
         if (key is null)
             return BuildUnsupportedRecommendation(reference, "Unsupported preflop state for solver abstraction");
+
+        var validation = _preflopKeyValidator.Validate(key, context, state, hero);
+        if (!validation.IsValid)
+        {
+            _logger.LogWarning(
+                "Preflop key validation failed. Reason={Reason}, ActingPosition={ActingPosition}, HistorySignature={HistorySignature}, ToCallBb={ToCallBb}, CurrentBetBb={CurrentBetBb}, HeroContribBb={HeroContribBb}, RaiseDepth={RaiseDepth}, LastAggressorPosition={LastAggressorPosition}, ActionHistory={ActionHistory}",
+                validation.Reason,
+                validation.Context.ActingPosition,
+                validation.Context.HistorySignature,
+                validation.Context.ToCallBb,
+                validation.Context.CurrentBetBb,
+                validation.Context.HeroContribBb,
+                validation.Context.RaiseDepth,
+                validation.Context.LastAggressorPosition,
+                validation.Context.ActionHistory);
+
+            return BuildUnsupportedRecommendation(reference, validation.Reason ?? "Invalid preflop key");
+        }
 
         var normalizedKey = key with
         {
