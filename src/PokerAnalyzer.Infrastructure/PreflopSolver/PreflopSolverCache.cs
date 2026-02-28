@@ -105,6 +105,9 @@ public sealed class PreflopSolverCache : IPreflopStrategyStore
     }
 
     public StrategyQueryResult Lookup(PreflopInfoSetKey key, string heroHand)
+        => Lookup(key, heroHand, exactStateOnly: false);
+
+    public StrategyQueryResult Lookup(PreflopInfoSetKey key, string heroHand, bool exactStateOnly = false)
     {
         var normalizedHeroHand = NormalizeHeroHand(heroHand);
         if (string.IsNullOrWhiteSpace(normalizedHeroHand))
@@ -125,7 +128,7 @@ public sealed class PreflopSolverCache : IPreflopStrategyStore
 
         foreach (var solved in solvedResults)
         {
-            foreach (var candidate in BuildLookupCandidates(key, normalizedHeroHand, solved!))
+            foreach (var candidate in BuildLookupCandidates(key, normalizedHeroHand, solved!, exactStateOnly))
             {
                 var result = _solver.QueryStrategy(solved!, candidate, normalizedHeroHand);
                 if (result.Supported)
@@ -155,9 +158,12 @@ public sealed class PreflopSolverCache : IPreflopStrategyStore
             "No solved strategy for key (did you change key format? clear cache / rerun solve).");
     }
 
-    private static IEnumerable<PreflopInfoSetKey> BuildLookupCandidates(PreflopInfoSetKey key, string normalizedHeroHand, PreflopSolveResult solved)
+    private static IEnumerable<PreflopInfoSetKey> BuildLookupCandidates(PreflopInfoSetKey key, string normalizedHeroHand, PreflopSolveResult solved, bool exactStateOnly)
     {
         yield return key with { HeroHandClass = normalizedHeroHand };
+
+        if (exactStateOnly)
+            yield break;
 
         var normalizedHistory = NormalizeHistory(key.HistorySignature);
         if (!string.Equals(normalizedHistory, key.HistorySignature, StringComparison.OrdinalIgnoreCase))

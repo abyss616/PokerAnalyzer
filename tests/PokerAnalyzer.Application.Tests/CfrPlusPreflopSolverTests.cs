@@ -536,6 +536,31 @@ public class CfrPlusPreflopSolverTests
         Assert.NotNull(query.BestAction);
     }
 
+
+    [Fact]
+    public async Task SolverCache_Lookup_ExactStateOnly_DoesNotUseHistoryOrNearestFallback()
+    {
+        var solver = new CfrPlusPreflopSolver(new PreflopTerminalEvaluator(new ApproxMonteCarloContinuationValueProvider()));
+        var cache = new PreflopSolverCache(solver);
+        var config = new PreflopSolverConfig(
+            Iterations: 80,
+            EffectiveStackBb: 100m,
+            Rake: Rake,
+            PlayerCount: 2,
+            Sizing: RaiseSizingAbstraction.Default,
+            MaxTreeDepth: 8);
+
+        await cache.GetOrSolveAsync(config, CancellationToken.None);
+
+        var key = new PreflopInfoSetKey(2, Position.BB, "VS_OPEN_2.5", 2, 100);
+        var nonExact = cache.Lookup(key, "AsKh");
+        var exact = cache.Lookup(key, "AsKh", exactStateOnly: true);
+
+        Assert.True(nonExact.Supported);
+        Assert.False(exact.Supported);
+        Assert.Contains("No solved strategy", exact.UnsupportedReason, StringComparison.OrdinalIgnoreCase);
+    }
+
     [Fact]
     public async Task Solver_ProducesNormalizedStrategies_OnTinyDepthTree()
     {
