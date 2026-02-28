@@ -6,8 +6,8 @@ public static class PreflopKeyValidator
 {
     public static PreflopValidationResult Validate(PreflopInfoSetKey key, PreflopSpotContext ctx)
     {
-        if (key.HistorySignature == "OPEN" && key.ToCallBb > 0)
-            return PreflopValidationResult.Invalid("Invalid key: OPEN with ToCall > 0.");
+        if (key.HistorySignature == "OPEN" && key.ToCallBb == 0)
+            return PreflopValidationResult.Invalid("Invalid key: OPEN with ToCall == 0.");
 
         if (key.HistorySignature.StartsWith("VS_", StringComparison.Ordinal) && key.ToCallBb == 0)
             return PreflopValidationResult.Invalid("Invalid key: VS_* signature with ToCall == 0.");

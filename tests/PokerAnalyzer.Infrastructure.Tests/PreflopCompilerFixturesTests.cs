@@ -60,15 +60,15 @@ public sealed class PreflopCompilerFixturesTests
     }
 
     [Fact]
-    public void Validation_Invalid_Open_With_ToCall_IsUnsupported()
+    public void Validation_Invalid_Open_With_Zero_ToCall_IsUnsupported()
     {
-        var key = new PreflopInfoSetKey(Position.CO, null, "OPEN", 0, 1m, 100m, "MEDIUM", "NA", "NA", "NA", "NA", 18m, "k");
-        var ctx = new PreflopSpotContext(PlayerId.New(), Position.CO, null, null, 0, 1m, 2m, 1m, 3m, 100m);
+        var key = new PreflopInfoSetKey(Position.CO, null, "OPEN", 0, 0m, 100m, "MEDIUM", "NA", "NA", "NA", "NA", 18m, "k");
+        var ctx = new PreflopSpotContext(PlayerId.New(), Position.CO, null, null, 0, 0m, 2m, 1m, 3m, 100m);
 
         var result = PreflopKeyValidator.Validate(key, ctx);
 
         Assert.False(result.IsValid);
-        Assert.Contains("OPEN with ToCall", result.Reason);
+        Assert.Contains("OPEN with ToCall == 0", result.Reason);
     }
 
     [Fact]
