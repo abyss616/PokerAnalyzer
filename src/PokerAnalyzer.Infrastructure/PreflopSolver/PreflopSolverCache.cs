@@ -1,6 +1,7 @@
 using System.Collections.Concurrent;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
+using PokerAnalyzer.Domain.Game;
 
 namespace PokerAnalyzer.Infrastructure.PreflopSolver;
 
@@ -180,6 +181,26 @@ public sealed class PreflopSolverCache : IPreflopStrategyStore
 
         if (nearest is not null)
             yield return nearest;
+
+        var relaxedNearest = solved.NodeStrategies.Keys
+            .Where(k => ArePositionsCompatible(k.ActingPosition, key.ActingPosition) &&
+                        string.Equals(k.HeroHandClass, normalizedHeroHand, StringComparison.OrdinalIgnoreCase) &&
+                        string.Equals(NormalizeHistory(k.HistorySignature), normalizedHistory, StringComparison.OrdinalIgnoreCase))
+            .OrderBy(k => Math.Abs(k.ToCallBb - key.ToCallBb))
+            .ThenBy(k => Math.Abs(k.EffectiveStackBb - key.EffectiveStackBb))
+            .ThenBy(k => Math.Abs(k.PlayerCount - key.PlayerCount))
+            .FirstOrDefault();
+
+        if (relaxedNearest is not null && relaxedNearest != nearest)
+            yield return relaxedNearest;
+    }
+
+    private static bool ArePositionsCompatible(Position candidate, Position requested)
+    {
+        if (candidate == requested)
+            return true;
+
+        return (candidate, requested) is (Position.SB, Position.BTN) or (Position.BTN, Position.SB);
     }
 
     private static bool HasLegacyEntryWithoutHeroHandClass(PreflopInfoSetKey key, PreflopSolveResult solved)
