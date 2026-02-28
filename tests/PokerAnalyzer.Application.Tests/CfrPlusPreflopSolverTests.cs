@@ -538,6 +538,29 @@ public class CfrPlusPreflopSolverTests
 
 
     [Fact]
+    public async Task SolverCache_Lookup_RelaxesButtonSmallBlindAlias_WhenNotExactStateOnly()
+    {
+        var solver = new CfrPlusPreflopSolver(new PreflopTerminalEvaluator(new ApproxMonteCarloContinuationValueProvider()));
+        var cache = new PreflopSolverCache(solver);
+        var config = new PreflopSolverConfig(
+            Iterations: 80,
+            EffectiveStackBb: 100m,
+            Rake: Rake,
+            PlayerCount: 2,
+            Sizing: RaiseSizingAbstraction.Default,
+            MaxTreeDepth: 8);
+
+        await cache.GetOrSolveAsync(config, CancellationToken.None);
+
+        var key = new PreflopInfoSetKey(2, Position.SB, "UNOPENED", 1, 100);
+        var query = cache.Lookup(key, "KhKd");
+
+        Assert.True(query.Supported);
+        Assert.NotEmpty(query.ActionFrequencies);
+        Assert.Equal(Position.BTN, query.InfoSet.ActingPosition);
+    }
+
+    [Fact]
     public async Task SolverCache_Lookup_ExactStateOnly_DoesNotUseHistoryOrNearestFallback()
     {
         var solver = new CfrPlusPreflopSolver(new PreflopTerminalEvaluator(new ApproxMonteCarloContinuationValueProvider()));
