@@ -57,7 +57,7 @@ public static class PreflopSpotContextBuilder
         var toCall = Math.Max(0, state.CurrentToCallBb - state.ContribBb[actingIndex]);
         var raiseDepth = Math.Max(0, state.RaisesCount - 1);
         var lastRaise = Math.Max(0, state.CurrentToCallBb);
-        var facing = state.LastAggressorIndex >= 0 && state.LastAggressorIndex < positions.Count
+        Position? facing = state.LastAggressorIndex >= 0 && state.LastAggressorIndex < positions.Count
             ? positions[state.LastAggressorIndex]
             : null;
 
