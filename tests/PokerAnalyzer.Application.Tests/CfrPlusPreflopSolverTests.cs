@@ -166,6 +166,46 @@ public class CfrPlusPreflopSolverTests
         Assert.Equal("UNOPENED", extraction!.Key.HistorySignature);
     }
 
+    [Fact]
+    public void StateExtractor_SbFacingBtnOpen_UsesFacingOpenHistorySignature()
+    {
+        var btn = PlayerId.New();
+        var hero = PlayerId.New();
+        var bb = PlayerId.New();
+
+        var state = HandState.CreateNewHand(
+            [
+                new PlayerSeat(btn, "BTN", 1, Position.BTN, new ChipAmount(10000)),
+                new PlayerSeat(hero, "Hero", 2, Position.SB, new ChipAmount(10000)),
+                new PlayerSeat(bb, "BB", 3, Position.BB, new ChipAmount(10000))
+            ],
+            new ChipAmount(5),
+            new ChipAmount(10))
+            .Apply(new BettingAction(Street.Preflop, btn, ActionType.Raise, new ChipAmount(25)));
+
+        var extraction = PreflopStateExtractor.TryExtract(state, new HeroContext(hero, new ChipAmount(5), new ChipAmount(10))
+        {
+            PlayerPositions = new Dictionary<PlayerId, Position>
+            {
+                [btn] = Position.BTN,
+                [hero] = Position.SB,
+                [bb] = Position.BB
+            },
+            ActionHistory =
+            [
+                new BettingAction(Street.Preflop, hero, ActionType.PostSmallBlind, new ChipAmount(5)),
+                new BettingAction(Street.Preflop, bb, ActionType.PostBigBlind, new ChipAmount(10)),
+                new BettingAction(Street.Preflop, btn, ActionType.Raise, new ChipAmount(25))
+            ]
+        }, SolverSizingConfig.Default);
+
+        Assert.NotNull(extraction);
+        Assert.Equal(Position.SB, extraction!.Key.ActingPosition);
+        Assert.Equal(2, extraction.Key.ToCallBb);
+        Assert.Equal("VS_OPEN", extraction.Key.HistorySignature);
+        Assert.NotEqual("OPEN", extraction.Key.HistorySignature);
+    }
+
 
     [Fact]
     public async Task PreflopSizingNormalizer_OpenSize_BucketsToNearestConfiguredSize()
