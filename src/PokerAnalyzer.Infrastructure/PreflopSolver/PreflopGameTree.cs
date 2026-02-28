@@ -1,5 +1,6 @@
 using PokerAnalyzer.Domain.Game;
 using PokerAnalyzer.Domain.PreflopTree;
+using PokerAnalyzer.Infrastructure.Engines;
 
 namespace PokerAnalyzer.Infrastructure.PreflopSolver;
 
@@ -297,7 +298,8 @@ public sealed class PreflopGameTreeBuilder
         if ((_sizing.AllowExplicitJam || _effectiveStackBb <= _sizing.JamThresholdStackBb) && state.Contrib.GetValueOrDefault(actor) < _effectiveStackBb)
             legal.Add(ActionType.AllIn);
 
-        var key = new PreflopInfoSetKey(_playerCount, actor, PreflopHistorySignature.Build(state.Actions), (int)Math.Round(toCall), (int)Math.Round(_effectiveStackBb));
+        var context = new PreflopSpotContext(actor, null, Math.Max(0, state.RaiseCount), state.RaiseCount == 0, toCall, _effectiveStackBb, state.BetToCall, state.RaiseCount >= 1 ? state.BetToCall : null, state.RaiseCount >= 2 ? state.BetToCall : null, state.RaiseCount >= 3 ? state.BetToCall : null, true, null);
+        var key = new PreflopInfoSetKey(_playerCount, actor, PreflopHistorySignatureV2.Build(context), (int)Math.Round(toCall), (int)Math.Round(_effectiveStackBb));
         if (!nodes.ContainsKey(key))
         {
             var villainCommit = state.Contrib.Where(c => c.Key != actor).Max(c => c.Value);

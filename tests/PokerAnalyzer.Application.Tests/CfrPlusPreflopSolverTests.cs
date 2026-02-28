@@ -36,7 +36,7 @@ public class CfrPlusPreflopSolverTests
     {
         var nodes = new PreflopGameTreeBuilder(2, 100m, 0.5m, 1m, Rake, SolverSizingConfig.Default).Build();
         Assert.Contains(nodes, n => n.InfoSet.HistorySignature == "UNOPENED" && n.InfoSet.ActingPosition == Position.BTN);
-        Assert.Contains(nodes, n => n.InfoSet.HistorySignature == "OPEN" && n.InfoSet.ActingPosition == Position.BB);
+        Assert.Contains(nodes, n => n.InfoSet.HistorySignature.StartsWith("VS_OPEN_", StringComparison.Ordinal) && n.InfoSet.ActingPosition == Position.BB);
     }
 
     [Theory]
@@ -48,7 +48,7 @@ public class CfrPlusPreflopSolverTests
     public async Task TreeContains_VsOpen_Vs3Bet_Vs4Bet_AndAllIn(int playerCount)
     {
         var nodes = new PreflopGameTreeBuilder(playerCount, 100m, 0.5m, 1m, Rake, SolverSizingConfig.Default).Build();
-        Assert.Contains(nodes, n => n.InfoSet.HistorySignature is "OPEN" or "OPEN_CALL");
+        Assert.Contains(nodes, n => n.InfoSet.HistorySignature is "UNOPENED" or "OPEN");
         Assert.Contains(nodes, n => n.InfoSet.HistorySignature.Contains("3BET", StringComparison.Ordinal));
         Assert.Contains(nodes, n => n.InfoSet.HistorySignature.Contains("4BET", StringComparison.Ordinal));
         Assert.Contains(nodes, n => n.LegalActions.Contains(ActionType.AllIn));
@@ -202,10 +202,80 @@ public class CfrPlusPreflopSolverTests
         Assert.NotNull(extraction);
         Assert.Equal(Position.SB, extraction!.Key.ActingPosition);
         Assert.Equal(2, extraction.Key.ToCallBb);
-        Assert.Equal("VS_OPEN", extraction.Key.HistorySignature);
+        Assert.StartsWith("VS_OPEN_", extraction.Key.HistorySignature, StringComparison.Ordinal);
         Assert.NotEqual("OPEN", extraction.Key.HistorySignature);
     }
 
+    [Fact]
+    public void StateExtractor_SbFacingBtn4Bet_UsesVs4BetHistorySignature()
+    {
+        var btn = PlayerId.New();
+        var hero = PlayerId.New();
+        var bb = PlayerId.New();
+
+        var state = HandState.CreateNewHand(
+            [
+                new PlayerSeat(btn, "BTN", 1, Position.BTN, new ChipAmount(10000)),
+                new PlayerSeat(hero, "Hero", 2, Position.SB, new ChipAmount(10000)),
+                new PlayerSeat(bb, "BB", 3, Position.BB, new ChipAmount(10000))
+            ],
+            new ChipAmount(5),
+            new ChipAmount(10))
+            .Apply(new BettingAction(Street.Preflop, btn, ActionType.Raise, new ChipAmount(25)))
+            .Apply(new BettingAction(Street.Preflop, hero, ActionType.Raise, new ChipAmount(90)))
+            .Apply(new BettingAction(Street.Preflop, btn, ActionType.Raise, new ChipAmount(220)));
+
+        var extraction = PreflopStateExtractor.TryExtract(state, new HeroContext(hero, new ChipAmount(5), new ChipAmount(10))
+        {
+            PlayerPositions = new Dictionary<PlayerId, Position>
+            {
+                [btn] = Position.BTN,
+                [hero] = Position.SB,
+                [bb] = Position.BB
+            },
+            ActionHistory =
+            [
+                new BettingAction(Street.Preflop, hero, ActionType.PostSmallBlind, new ChipAmount(5)),
+                new BettingAction(Street.Preflop, bb, ActionType.PostBigBlind, new ChipAmount(10)),
+                new BettingAction(Street.Preflop, btn, ActionType.Raise, new ChipAmount(25)),
+                new BettingAction(Street.Preflop, hero, ActionType.Raise, new ChipAmount(90)),
+                new BettingAction(Street.Preflop, btn, ActionType.Raise, new ChipAmount(220))
+            ]
+        }, SolverSizingConfig.Default);
+
+        Assert.NotNull(extraction);
+        Assert.Equal(Position.SB, extraction!.Key.ActingPosition);
+        Assert.StartsWith("VS_4BET_", extraction.Key.HistorySignature, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void StateExtractor_UnopenedSmallBlindOption_UsesOpenSignature()
+    {
+        var hero = PlayerId.New();
+        var bb = PlayerId.New();
+
+        var state = HandState.CreateNewHand(
+            [
+                new PlayerSeat(hero, "Hero", 1, Position.SB, new ChipAmount(10000)),
+                new PlayerSeat(bb, "BB", 2, Position.BB, new ChipAmount(10000))
+            ],
+            new ChipAmount(0),
+            new ChipAmount(0));
+
+        var extraction = PreflopStateExtractor.TryExtract(state, new HeroContext(hero, new ChipAmount(0), new ChipAmount(10))
+        {
+            PlayerPositions = new Dictionary<PlayerId, Position>
+            {
+                [hero] = Position.SB,
+                [bb] = Position.BB
+            },
+            ActionHistory = []
+        }, SolverSizingConfig.Default);
+
+        Assert.NotNull(extraction);
+        Assert.Equal("OPEN", extraction!.Key.HistorySignature);
+        Assert.DoesNotContain("VS_OPEN", extraction.Key.HistorySignature, StringComparison.Ordinal);
+    }
 
     [Fact]
     public async Task PreflopSizingNormalizer_OpenSize_BucketsToNearestConfiguredSize()

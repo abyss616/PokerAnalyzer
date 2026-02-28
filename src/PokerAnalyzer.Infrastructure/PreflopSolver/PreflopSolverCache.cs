@@ -233,6 +233,13 @@ public sealed class PreflopSolverCache : IPreflopStrategyStore
     private static string NormalizeHistory(string history)
     {
         var trimmed = history.Trim().ToUpperInvariant();
+        if (trimmed.StartsWith("VS_OPEN_", StringComparison.Ordinal))
+            return "OPEN";
+        if (trimmed.StartsWith("VS_3BET_", StringComparison.Ordinal))
+            return "OPEN_3BET";
+        if (trimmed.StartsWith("VS_4BET_", StringComparison.Ordinal))
+            return "OPEN_3BET_4BET";
+
         return trimmed switch
         {
             "LIMP" => "LIMPED",
