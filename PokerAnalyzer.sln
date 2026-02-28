@@ -16,6 +16,11 @@ Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "PokerAnalyzer.Application.T
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "PokerAnalyzer.Web", "src\PokerAnalyzer.Web\PokerAnalyzer.Web.csproj", "{D6C89221-DC2E-33E9-5F59-F5F9684CA78D}"
 EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "ToDo", "ToDo", "{86B9E86D-BEF0-4A80-B08A-EDC89A0C7524}"
+	ProjectSection(SolutionItems) = preProject
+		True6MaxSolver.txt = True6MaxSolver.txt
+	EndProjectSection
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -53,5 +58,8 @@ Global
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+		SolutionGuid = {5D4A4FA3-E9DD-4C93-B12A-B6DA1F63D5FC}
 	EndGlobalSection
 EndGlobal

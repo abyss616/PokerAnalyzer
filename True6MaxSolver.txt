@@ -1,0 +1,41 @@
+Yep — your point (1) is correct based on the actual code in PokerAnalyzer/src/PokerAnalyzer.Infrastructure/PreflopSolver/CfrPlusPreflopSolver.cs.
+
+What the solver is doing
+
+Inside Cfr(...), it computes a single scalar nodeUtility and then converts it into “the acting player’s view” like this:
+
+actorViewNodeUtility = actor == 0 ? nodeUtility : -nodeUtility;
+
+and the same -utility flip for each action’s utility before updating regrets.
+
+That only makes sense in 2-player zero-sum (HU) where Player 1’s payoff is exactly - Player 0’s payoff.
+
+Why it breaks for 6-max (multi-player)
+
+In 6-max, payoffs are not “hero EV negated” for every other seat. Each player has their own utility, and the game is general-sum (and non-zero-sum in general). So:
+
+regret updates for any actor != 0 are updating toward a fiction: “everyone is the villain and shares one opposite payoff”
+
+strategies learned for non-hero seats are not meaningful
+
+and even hero’s learned strategy is effectively vs a coalition opponent (all other players optimizing the same shared negative-hero objective), which is not the actual 6-max equilibrium problem.
+
+So the output is not a reliable 6-max preflop solution, even if the tree is 6-handed.
+
+Minimal “fix direction” (as you said)
+
+You basically have two coherent paths:
+
+Restrict it to HU
+
+enforce PlayerCount == 2 at config / API level (and simplify assumptions + tests accordingly)
+
+Do proper multi-player solving
+
+utilities must be a vector (one component per player), or at least compute counterfactual values per player
+
+regret updates must be done per player without sign-flipping
+
+this likely means reworking the terminal evaluator + CFR recursion to return per-player utilities, or switching to a multiplayer CFR variant / approach appropriate to your target equilibrium concept
+
+If you want, paste (or point me at) PreflopTerminalEvaluator and I’ll tell you whether it also hard-codes hero-only utility (it probably does), which would confirm the whole stack is HU-at-heart even though the tree builder supports 6 seats.
