@@ -1,0 +1,66 @@
+{
+  "meta": {
+    "gamecode": "11996445961",
+    "hero": "tigerfluffy676",
+    "heroCards": "H9 HK",
+    "decisionActionNo": 7,
+    "signature": "UNOPENED_SB"
+  },
+  "actionsBeforeHero": [
+    {
+      "player": "tigerfluffy676",
+      "position": "SB",
+      "action": {
+        "type": "POST_SB",
+        "amount": 0.01
+      }
+    },
+    {
+      "player": "Artas50",
+      "position": "BB",
+      "action": {
+        "type": "POST_BB",
+        "amount": 0.02
+      }
+    },
+    {
+      "player": "RATEG",
+      "position": "UTG",
+      "action": {
+        "type": "FOLD",
+        "amount": 0.0
+      }
+    },
+    {
+      "player": "pivo9ka",
+      "position": "HJ",
+      "action": {
+        "type": "FOLD",
+        "amount": 0.0
+      }
+    },
+    {
+      "player": "Nutshxt",
+      "position": "CO",
+      "action": {
+        "type": "FOLD",
+        "amount": 0.0
+      }
+    },
+    {
+      "player": "xlnt",
+      "position": "BTN",
+      "action": {
+        "type": "FOLD",
+        "amount": 0.0
+      }
+    }
+  ],
+  "heroAction": {
+    "position": "SB",
+    "action": {
+      "type": "CALL",
+      "amount": 0.01
+    }
+  }
+}

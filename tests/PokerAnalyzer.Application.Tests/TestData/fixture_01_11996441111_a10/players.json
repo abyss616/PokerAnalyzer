@@ -1,0 +1,58 @@
+{
+  "meta": {
+    "gamecode": "11996441111",
+    "hero": "tigerfluffy676",
+    "heroCards": "S2 S4",
+    "decisionActionNo": 10,
+    "signature": "VS_OPEN"
+  },
+  "blinds": {
+    "sb": 0.01,
+    "bb": 0.02,
+    "currency": "EUR"
+  },
+  "players": [
+    {
+      "name": "Methodicalred87",
+      "seat": 8,
+      "position": "UTG",
+      "stack": "\u20ac1.60",
+      "dealer": false
+    },
+    {
+      "name": "xlnt",
+      "seat": 10,
+      "position": "HJ",
+      "stack": "\u20ac2.05",
+      "dealer": false
+    },
+    {
+      "name": "tigerfluffy676",
+      "seat": 1,
+      "position": "CO",
+      "stack": "\u20ac2",
+      "dealer": false
+    },
+    {
+      "name": "Nutshxt",
+      "seat": 3,
+      "position": "BTN",
+      "stack": "\u20ac2.45",
+      "dealer": true
+    },
+    {
+      "name": "RATEG",
+      "seat": 5,
+      "position": "SB",
+      "stack": "\u20ac2",
+      "dealer": false
+    },
+    {
+      "name": "pivo9ka",
+      "seat": 6,
+      "position": "BB",
+      "stack": "\u20ac2.73",
+      "dealer": false
+    }
+  ]
+}

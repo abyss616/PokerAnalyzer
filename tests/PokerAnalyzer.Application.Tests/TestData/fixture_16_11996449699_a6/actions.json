@@ -1,0 +1,58 @@
+{
+  "meta": {
+    "gamecode": "11996449699",
+    "hero": "tigerfluffy676",
+    "heroCards": "S2 HK",
+    "decisionActionNo": 6,
+    "signature": "VS_OPEN"
+  },
+  "actionsBeforeHero": [
+    {
+      "player": "pivo9ka",
+      "position": "SB",
+      "action": {
+        "type": "POST_SB",
+        "amount": 0.01
+      }
+    },
+    {
+      "player": "tigerfluffy676",
+      "position": "BB",
+      "action": {
+        "type": "POST_BB",
+        "amount": 0.02
+      }
+    },
+    {
+      "player": "Artas50",
+      "position": "UTG",
+      "action": {
+        "type": "RAISE_TO",
+        "amount": 0.06
+      }
+    },
+    {
+      "player": "RATEG",
+      "position": "BTN",
+      "action": {
+        "type": "FOLD",
+        "amount": 0.0
+      }
+    },
+    {
+      "player": "pivo9ka",
+      "position": "SB",
+      "action": {
+        "type": "FOLD",
+        "amount": 0.0
+      }
+    }
+  ],
+  "heroAction": {
+    "position": "BB",
+    "action": {
+      "type": "FOLD",
+      "amount": 0.0
+    }
+  }
+}

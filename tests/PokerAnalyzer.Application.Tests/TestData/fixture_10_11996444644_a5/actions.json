@@ -1,0 +1,50 @@
+{
+  "meta": {
+    "gamecode": "11996444644",
+    "hero": "tigerfluffy676",
+    "heroCards": "HK DJ",
+    "decisionActionNo": 5,
+    "signature": "VS_OPEN"
+  },
+  "actionsBeforeHero": [
+    {
+      "player": "tigerfluffy676",
+      "position": "SB",
+      "action": {
+        "type": "POST_SB",
+        "amount": 0.01
+      }
+    },
+    {
+      "player": "RATEG",
+      "position": "BB",
+      "action": {
+        "type": "POST_BB",
+        "amount": 0.02
+      }
+    },
+    {
+      "player": "pivo9ka",
+      "position": "UTG",
+      "action": {
+        "type": "RAISE_TO",
+        "amount": 0.04
+      }
+    },
+    {
+      "player": "xlnt",
+      "position": "BTN",
+      "action": {
+        "type": "FOLD",
+        "amount": 0.0
+      }
+    }
+  ],
+  "heroAction": {
+    "position": "SB",
+    "action": {
+      "type": "CALL",
+      "amount": 0.03
+    }
+  }
+}

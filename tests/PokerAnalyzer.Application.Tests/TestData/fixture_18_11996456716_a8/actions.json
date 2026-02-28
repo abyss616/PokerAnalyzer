@@ -1,0 +1,74 @@
+{
+  "meta": {
+    "gamecode": "11996456716",
+    "hero": "tigerfluffy676",
+    "heroCards": "HK CJ",
+    "decisionActionNo": 8,
+    "signature": "VS_OPEN"
+  },
+  "actionsBeforeHero": [
+    {
+      "player": "Nutshxt",
+      "position": "SB",
+      "action": {
+        "type": "POST_SB",
+        "amount": 0.01
+      }
+    },
+    {
+      "player": "tigerfluffy676",
+      "position": "BB",
+      "action": {
+        "type": "POST_BB",
+        "amount": 0.02
+      }
+    },
+    {
+      "player": "Artas50",
+      "position": "UTG",
+      "action": {
+        "type": "FOLD",
+        "amount": 0.0
+      }
+    },
+    {
+      "player": "RATEG",
+      "position": "HJ",
+      "action": {
+        "type": "FOLD",
+        "amount": 0.0
+      }
+    },
+    {
+      "player": "pivo9ka",
+      "position": "CO",
+      "action": {
+        "type": "RAISE_TO",
+        "amount": 0.04
+      }
+    },
+    {
+      "player": "kribardos",
+      "position": "BTN",
+      "action": {
+        "type": "FOLD",
+        "amount": 0.0
+      }
+    },
+    {
+      "player": "Nutshxt",
+      "position": "SB",
+      "action": {
+        "type": "FOLD",
+        "amount": 0.0
+      }
+    }
+  ],
+  "heroAction": {
+    "position": "BB",
+    "action": {
+      "type": "CALL",
+      "amount": 0.02
+    }
+  }
+}

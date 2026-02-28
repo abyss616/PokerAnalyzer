@@ -1,0 +1,422 @@
+[
+  {
+    "id": 1,
+    "folder": "fixture_01_11996441111_a10",
+    "gamecode": "11996441111",
+    "decisionActionNo": 10,
+    "heroCards": "S2 S4",
+    "expectedExtraction": {
+      "actingPosition": "CO",
+      "facingPosition": "SB",
+      "raiseDepth": 1,
+      "toCallBb": 2.5,
+      "historySignature": "VS_OPEN"
+    },
+    "heroAction": {
+      "position": "CO",
+      "action": {
+        "type": "CALL",
+        "amount": 0.05
+      }
+    }
+  },
+  {
+    "id": 2,
+    "folder": "fixture_02_11996441473_a4",
+    "gamecode": "11996441473",
+    "decisionActionNo": 4,
+    "heroCards": "S8 H9",
+    "expectedExtraction": {
+      "actingPosition": "HJ",
+      "facingPosition": null,
+      "raiseDepth": 0,
+      "toCallBb": 1.0,
+      "historySignature": "RFI"
+    },
+    "heroAction": {
+      "position": "HJ",
+      "action": {
+        "type": "CALL",
+        "amount": 0.02
+      }
+    }
+  },
+  {
+    "id": 3,
+    "folder": "fixture_03_11996441473_a9",
+    "gamecode": "11996441473",
+    "decisionActionNo": 9,
+    "heroCards": "S8 H9",
+    "expectedExtraction": {
+      "actingPosition": "HJ",
+      "facingPosition": "BB",
+      "raiseDepth": 1,
+      "toCallBb": 3.0,
+      "historySignature": "VS_OPEN"
+    },
+    "heroAction": {
+      "position": "HJ",
+      "action": {
+        "type": "CALL",
+        "amount": 0.06
+      }
+    }
+  },
+  {
+    "id": 4,
+    "folder": "fixture_04_11996443376_a3",
+    "gamecode": "11996443376",
+    "decisionActionNo": 3,
+    "heroCards": "D2 SJ",
+    "expectedExtraction": {
+      "actingPosition": "UTG",
+      "facingPosition": null,
+      "raiseDepth": 0,
+      "toCallBb": 1.0,
+      "historySignature": "RFI"
+    },
+    "heroAction": {
+      "position": "UTG",
+      "action": {
+        "type": "FOLD",
+        "amount": 0.0
+      }
+    }
+  },
+  {
+    "id": 5,
+    "folder": "fixture_05_11996443545_a8",
+    "gamecode": "11996443545",
+    "decisionActionNo": 8,
+    "heroCards": "D7 S2",
+    "expectedExtraction": {
+      "actingPosition": "BB",
+      "facingPosition": "SB",
+      "raiseDepth": 2,
+      "toCallBb": 10.0,
+      "historySignature": "VS_3BET"
+    },
+    "heroAction": {
+      "position": "BB",
+      "action": {
+        "type": "FOLD",
+        "amount": 0.0
+      }
+    }
+  },
+  {
+    "id": 6,
+    "folder": "fixture_06_11996443765_a6",
+    "gamecode": "11996443765",
+    "decisionActionNo": 6,
+    "heroCards": "HK DK",
+    "expectedExtraction": {
+      "actingPosition": "SB",
+      "facingPosition": "CO",
+      "raiseDepth": 1,
+      "toCallBb": 2.5,
+      "historySignature": "VS_OPEN"
+    },
+    "heroAction": {
+      "position": "SB",
+      "action": {
+        "type": "RAISE_TO",
+        "amount": 0.2
+      }
+    }
+  },
+  {
+    "id": 7,
+    "folder": "fixture_07_11996443765_a9",
+    "gamecode": "11996443765",
+    "decisionActionNo": 9,
+    "heroCards": "HK DK",
+    "expectedExtraction": {
+      "actingPosition": "SB",
+      "facingPosition": "CO",
+      "raiseDepth": 3,
+      "toCallBb": 13.0,
+      "historySignature": "VS_4BET"
+    },
+    "heroAction": {
+      "position": "SB",
+      "action": {
+        "type": "RAISE_TO",
+        "amount": 1.98
+      }
+    }
+  },
+  {
+    "id": 8,
+    "folder": "fixture_08_11996444241_a4",
+    "gamecode": "11996444241",
+    "decisionActionNo": 4,
+    "heroCards": "H9 CJ",
+    "expectedExtraction": {
+      "actingPosition": "BTN",
+      "facingPosition": null,
+      "raiseDepth": 0,
+      "toCallBb": 1.0,
+      "historySignature": "RFI"
+    },
+    "heroAction": {
+      "position": "BTN",
+      "action": {
+        "type": "CALL",
+        "amount": 0.02
+      }
+    }
+  },
+  {
+    "id": 9,
+    "folder": "fixture_09_11996444549_a6",
+    "gamecode": "11996444549",
+    "decisionActionNo": 6,
+    "heroCards": "D5 S6",
+    "expectedExtraction": {
+      "actingPosition": "BB",
+      "facingPosition": "BTN",
+      "raiseDepth": 1,
+      "toCallBb": 1.0,
+      "historySignature": "VS_OPEN"
+    },
+    "heroAction": {
+      "position": "BB",
+      "action": {
+        "type": "FOLD",
+        "amount": 0.0
+      }
+    }
+  },
+  {
+    "id": 10,
+    "folder": "fixture_10_11996444644_a5",
+    "gamecode": "11996444644",
+    "decisionActionNo": 5,
+    "heroCards": "HK DJ",
+    "expectedExtraction": {
+      "actingPosition": "SB",
+      "facingPosition": "UTG",
+      "raiseDepth": 1,
+      "toCallBb": 1.5,
+      "historySignature": "VS_OPEN"
+    },
+    "heroAction": {
+      "position": "SB",
+      "action": {
+        "type": "CALL",
+        "amount": 0.03
+      }
+    }
+  },
+  {
+    "id": 11,
+    "folder": "fixture_11_11996445015_a4",
+    "gamecode": "11996445015",
+    "decisionActionNo": 4,
+    "heroCards": "D2 H9",
+    "expectedExtraction": {
+      "actingPosition": "BTN",
+      "facingPosition": "UTG",
+      "raiseDepth": 1,
+      "toCallBb": 2.5,
+      "historySignature": "VS_OPEN"
+    },
+    "heroAction": {
+      "position": "BTN",
+      "action": {
+        "type": "FOLD",
+        "amount": 0.0
+      }
+    }
+  },
+  {
+    "id": 12,
+    "folder": "fixture_12_11996445244_a4",
+    "gamecode": "11996445244",
+    "decisionActionNo": 4,
+    "heroCards": "D6 C4",
+    "expectedExtraction": {
+      "actingPosition": "CO",
+      "facingPosition": null,
+      "raiseDepth": 0,
+      "toCallBb": 1.0,
+      "historySignature": "RFI"
+    },
+    "heroAction": {
+      "position": "CO",
+      "action": {
+        "type": "FOLD",
+        "amount": 0.0
+      }
+    }
+  },
+  {
+    "id": 13,
+    "folder": "fixture_13_11996445961_a7",
+    "gamecode": "11996445961",
+    "decisionActionNo": 7,
+    "heroCards": "H9 HK",
+    "expectedExtraction": {
+      "actingPosition": "SB",
+      "facingPosition": null,
+      "raiseDepth": 0,
+      "toCallBb": 0.5,
+      "historySignature": "UNOPENED_SB"
+    },
+    "heroAction": {
+      "position": "SB",
+      "action": {
+        "type": "CALL",
+        "amount": 0.01
+      }
+    }
+  },
+  {
+    "id": 14,
+    "folder": "fixture_14_11996447501_a6",
+    "gamecode": "11996447501",
+    "decisionActionNo": 6,
+    "heroCards": "H7 S4",
+    "expectedExtraction": {
+      "actingPosition": "BTN",
+      "facingPosition": "CO",
+      "raiseDepth": 1,
+      "toCallBb": 3.0,
+      "historySignature": "VS_OPEN"
+    },
+    "heroAction": {
+      "position": "BTN",
+      "action": {
+        "type": "FOLD",
+        "amount": 0.0
+      }
+    }
+  },
+  {
+    "id": 15,
+    "folder": "fixture_15_11996447958_a9",
+    "gamecode": "11996447958",
+    "decisionActionNo": 9,
+    "heroCards": "CJ C10",
+    "expectedExtraction": {
+      "actingPosition": "CO",
+      "facingPosition": "BTN",
+      "raiseDepth": 2,
+      "toCallBb": 2.5,
+      "historySignature": "VS_3BET"
+    },
+    "heroAction": {
+      "position": "CO",
+      "action": {
+        "type": "CALL",
+        "amount": 0.05
+      }
+    }
+  },
+  {
+    "id": 16,
+    "folder": "fixture_16_11996449699_a6",
+    "gamecode": "11996449699",
+    "decisionActionNo": 6,
+    "heroCards": "S2 HK",
+    "expectedExtraction": {
+      "actingPosition": "BB",
+      "facingPosition": "UTG",
+      "raiseDepth": 1,
+      "toCallBb": 2.0,
+      "historySignature": "VS_OPEN"
+    },
+    "heroAction": {
+      "position": "BB",
+      "action": {
+        "type": "FOLD",
+        "amount": 0.0
+      }
+    }
+  },
+  {
+    "id": 17,
+    "folder": "fixture_17_11996451447_a5",
+    "gamecode": "11996451447",
+    "decisionActionNo": 5,
+    "heroCards": "SJ HA",
+    "expectedExtraction": {
+      "actingPosition": "SB",
+      "facingPosition": "BTN",
+      "raiseDepth": 1,
+      "toCallBb": 1.5,
+      "historySignature": "VS_OPEN"
+    },
+    "heroAction": {
+      "position": "SB",
+      "action": {
+        "type": "RAISE_TO",
+        "amount": 0.14
+      }
+    }
+  },
+  {
+    "id": 18,
+    "folder": "fixture_18_11996456716_a8",
+    "gamecode": "11996456716",
+    "decisionActionNo": 8,
+    "heroCards": "HK CJ",
+    "expectedExtraction": {
+      "actingPosition": "BB",
+      "facingPosition": "CO",
+      "raiseDepth": 1,
+      "toCallBb": 1.0,
+      "historySignature": "VS_OPEN"
+    },
+    "heroAction": {
+      "position": "BB",
+      "action": {
+        "type": "CALL",
+        "amount": 0.02
+      }
+    }
+  },
+  {
+    "id": 19,
+    "folder": "fixture_19_11996462774_a4",
+    "gamecode": "11996462774",
+    "decisionActionNo": 4,
+    "heroCards": "C4 D5",
+    "expectedExtraction": {
+      "actingPosition": "CO",
+      "facingPosition": "UTG",
+      "raiseDepth": 1,
+      "toCallBb": 2.0,
+      "historySignature": "VS_OPEN"
+    },
+    "heroAction": {
+      "position": "CO",
+      "action": {
+        "type": "CALL",
+        "amount": 0.04
+      }
+    }
+  },
+  {
+    "id": 20,
+    "folder": "fixture_20_11996472265_a8",
+    "gamecode": "11996472265",
+    "decisionActionNo": 8,
+    "heroCards": "SA C5",
+    "expectedExtraction": {
+      "actingPosition": "BB",
+      "facingPosition": "HJ",
+      "raiseDepth": 1,
+      "toCallBb": 2.5,
+      "historySignature": "VS_OPEN"
+    },
+    "heroAction": {
+      "position": "BB",
+      "action": {
+        "type": "FOLD",
+        "amount": 0.0
+      }
+    }
+  }
+]

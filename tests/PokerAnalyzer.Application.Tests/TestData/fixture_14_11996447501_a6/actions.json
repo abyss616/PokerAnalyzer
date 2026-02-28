@@ -1,0 +1,58 @@
+{
+  "meta": {
+    "gamecode": "11996447501",
+    "hero": "tigerfluffy676",
+    "heroCards": "H7 S4",
+    "decisionActionNo": 6,
+    "signature": "VS_OPEN"
+  },
+  "actionsBeforeHero": [
+    {
+      "player": "Artas50",
+      "position": "SB",
+      "action": {
+        "type": "POST_SB",
+        "amount": 0.01
+      }
+    },
+    {
+      "player": "RATEG",
+      "position": "BB",
+      "action": {
+        "type": "POST_BB",
+        "amount": 0.02
+      }
+    },
+    {
+      "player": "pivo9ka",
+      "position": "UTG",
+      "action": {
+        "type": "FOLD",
+        "amount": 0.0
+      }
+    },
+    {
+      "player": "Nutshxt",
+      "position": "HJ",
+      "action": {
+        "type": "FOLD",
+        "amount": 0.0
+      }
+    },
+    {
+      "player": "xlnt",
+      "position": "CO",
+      "action": {
+        "type": "RAISE_TO",
+        "amount": 0.06
+      }
+    }
+  ],
+  "heroAction": {
+    "position": "BTN",
+    "action": {
+      "type": "FOLD",
+      "amount": 0.0
+    }
+  }
+}

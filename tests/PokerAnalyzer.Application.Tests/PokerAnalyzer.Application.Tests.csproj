@@ -12,4 +12,7 @@
     <ProjectReference Include="..\..\src\PokerAnalyzer.Application\PokerAnalyzer.Application.csproj" />
     <ProjectReference Include="..\..\src\PokerAnalyzer.Domain\PokerAnalyzer.Domain.csproj" />
   </ItemGroup>
+  <ItemGroup>
+    <Folder Include="TestData\" />
+  </ItemGroup>
 </Project>

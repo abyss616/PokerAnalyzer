@@ -1,0 +1,22 @@
+{
+  "meta": {
+    "gamecode": "11996443765",
+    "hero": "tigerfluffy676",
+    "heroCards": "HK DK",
+    "decisionActionNo": 9,
+    "signature": "VS_4BET"
+  },
+  "expectedExtraction": {
+    "actingPosition": "SB",
+    "facingPosition": "CO",
+    "raiseDepth": 3,
+    "toCallBb": 13.0,
+    "historySignature": "VS_4BET"
+  },
+  "expectedSolution": {
+    "expectedActionClass": "ALL_IN_OR_CALL",
+    "foldEvBb": -10.0,
+    "noRake": true,
+    "notes": "Only fold EV is exact; action class is a sanity expectation, not a full GTO target."
+  }
+}

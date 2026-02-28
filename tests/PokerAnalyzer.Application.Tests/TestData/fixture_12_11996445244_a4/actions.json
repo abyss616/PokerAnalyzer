@@ -1,0 +1,42 @@
+{
+  "meta": {
+    "gamecode": "11996445244",
+    "hero": "tigerfluffy676",
+    "heroCards": "D6 C4",
+    "decisionActionNo": 4,
+    "signature": "RFI"
+  },
+  "actionsBeforeHero": [
+    {
+      "player": "pivo9ka",
+      "position": "SB",
+      "action": {
+        "type": "POST_SB",
+        "amount": 0.01
+      }
+    },
+    {
+      "player": "Nutshxt",
+      "position": "BB",
+      "action": {
+        "type": "POST_BB",
+        "amount": 0.02
+      }
+    },
+    {
+      "player": "xlnt",
+      "position": "UTG",
+      "action": {
+        "type": "FOLD",
+        "amount": 0.0
+      }
+    }
+  ],
+  "heroAction": {
+    "position": "CO",
+    "action": {
+      "type": "FOLD",
+      "amount": 0.0
+    }
+  }
+}

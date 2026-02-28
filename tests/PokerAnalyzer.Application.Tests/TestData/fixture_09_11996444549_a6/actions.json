@@ -1,0 +1,58 @@
+{
+  "meta": {
+    "gamecode": "11996444549",
+    "hero": "tigerfluffy676",
+    "heroCards": "D5 S6",
+    "decisionActionNo": 6,
+    "signature": "VS_OPEN"
+  },
+  "actionsBeforeHero": [
+    {
+      "player": "xlnt",
+      "position": "SB",
+      "action": {
+        "type": "POST_SB",
+        "amount": 0.01
+      }
+    },
+    {
+      "player": "tigerfluffy676",
+      "position": "BB",
+      "action": {
+        "type": "POST_BB",
+        "amount": 0.02
+      }
+    },
+    {
+      "player": "RATEG",
+      "position": "UTG",
+      "action": {
+        "type": "FOLD",
+        "amount": 0.0
+      }
+    },
+    {
+      "player": "pivo9ka",
+      "position": "BTN",
+      "action": {
+        "type": "RAISE_TO",
+        "amount": 0.04
+      }
+    },
+    {
+      "player": "xlnt",
+      "position": "SB",
+      "action": {
+        "type": "FOLD",
+        "amount": 0.0
+      }
+    }
+  ],
+  "heroAction": {
+    "position": "BB",
+    "action": {
+      "type": "FOLD",
+      "amount": 0.0
+    }
+  }
+}

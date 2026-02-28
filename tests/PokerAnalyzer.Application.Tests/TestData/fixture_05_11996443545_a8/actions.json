@@ -1,0 +1,74 @@
+{
+  "meta": {
+    "gamecode": "11996443545",
+    "hero": "tigerfluffy676",
+    "heroCards": "D7 S2",
+    "decisionActionNo": 8,
+    "signature": "VS_3BET"
+  },
+  "actionsBeforeHero": [
+    {
+      "player": "xlnt",
+      "position": "SB",
+      "action": {
+        "type": "POST_SB",
+        "amount": 0.01
+      }
+    },
+    {
+      "player": "tigerfluffy676",
+      "position": "BB",
+      "action": {
+        "type": "POST_BB",
+        "amount": 0.02
+      }
+    },
+    {
+      "player": "Nutshxt",
+      "position": "UTG",
+      "action": {
+        "type": "FOLD",
+        "amount": 0.0
+      }
+    },
+    {
+      "player": "RATEG",
+      "position": "HJ",
+      "action": {
+        "type": "FOLD",
+        "amount": 0.0
+      }
+    },
+    {
+      "player": "pivo9ka",
+      "position": "CO",
+      "action": {
+        "type": "FOLD",
+        "amount": 0.0
+      }
+    },
+    {
+      "player": "Methodicalred87",
+      "position": "BTN",
+      "action": {
+        "type": "RAISE_TO",
+        "amount": 0.06
+      }
+    },
+    {
+      "player": "xlnt",
+      "position": "SB",
+      "action": {
+        "type": "RAISE_TO",
+        "amount": 0.22
+      }
+    }
+  ],
+  "heroAction": {
+    "position": "BB",
+    "action": {
+      "type": "FOLD",
+      "amount": 0.0
+    }
+  }
+}
