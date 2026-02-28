@@ -43,8 +43,8 @@ public sealed class PreflopStateExtractor
             {
                 case "POST_SB":
                 case "POST_BB":
-                    ApplyDelta(act.PlayerId, amountChips);
-                    betToCall = Math.Max(betToCall, contrib[act.PlayerId]);
+                    // Blinds are posted from table metadata before replaying action history.
+                    // Keep these entries for traceability, but do not apply them again.
                     break;
                 case "RAISE_TO":
                 case "ALL_IN":
