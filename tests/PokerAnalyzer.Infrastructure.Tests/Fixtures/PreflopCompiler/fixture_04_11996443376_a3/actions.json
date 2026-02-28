@@ -1,0 +1,14 @@
+{
+  "actions": [
+    {
+      "actor": "Methodicalred87",
+      "type": "POST_SB",
+      "amountBb": 0.5
+    },
+    {
+      "actor": "xlnt",
+      "type": "POST_BB",
+      "amountBb": 1.0
+    }
+  ]
+}

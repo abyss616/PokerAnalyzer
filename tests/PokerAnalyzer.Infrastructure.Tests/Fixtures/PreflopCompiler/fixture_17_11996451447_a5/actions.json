@@ -1,0 +1,24 @@
+{
+  "actions": [
+    {
+      "actor": "tigerfluffy676",
+      "type": "POST_SB",
+      "amountBb": 0.5
+    },
+    {
+      "actor": "Artas50",
+      "type": "POST_BB",
+      "amountBb": 1.0
+    },
+    {
+      "actor": "RATEG",
+      "type": "FOLD",
+      "amountBb": 0.0
+    },
+    {
+      "actor": "pivo9ka",
+      "type": "RAISE_TO",
+      "amountBb": 2.0
+    }
+  ]
+}

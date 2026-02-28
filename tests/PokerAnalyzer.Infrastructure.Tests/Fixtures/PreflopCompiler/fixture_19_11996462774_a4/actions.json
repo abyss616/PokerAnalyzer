@@ -1,0 +1,19 @@
+{
+  "actions": [
+    {
+      "actor": "RATEG",
+      "type": "POST_SB",
+      "amountBb": 0.5
+    },
+    {
+      "actor": "pivo9ka",
+      "type": "POST_BB",
+      "amountBb": 1.0
+    },
+    {
+      "actor": "kribardos",
+      "type": "RAISE_TO",
+      "amountBb": 2.0
+    }
+  ]
+}
