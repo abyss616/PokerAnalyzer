@@ -288,6 +288,204 @@ public class CfrPlusPreflopSolverTests
     }
 
     [Fact]
+    public void PreflopKeyValidator_FailsFast_WhenOpenSignatureHasPositiveToCall()
+    {
+        var btn = PlayerId.New();
+        var hero = PlayerId.New();
+        var bb = PlayerId.New();
+        var validator = new PreflopKeyValidator();
+
+        var state = HandState.CreateNewHand(
+            [
+                new PlayerSeat(btn, "BTN", 1, Position.BTN, new ChipAmount(10000)),
+                new PlayerSeat(hero, "Hero", 2, Position.SB, new ChipAmount(10000)),
+                new PlayerSeat(bb, "BB", 3, Position.BB, new ChipAmount(10000))
+            ],
+            new ChipAmount(5),
+            new ChipAmount(10))
+            .Apply(new BettingAction(Street.Preflop, btn, ActionType.Raise, new ChipAmount(25)));
+
+        var heroContext = new HeroContext(hero, new ChipAmount(5), new ChipAmount(10))
+        {
+            PlayerPositions = new Dictionary<PlayerId, Position>
+            {
+                [btn] = Position.BTN,
+                [hero] = Position.SB,
+                [bb] = Position.BB
+            },
+            ActionHistory =
+            [
+                new BettingAction(Street.Preflop, hero, ActionType.PostSmallBlind, new ChipAmount(5)),
+                new BettingAction(Street.Preflop, bb, ActionType.PostBigBlind, new ChipAmount(10)),
+                new BettingAction(Street.Preflop, btn, ActionType.Raise, new ChipAmount(25))
+            ]
+        };
+
+        var extraction = PreflopStateExtractor.TryExtract(state, heroContext, SolverSizingConfig.Default);
+        Assert.NotNull(extraction);
+
+        var forcedOpenKey = extraction!.Key with { HistorySignature = "OPEN" };
+        var validation = validator.Validate(forcedOpenKey, extraction.SpotContext, state, heroContext);
+
+        Assert.False(validation.IsValid);
+        Assert.Contains("OPEN", validation.Reason, StringComparison.Ordinal);
+        Assert.True(validation.Context.ToCallBb > 0);
+    }
+
+    [Fact]
+    public void PreflopKeyValidator_FailsFast_WhenVsOpenSignatureHasZeroToCall()
+    {
+        var hero = PlayerId.New();
+        var bb = PlayerId.New();
+        var validator = new PreflopKeyValidator();
+
+        var state = HandState.CreateNewHand(
+            [
+                new PlayerSeat(hero, "Hero", 1, Position.SB, new ChipAmount(10000)),
+                new PlayerSeat(bb, "BB", 2, Position.BB, new ChipAmount(10000))
+            ],
+            new ChipAmount(0),
+            new ChipAmount(0));
+
+        var heroContext = new HeroContext(hero, new ChipAmount(0), new ChipAmount(10))
+        {
+            PlayerPositions = new Dictionary<PlayerId, Position>
+            {
+                [hero] = Position.SB,
+                [bb] = Position.BB
+            },
+            ActionHistory = []
+        };
+
+        var extraction = PreflopStateExtractor.TryExtract(state, heroContext, SolverSizingConfig.Default);
+        Assert.NotNull(extraction);
+
+        var forcedVsOpen = extraction!.Key with { HistorySignature = "VS_OPEN" };
+        var validation = validator.Validate(forcedVsOpen, extraction.SpotContext, state, heroContext);
+
+        Assert.False(validation.IsValid);
+        Assert.Contains("VS_OPEN", validation.Reason, StringComparison.Ordinal);
+        Assert.Equal(0m, validation.Context.ToCallBb);
+    }
+
+
+    [Fact]
+    public void PreflopKeyValidator_FailsFast_WhenVs3BetSignatureHasInsufficientRaiseDepth()
+    {
+        var hero = PlayerId.New();
+        var btn = PlayerId.New();
+        var bb = PlayerId.New();
+        var validator = new PreflopKeyValidator();
+
+        var state = HandState.CreateNewHand(
+            [
+                new PlayerSeat(btn, "BTN", 1, Position.BTN, new ChipAmount(10000)),
+                new PlayerSeat(hero, "Hero", 2, Position.SB, new ChipAmount(10000)),
+                new PlayerSeat(bb, "BB", 3, Position.BB, new ChipAmount(10000))
+            ],
+            new ChipAmount(5),
+            new ChipAmount(10))
+            .Apply(new BettingAction(Street.Preflop, btn, ActionType.Raise, new ChipAmount(25)));
+
+        var heroContext = new HeroContext(hero, new ChipAmount(5), new ChipAmount(10))
+        {
+            PlayerPositions = new Dictionary<PlayerId, Position>
+            {
+                [btn] = Position.BTN,
+                [hero] = Position.SB,
+                [bb] = Position.BB
+            },
+            ActionHistory =
+            [
+                new BettingAction(Street.Preflop, hero, ActionType.PostSmallBlind, new ChipAmount(5)),
+                new BettingAction(Street.Preflop, bb, ActionType.PostBigBlind, new ChipAmount(10)),
+                new BettingAction(Street.Preflop, btn, ActionType.Raise, new ChipAmount(25))
+            ]
+        };
+
+        var extraction = PreflopStateExtractor.TryExtract(state, heroContext, SolverSizingConfig.Default);
+        Assert.NotNull(extraction);
+
+        var forcedVsThreeBet = extraction!.Key with { HistorySignature = "VS_3BET" };
+        var validation = validator.Validate(forcedVsThreeBet, extraction.SpotContext, state, heroContext);
+
+        Assert.False(validation.IsValid);
+        Assert.Contains("RaiseDepth", validation.Reason, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void PreflopKeyValidator_Passes_ForUnopenedSmallBlindOpenSpot()
+    {
+        var hero = PlayerId.New();
+        var bb = PlayerId.New();
+        var validator = new PreflopKeyValidator();
+
+        var state = HandState.CreateNewHand(
+            [
+                new PlayerSeat(hero, "Hero", 1, Position.SB, new ChipAmount(10000)),
+                new PlayerSeat(bb, "BB", 2, Position.BB, new ChipAmount(10000))
+            ],
+            new ChipAmount(0),
+            new ChipAmount(0));
+
+        var heroContext = new HeroContext(hero, new ChipAmount(0), new ChipAmount(10))
+        {
+            PlayerPositions = new Dictionary<PlayerId, Position>
+            {
+                [hero] = Position.SB,
+                [bb] = Position.BB
+            },
+            ActionHistory = []
+        };
+
+        var extraction = PreflopStateExtractor.TryExtract(state, heroContext, SolverSizingConfig.Default);
+        Assert.NotNull(extraction);
+
+        var validation = validator.Validate(extraction!.Key, extraction.SpotContext, state, heroContext);
+
+        Assert.True(validation.IsValid);
+        Assert.Equal("OPEN", validation.Context.HistorySignature);
+        Assert.Equal(0m, validation.Context.ToCallBb);
+    }
+
+
+    [Fact]
+    public async Task Engine_FailsFastValidation_DoesNotSolveOrQuery_WhenActingPositionUnknown()
+    {
+        var hero = PlayerId.New();
+        var bb = PlayerId.New();
+        var cache = new PreflopSolverCache(new CfrPlusPreflopSolver(new PreflopTerminalEvaluator(new ApproxMonteCarloContinuationValueProvider())));
+        var engine = new CfrPlusPreflopStrategyEngine(
+            new MonteCarloStrategyEngine(),
+            cache,
+            new PreflopSolverConfig(30, 50m, Rake, 2, RaiseSizingAbstraction.Default),
+            Microsoft.Extensions.Logging.Abstractions.NullLogger<CfrPlusPreflopStrategyEngine>.Instance);
+
+        var state = HandState.CreateNewHand(
+            [
+                new PlayerSeat(hero, "Hero", 1, Position.SB, new ChipAmount(10000)),
+                new PlayerSeat(bb, "BB", 2, Position.BB, new ChipAmount(10000))
+            ],
+            new ChipAmount(0),
+            new ChipAmount(0));
+
+        var recommendation = await engine.RecommendAsync(state, new HeroContext(hero, new ChipAmount(0), new ChipAmount(10))
+        {
+            HeroHoleCards = HoleCards.Parse("AsAh"),
+            PlayerPositions = new Dictionary<PlayerId, Position>
+            {
+                [hero] = Position.Unknown,
+                [bb] = Position.BB
+            },
+            ActionHistory = []
+        });
+
+        Assert.Empty(recommendation.RankedActions);
+        Assert.Contains("ActingPosition is Unknown", recommendation.PrimaryExplanation, StringComparison.Ordinal);
+        Assert.Equal(0, cache.SolveCount);
+    }
+
+    [Fact]
     public async Task PreflopSizingNormalizer_OpenSize_BucketsToNearestConfiguredSize()
     {
         var normalizer = new PreflopSizingNormalizer();
