@@ -2,6 +2,7 @@ using PokerAnalyzer.Application.Engines;
 using PokerAnalyzer.Domain.Game;
 using PokerAnalyzer.Domain.PreflopTree;
 using PokerAnalyzer.Infrastructure.PreflopSolver;
+using SolverPreflopSizingConfig = PokerAnalyzer.Infrastructure.PreflopSolver.PreflopSizingConfig;
 
 namespace PokerAnalyzer.Infrastructure.Engines;
 
@@ -80,7 +81,7 @@ public static class PreflopSpotContextBuilder
     public static PreflopSpotContext FromHistory(
         HandState state,
         HeroContext hero,
-        PreflopSizingConfig sizing,
+        SolverPreflopSizingConfig sizing,
         PreflopSizingNormalizer normalizer,
         Position actingPosition,
         Position? facingPosition)
