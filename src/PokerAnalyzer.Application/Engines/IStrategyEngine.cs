@@ -18,4 +18,5 @@ public sealed record HeroContext(
     public HoleCards? HeroHoleCards { get; init; }
     public IReadOnlyDictionary<PlayerId, Position>? PlayerPositions { get; init; }
     public IReadOnlyList<BettingAction>? ActionHistory { get; init; }
+    public bool UseExactStateForSolverLookup { get; init; }
 }

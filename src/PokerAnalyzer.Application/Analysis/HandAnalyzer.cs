@@ -87,7 +87,8 @@ public sealed class HandAnalyzer
                 {
                     HeroHoleCards = hand.HeroHoleCards,
                     PlayerPositions = positionMap,
-                    ActionHistory = hand.Actions.Take(i).ToArray()
+                    ActionHistory = hand.Actions.Take(i).ToArray(),
+                    UseExactStateForSolverLookup = true
                 };
 
                 var rec = EnsureLegalRecommendation(state, hand.HeroId, await _engine.RecommendAsync(state, decisionCtx, ct));

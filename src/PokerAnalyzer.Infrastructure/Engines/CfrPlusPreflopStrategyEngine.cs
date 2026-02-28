@@ -99,13 +99,17 @@ public sealed class CfrPlusPreflopStrategyEngine : IStrategyEngine
             return BuildUnsupportedRecommendation(reference, validation.Reason ?? "Invalid preflop key");
         }
 
-        var normalizedKey = key with
-        {
-            PlayerCount = _config.PlayerCount,
-            EffectiveStackBb = (int)Math.Round(_config.EffectiveStackBb)
-        };
+        var useExactState = hero.UseExactStateForSolverLookup;
+        var normalizedKey = useExactState
+            ? key
+            : key with
+            {
+                PlayerCount = _config.PlayerCount,
+                EffectiveStackBb = (int)Math.Round(_config.EffectiveStackBb)
+            };
         _logger.LogInformation(
-            "Normalize key. NormalizedPlayerCount={NormalizedPlayerCount}, NormalizedEffStackBb={NormalizedEffStackBb}, ConfigEffStackBb={ConfigEffStackBb}",
+            "Normalize key. ExactState={ExactState}, NormalizedPlayerCount={NormalizedPlayerCount}, NormalizedEffStackBb={NormalizedEffStackBb}, ConfigEffStackBb={ConfigEffStackBb}",
+            useExactState,
             normalizedKey.PlayerCount,
             normalizedKey.EffectiveStackBb,
             _config.EffectiveStackBb);
@@ -120,7 +124,7 @@ public sealed class CfrPlusPreflopStrategyEngine : IStrategyEngine
             _cache.SolveCount,
             _cache.CacheEntries);
 
-        var query = _cache.Lookup(normalizedKey, hero.HeroHoleCards.Value.ToString());
+        var query = _cache.Lookup(normalizedKey, hero.HeroHoleCards.Value.ToString(), exactStateOnly: useExactState);
         var topFrequencies = string.Join(", ", query.ActionFrequencies
             .OrderByDescending(k => k.Value)
             .Take(3)
