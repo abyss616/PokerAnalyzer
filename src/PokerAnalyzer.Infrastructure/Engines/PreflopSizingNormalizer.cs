@@ -103,7 +103,7 @@ public static class PreflopStateExtractor
         var effectiveStackBb = (int)Math.Round(state.Stacks[hero.HeroId].Value / (decimal)hero.BigBlind.Value);
 
         var history = hero.ActionHistory?.Where(a => a.Street == Street.Preflop).ToList() ?? [];
-        var facingPosition = state.LastAggressor is { } aggressorId && hero.PlayerPositions.TryGetValue(aggressorId, out var pos)
+        Position? facingPosition = state.LastAggressor is { } aggressorId && hero.PlayerPositions.TryGetValue(aggressorId, out var pos)
             ? pos
             : null;
         if (history.Count == 0)

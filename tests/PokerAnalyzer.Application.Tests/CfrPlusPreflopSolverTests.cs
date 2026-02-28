@@ -167,6 +167,7 @@ public class CfrPlusPreflopSolverTests
     }
 
     [Fact]
+  
     public void StateExtractor_SbFacingBtnOpen_UsesFacingOpenHistorySignature()
     {
         var btn = PlayerId.New();
@@ -175,15 +176,16 @@ public class CfrPlusPreflopSolverTests
 
         var state = HandState.CreateNewHand(
             [
-                new PlayerSeat(btn, "BTN", 1, Position.BTN, new ChipAmount(10000)),
-                new PlayerSeat(hero, "Hero", 2, Position.SB, new ChipAmount(10000)),
-                new PlayerSeat(bb, "BB", 3, Position.BB, new ChipAmount(10000))
+                new PlayerSeat(btn,  "BTN",  1, Position.BTN, new ChipAmount(10000)),
+            new PlayerSeat(hero, "Hero", 2, Position.SB,  new ChipAmount(10000)),
+            new PlayerSeat(bb,   "BB",   3, Position.BB,  new ChipAmount(10000))
             ],
-            new ChipAmount(5),
-            new ChipAmount(10))
+            new ChipAmount(5),   // SB
+            new ChipAmount(10))  // BB
+                                 // BTN opens to 25 (2.5bb)
             .Apply(new BettingAction(Street.Preflop, btn, ActionType.Raise, new ChipAmount(25)));
 
-        var extraction = PreflopStateExtractor.TryExtract(state, new HeroContext(hero, new ChipAmount(5), new ChipAmount(10))
+        var ctx = new HeroContext(hero, new ChipAmount(5), new ChipAmount(10))
         {
             PlayerPositions = new Dictionary<PlayerId, Position>
             {
@@ -194,15 +196,23 @@ public class CfrPlusPreflopSolverTests
             ActionHistory =
             [
                 new BettingAction(Street.Preflop, hero, ActionType.PostSmallBlind, new ChipAmount(5)),
-                new BettingAction(Street.Preflop, bb, ActionType.PostBigBlind, new ChipAmount(10)),
-                new BettingAction(Street.Preflop, btn, ActionType.Raise, new ChipAmount(25))
+            new BettingAction(Street.Preflop, bb,   ActionType.PostBigBlind,   new ChipAmount(10)),
+            new BettingAction(Street.Preflop, btn,  ActionType.Raise,          new ChipAmount(25))
             ]
-        }, SolverSizingConfig.Default);
+        };
+
+        var extraction = PreflopStateExtractor.TryExtract(state, ctx, SolverSizingConfig.Default);
 
         Assert.NotNull(extraction);
+
+        // SB is now to act facing the open
         Assert.Equal(Position.SB, extraction!.Key.ActingPosition);
-        Assert.Equal(2, extraction.Key.ToCallBb);
-        Assert.StartsWith("VS_OPEN_", extraction.Key.HistorySignature, StringComparison.Ordinal);
+
+        // Exact math: after posting 0.5bb, facing a 2.5bb open -> to call 2.0bb
+        // (raise to 25, current bet=25, SB contrib=5 => 20 chips; 20 / 10 = 2bb)
+        Assert.Equal(2m, extraction.Key.ToCallBb);
+
+        Assert.Equal("VS_OPEN", extraction.Key.HistorySignature);
         Assert.NotEqual("OPEN", extraction.Key.HistorySignature);
     }
 

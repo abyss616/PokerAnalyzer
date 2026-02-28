@@ -1,10 +1,7 @@
-using System.Threading;
-using System.Threading.Tasks;
 using PokerAnalyzer.Application.Analysis;
 using PokerAnalyzer.Application.Engines;
 using PokerAnalyzer.Domain.Cards;
 using PokerAnalyzer.Domain.Game;
-using PokerAnalyzer.Domain.HandHistory;
 using Xunit;
 
 namespace PokerAnalyzer.Application.Tests;
