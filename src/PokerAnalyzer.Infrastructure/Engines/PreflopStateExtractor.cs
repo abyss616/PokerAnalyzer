@@ -24,11 +24,6 @@ public sealed class PreflopStateExtractor
             var seat = seats.FirstOrDefault(s => s.Position == position);
             if (seat is null || amount <= 0) return;
             ApplyDelta(seat.Id, amount);
-            if (contrib[seat.Id] > betToCall)
-            {
-                betToCall = contrib[seat.Id];
-                lastAggressor = seat.Id;
-            }
         }
 
         PostBlind(Position.SB, smallBlind);
@@ -48,11 +43,6 @@ public sealed class PreflopStateExtractor
                 case "POST_SB":
                 case "POST_BB":
                     ApplyDelta(act.PlayerId, amountChips);
-                    if (contrib[act.PlayerId] > betToCall)
-                    {
-                        betToCall = contrib[act.PlayerId];
-                        lastAggressor = act.PlayerId;
-                    }
                     break;
                 case "RAISE_TO":
                 case "ALL_IN":
