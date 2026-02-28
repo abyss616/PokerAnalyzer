@@ -1,0 +1,18 @@
+{
+  "expectedExtraction": {
+    "actingPosition": "HJ",
+    "facingPosition": "BB",
+    "historySignature": "OPEN",
+    "raiseDepth": 0,
+    "toCallBb": 2.0,
+    "effectiveStackBb": 78.0,
+    "buckets": {
+      "open": "SMALL",
+      "iso": "NA",
+      "threeBet": "NA",
+      "squeeze": "NA",
+      "fourBet": "NA"
+    },
+    "solverKey": "OPEN|A:HJ|F:BB|D:0|TC:2|O:SMALL|3B:NA|4B:NA"
+  }
+}

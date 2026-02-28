@@ -1,0 +1,18 @@
+{
+  "expectedExtraction": {
+    "actingPosition": "CO",
+    "facingPosition": "BTN",
+    "historySignature": "VS_3BET",
+    "raiseDepth": 2,
+    "toCallBb": 2.5,
+    "effectiveStackBb": 92.0,
+    "buckets": {
+      "open": "LARGE",
+      "iso": "NA",
+      "threeBet": "LARGE",
+      "squeeze": "NA",
+      "fourBet": "NA"
+    },
+    "solverKey": "VS_3BET|A:CO|F:BTN|D:2|TC:2.5|O:LARGE|3B:LARGE|4B:NA"
+  }
+}

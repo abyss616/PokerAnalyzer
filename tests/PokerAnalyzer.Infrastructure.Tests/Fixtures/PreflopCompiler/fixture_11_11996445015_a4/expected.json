@@ -1,0 +1,18 @@
+{
+  "expectedExtraction": {
+    "actingPosition": "BTN",
+    "facingPosition": "UTG",
+    "historySignature": "VS_OPEN",
+    "raiseDepth": 1,
+    "toCallBb": 2.5,
+    "effectiveStackBb": 102.5,
+    "buckets": {
+      "open": "SMALL",
+      "iso": "NA",
+      "threeBet": "NA",
+      "squeeze": "NA",
+      "fourBet": "NA"
+    },
+    "solverKey": "VS_OPEN|A:BTN|F:UTG|D:1|TC:2.5|O:SMALL|3B:NA|4B:NA"
+  }
+}

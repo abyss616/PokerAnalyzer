@@ -1,0 +1,29 @@
+{
+  "actions": [
+    {
+      "actor": "Artas50",
+      "type": "POST_SB",
+      "amountBb": 0.5
+    },
+    {
+      "actor": "RATEG",
+      "type": "POST_BB",
+      "amountBb": 1.0
+    },
+    {
+      "actor": "pivo9ka",
+      "type": "FOLD",
+      "amountBb": 0.0
+    },
+    {
+      "actor": "Nutshxt",
+      "type": "FOLD",
+      "amountBb": 0.0
+    },
+    {
+      "actor": "xlnt",
+      "type": "RAISE_TO",
+      "amountBb": 3.0
+    }
+  ]
+}

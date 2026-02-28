@@ -1,0 +1,18 @@
+{
+  "expectedExtraction": {
+    "actingPosition": "SB",
+    "facingPosition": "CO",
+    "historySignature": "VS_4BET",
+    "raiseDepth": 3,
+    "toCallBb": 13.0,
+    "effectiveStackBb": 61.0,
+    "buckets": {
+      "open": "JAM",
+      "iso": "NA",
+      "threeBet": "JAM",
+      "squeeze": "NA",
+      "fourBet": "JAM"
+    },
+    "solverKey": "VS_4BET|A:SB|F:CO|D:3|TC:13|O:JAM|3B:JAM|4B:JAM"
+  }
+}
