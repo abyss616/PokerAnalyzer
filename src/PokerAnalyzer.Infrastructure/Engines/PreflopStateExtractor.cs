@@ -24,6 +24,7 @@ public sealed class PreflopStateExtractor
             var seat = seats.FirstOrDefault(s => s.Position == position);
             if (seat is null || amount <= 0) return;
             ApplyDelta(seat.Id, amount);
+            betToCall = Math.Max(betToCall, contrib[seat.Id]);
         }
 
         PostBlind(Position.SB, smallBlind);
@@ -43,6 +44,7 @@ public sealed class PreflopStateExtractor
                 case "POST_SB":
                 case "POST_BB":
                     ApplyDelta(act.PlayerId, amountChips);
+                    betToCall = Math.Max(betToCall, contrib[act.PlayerId]);
                     break;
                 case "RAISE_TO":
                 case "ALL_IN":
