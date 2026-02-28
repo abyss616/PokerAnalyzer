@@ -217,25 +217,29 @@ public class CfrPlusPreflopSolverTests
     }
 
     [Fact]
-    public void StateExtractor_SbFacingBtn4Bet_UsesVs4BetHistorySignature()
+   
+    public void StateExtractor_SbFacingBtn4Bet_UsesFacing4BetHistorySignature()
     {
         var btn = PlayerId.New();
         var hero = PlayerId.New();
         var bb = PlayerId.New();
 
+        // Blinds: 5/10. Replicate the KK line:
+        // BTN open 30 (3bb), SB 3bet 100 (10bb), BTN 4bet 230 (23bb),
+        // now SB to act facing the 4bet.
         var state = HandState.CreateNewHand(
             [
-                new PlayerSeat(btn, "BTN", 1, Position.BTN, new ChipAmount(10000)),
-                new PlayerSeat(hero, "Hero", 2, Position.SB, new ChipAmount(10000)),
-                new PlayerSeat(bb, "BB", 3, Position.BB, new ChipAmount(10000))
+                new PlayerSeat(btn,  "BTN",  1, Position.BTN, new ChipAmount(10000)),
+            new PlayerSeat(hero, "Hero", 2, Position.SB,  new ChipAmount(10000)),
+            new PlayerSeat(bb,   "BB",   3, Position.BB,  new ChipAmount(10000))
             ],
             new ChipAmount(5),
             new ChipAmount(10))
-            .Apply(new BettingAction(Street.Preflop, btn, ActionType.Raise, new ChipAmount(25)))
-            .Apply(new BettingAction(Street.Preflop, hero, ActionType.Raise, new ChipAmount(90)))
-            .Apply(new BettingAction(Street.Preflop, btn, ActionType.Raise, new ChipAmount(220)));
+            .Apply(new BettingAction(Street.Preflop, btn, ActionType.Raise, new ChipAmount(30)))   // open to 3bb
+            .Apply(new BettingAction(Street.Preflop, hero, ActionType.Raise, new ChipAmount(100)))  // 3bet to 10bb
+            .Apply(new BettingAction(Street.Preflop, btn, ActionType.Raise, new ChipAmount(230))); // 4bet to 23bb
 
-        var extraction = PreflopStateExtractor.TryExtract(state, new HeroContext(hero, new ChipAmount(5), new ChipAmount(10))
+        var ctx = new HeroContext(hero, new ChipAmount(5), new ChipAmount(10))
         {
             PlayerPositions = new Dictionary<PlayerId, Position>
             {
@@ -246,16 +250,26 @@ public class CfrPlusPreflopSolverTests
             ActionHistory =
             [
                 new BettingAction(Street.Preflop, hero, ActionType.PostSmallBlind, new ChipAmount(5)),
-                new BettingAction(Street.Preflop, bb, ActionType.PostBigBlind, new ChipAmount(10)),
-                new BettingAction(Street.Preflop, btn, ActionType.Raise, new ChipAmount(25)),
-                new BettingAction(Street.Preflop, hero, ActionType.Raise, new ChipAmount(90)),
-                new BettingAction(Street.Preflop, btn, ActionType.Raise, new ChipAmount(220))
+            new BettingAction(Street.Preflop, bb,   ActionType.PostBigBlind,   new ChipAmount(10)),
+            new BettingAction(Street.Preflop, btn,  ActionType.Raise,          new ChipAmount(30)),
+            new BettingAction(Street.Preflop, hero, ActionType.Raise,          new ChipAmount(100)),
+            new BettingAction(Street.Preflop, btn,  ActionType.Raise,          new ChipAmount(230))
             ]
-        }, SolverSizingConfig.Default);
+        };
+
+        var extraction = PreflopStateExtractor.TryExtract(state, ctx, SolverSizingConfig.Default);
 
         Assert.NotNull(extraction);
+
+        // Hero (SB) is to act facing a 4bet
         Assert.Equal(Position.SB, extraction!.Key.ActingPosition);
-        Assert.StartsWith("VS_4BET_", extraction.Key.HistorySignature, StringComparison.Ordinal);
+
+        // Current bet is 230; SB already put in 100 => to call 130 chips => 13bb
+        Assert.Equal(13m, extraction.Key.ToCallBb);
+
+        Assert.Equal("VS_4BET", extraction.Key.HistorySignature);
+        Assert.NotEqual("OPEN", extraction.Key.HistorySignature);
+        Assert.NotEqual("VS_OPEN", extraction.Key.HistorySignature);
     }
 
     [Fact]
