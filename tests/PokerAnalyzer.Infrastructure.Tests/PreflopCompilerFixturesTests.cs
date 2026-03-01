@@ -141,10 +141,11 @@ public sealed class PreflopCompilerFixturesTests
 
     private static string ResolveFixtureRoot()
     {
-        var fixturesRoot = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "Fixtures"));
-        var preflopCompilerRoot = Path.Combine(fixturesRoot, "PreflopCompiler");
-
-        return Directory.Exists(preflopCompilerRoot) ? preflopCompilerRoot : fixturesRoot;
+        return Path.GetFullPath(Path.Combine(
+            AppContext.BaseDirectory,
+            "..", "..", "..", "..",
+            "Fixtures",
+            "PreflopCompiler"));
     }
 
     private static bool ShouldUpdateFixtures()
