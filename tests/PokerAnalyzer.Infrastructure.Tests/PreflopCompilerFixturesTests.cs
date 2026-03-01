@@ -72,6 +72,17 @@ public sealed class PreflopCompilerFixturesTests
     }
 
     [Fact]
+    public void Validation_Open_With_Zero_ToCall_In_BigBlind_IsSupported()
+    {
+        var key = new PreflopInfoSetKey(Position.BB, Position.BB, "OPEN", 0, 0m, 100m, "SMALL", "NA", "NA", "NA", "NA", 18m, "k");
+        var ctx = new PreflopSpotContext(PlayerId.New(), Position.BB, null, Position.BB, 0, 0m, 1m, 1m, 1.5m, 100m);
+
+        var result = PreflopKeyValidator.Validate(key, ctx);
+
+        Assert.True(result.IsValid);
+    }
+
+    [Fact]
     public void Validation_Invalid_VsOpen_With_Zero_ToCall_IsUnsupported()
     {
         var key = new PreflopInfoSetKey(Position.BB, Position.BTN, "VS_OPEN", 1, 0m, 100m, "MEDIUM", "NA", "NA", "NA", "NA", 18m, "k");
