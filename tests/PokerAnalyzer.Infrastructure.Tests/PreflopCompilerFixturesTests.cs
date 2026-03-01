@@ -15,7 +15,7 @@ public sealed class PreflopCompilerFixturesTests
     [Fact]
     public void Runs_All_PreflopCompiler_Fixtures()
     {
-        var fixtureRoot = Path.Combine(AppContext.BaseDirectory, "Fixtures", "PreflopCompiler");
+        var fixtureRoot = ResolveFixtureRoot();
         var fixtures = PreflopFixtureLoader.LoadAll(fixtureRoot);
         Assert.Equal(20, fixtures.Count);
 
@@ -35,6 +35,12 @@ public sealed class PreflopCompilerFixturesTests
             var actions = fixture.Actions.Actions.Select(a => new PreflopInputAction(idMap[a.Actor], a.Type, a.AmountBb)).ToList();
             var result = extractor.TryExtract(seats, actions, idMap[hero.PlayerId], fixture.Players.Table.SmallBlind, fixture.Players.Table.BigBlind);
 
+            if (ShouldUpdateFixtures())
+            {
+                UpdateFixtureExpected(fixtureRoot, fixture.Name, result);
+                continue;
+            }
+
             var e = fixture.Expected.ExpectedExtraction;
             if (!result.IsSupported)
             {
@@ -44,18 +50,34 @@ public sealed class PreflopCompilerFixturesTests
 
             Assert.True(result.IsSupported, $"Fixture '{fixture.Name}' unsupported: {result.UnsupportedReason}\n{FormatTrace(result.Trace)}");
             Assert.NotNull(result.Key);
-            Assert.Equal(e.ActingPosition, result.Key!.ActingPosition.ToString());
-            Assert.Equal(e.FacingPosition, result.Key.FacingPosition?.ToString());
-            Assert.Equal(e.HistorySignature, result.Key.HistorySignature);
-            Assert.Equal(e.RaiseDepth, result.Key.RaiseDepth);
-            Assert.Equal(e.ToCallBb, result.Key.ToCallBb);
-            Assert.Equal(e.EffectiveStackBb, result.Key.EffectiveStackBb);
-            Assert.Equal(e.Buckets.Open, result.Key.OpenSizeBucket);
-            Assert.Equal(e.Buckets.Iso, result.Key.IsoSizeBucket);
-            Assert.Equal(e.Buckets.ThreeBet, result.Key.ThreeBetBucket);
-            Assert.Equal(e.Buckets.Squeeze, result.Key.SqueezeBucket);
-            Assert.Equal(e.Buckets.FourBet, result.Key.FourBetBucket);
-            Assert.Equal(e.SolverKey, result.Key.SolverKey);
+            AssertFixtureMatchesExpected(fixture.Name, e, result.Key!, result.Trace);
+        }
+    }
+
+    [Fact]
+    public void Fixtures_Must_Include_Complete_Expected_Extraction_Schema()
+    {
+        var fixtureRoot = ResolveFixtureRoot();
+        var fixtures = PreflopFixtureLoader.LoadAll(fixtureRoot);
+
+        foreach (var fixture in fixtures)
+        {
+            var e = fixture.Expected.ExpectedExtraction;
+            Assert.False(string.IsNullOrWhiteSpace(e.SolverKey), $"Fixture '{fixture.Name}' is missing expectedExtraction.solverKey");
+
+            AssertBucketPresent(fixture.Name, "openSizeBucket", e.Buckets.OpenSizeBucket);
+            AssertBucketPresent(fixture.Name, "isoSizeBucket", e.Buckets.IsoSizeBucket);
+            AssertBucketPresent(fixture.Name, "threeBetSizeBucket", e.Buckets.ThreeBetSizeBucket);
+            AssertBucketPresent(fixture.Name, "squeezeSizeBucket", e.Buckets.SqueezeSizeBucket);
+            AssertBucketPresent(fixture.Name, "fourBetSizeBucket", e.Buckets.FourBetSizeBucket);
+
+            Assert.True(e.Buckets.JamThreshold > 0, $"Fixture '{fixture.Name}' must include a positive expectedExtraction.buckets.jamThreshold");
+
+            if (e.HistorySignature == "VS_3BET")
+                Assert.NotEqual("NA", e.Buckets.ThreeBetSizeBucket);
+
+            if (e.HistorySignature is "VS_4BET" or "VS_5BET")
+                Assert.NotEqual("NA", e.Buckets.FourBetSizeBucket);
         }
     }
 
@@ -109,9 +131,86 @@ public sealed class PreflopCompilerFixturesTests
     {
         var sb = new StringBuilder();
         sb.AppendLine($"Trace: Sig={trace.HistorySignature} Depth={trace.RaiseDepth} ToCallBb={trace.ToCallBb} Facing={trace.FacingPosition} SolverKey={trace.SolverKey}");
+        sb.AppendLine($"  Buckets: O={trace.OpenSizeBucket} ISO={trace.IsoSizeBucket} 3B={trace.ThreeBetBucket} SQZ={trace.SqueezeBucket} 4B={trace.FourBetBucket} JAM={trace.JamThreshold}");
         foreach (var action in trace.RawActionHistory)
             sb.AppendLine($"  [{action.Street}] {action.PlayerId} {action.Position} {action.ActionType} chips={action.AmountChips} bb={action.AmountBb}");
 
         return sb.ToString();
+    }
+
+
+    private static string ResolveFixtureRoot()
+        => Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "Fixtures", "PreflopCompiler"));
+
+    private static bool ShouldUpdateFixtures()
+        => string.Equals(Environment.GetEnvironmentVariable("UPDATE_FIXTURES"), "1", StringComparison.Ordinal);
+
+    private static void AssertBucketPresent(string fixtureName, string bucketName, string value)
+        => Assert.False(string.IsNullOrWhiteSpace(value), $"Fixture '{fixtureName}' is missing expectedExtraction.buckets.{bucketName}");
+
+    private void AssertFixtureMatchesExpected(string fixtureName, ExpectedExtraction expected, PreflopInfoSetKey actual, PreflopQueryTrace trace)
+    {
+        var mismatches = new List<string>();
+
+        Compare("actingPosition", expected.ActingPosition, actual.ActingPosition.ToString(), mismatches);
+        Compare("facingPosition", expected.FacingPosition, actual.FacingPosition?.ToString(), mismatches);
+        Compare("historySignature", expected.HistorySignature, actual.HistorySignature, mismatches);
+        Compare("raiseDepth", expected.RaiseDepth, actual.RaiseDepth, mismatches);
+        Compare("toCallBb", expected.ToCallBb, actual.ToCallBb, mismatches);
+        Compare("effectiveStackBb", expected.EffectiveStackBb, actual.EffectiveStackBb, mismatches);
+        Compare("buckets.openSizeBucket", expected.Buckets.OpenSizeBucket, actual.OpenSizeBucket, mismatches);
+        Compare("buckets.isoSizeBucket", expected.Buckets.IsoSizeBucket, actual.IsoSizeBucket, mismatches);
+        Compare("buckets.threeBetSizeBucket", expected.Buckets.ThreeBetSizeBucket, actual.ThreeBetBucket, mismatches);
+        Compare("buckets.squeezeSizeBucket", expected.Buckets.SqueezeSizeBucket, actual.SqueezeBucket, mismatches);
+        Compare("buckets.fourBetSizeBucket", expected.Buckets.FourBetSizeBucket, actual.FourBetBucket, mismatches);
+        Compare("buckets.jamThreshold", expected.Buckets.JamThreshold, actual.JamThreshold, mismatches);
+        Compare("solverKey", expected.SolverKey, actual.SolverKey, mismatches);
+        Compare("trace.solverKey", expected.SolverKey, trace.SolverKey, mismatches);
+
+        if (mismatches.Count == 0)
+            return;
+
+        var message = $"Fixture '{fixtureName}' mismatches:{Environment.NewLine}- {string.Join(Environment.NewLine + "- ", mismatches)}{Environment.NewLine}{FormatTrace(trace)}";
+        Assert.True(false, message);
+    }
+
+    private static void Compare<T>(string field, T expected, T actual, List<string> mismatches)
+    {
+        if (!EqualityComparer<T>.Default.Equals(expected, actual))
+            mismatches.Add($"{field}: expected '{expected}', actual '{actual}'");
+    }
+
+    private static void UpdateFixtureExpected(string fixtureRoot, string fixtureName, PreflopExtractionResult result)
+    {
+        if (!result.IsSupported || result.Key is null)
+            return;
+
+        var key = result.Key;
+        var expected = new
+        {
+            expectedExtraction = new
+            {
+                actingPosition = key.ActingPosition.ToString(),
+                facingPosition = key.FacingPosition?.ToString(),
+                historySignature = key.HistorySignature,
+                raiseDepth = key.RaiseDepth,
+                toCallBb = key.ToCallBb,
+                effectiveStackBb = key.EffectiveStackBb,
+                buckets = new
+                {
+                    openSizeBucket = key.OpenSizeBucket,
+                    isoSizeBucket = key.IsoSizeBucket,
+                    threeBetSizeBucket = key.ThreeBetBucket,
+                    squeezeSizeBucket = key.SqueezeBucket,
+                    fourBetSizeBucket = key.FourBetBucket,
+                    jamThreshold = key.JamThreshold
+                },
+                solverKey = key.SolverKey
+            }
+        };
+
+        var path = Path.Combine(fixtureRoot, fixtureName, "expected.json");
+        var json = System.Text.Json.JsonSerializer.Serialize(expected, new System.Text.Json.JsonSerializerOptions { WriteIndented = true });
+        File.WriteAllText(path, json + Environment.NewLine);
     }
 }
