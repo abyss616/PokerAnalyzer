@@ -127,6 +127,19 @@ public sealed class PreflopCompilerFixturesTests
         Assert.True(result.IsValid);
     }
 
+    [Fact]
+    public async Task Validation_Failure_DoesNot_Invoke_Solver_Query()
+    {
+        var key = new PreflopInfoSetKey(Position.CO, null, "OPEN", 0, 0m, 100m, "MEDIUM", "NA", "NA", "NA", "NA", 18m, "k");
+        var ctx = new PreflopSpotContext(PlayerId.New(), Position.CO, null, null, 0, 0m, 2m, 1m, 3m, 100m);
+        var solver = new RecordingSolverClient();
+
+        var validation = await ValidateAndQuerySolverAsync(key, ctx, solver, CancellationToken.None);
+
+        Assert.False(validation.IsValid);
+        Assert.Equal(0, solver.QueryCount);
+    }
+
     private static string FormatTrace(PreflopQueryTrace trace)
     {
         var sb = new StringBuilder();
@@ -218,5 +231,30 @@ public sealed class PreflopCompilerFixturesTests
         var path = Path.Combine(fixtureRoot, fixtureName, "expected.json");
         var json = System.Text.Json.JsonSerializer.Serialize(expected, new System.Text.Json.JsonSerializerOptions { WriteIndented = true });
         File.WriteAllText(path, json + Environment.NewLine);
+    }
+
+    private static async Task<PreflopValidationResult> ValidateAndQuerySolverAsync(
+        PreflopInfoSetKey key,
+        PreflopSpotContext ctx,
+        RecordingSolverClient solver,
+        CancellationToken ct)
+    {
+        var validation = PreflopKeyValidator.Validate(key, ctx);
+        if (!validation.IsValid)
+            return validation;
+
+        await solver.QueryStrategyAsync(key.SolverKey, ct);
+        return validation;
+    }
+
+    private sealed class RecordingSolverClient
+    {
+        public int QueryCount { get; private set; }
+
+        public Task QueryStrategyAsync(string _, CancellationToken __)
+        {
+            QueryCount++;
+            return Task.CompletedTask;
+        }
     }
 }
