@@ -171,7 +171,7 @@ public sealed class PreflopCompilerFixturesTests
             return;
 
         var message = $"Fixture '{fixtureName}' mismatches:{Environment.NewLine}- {string.Join(Environment.NewLine + "- ", mismatches)}{Environment.NewLine}{FormatTrace(trace)}";
-        Assert.True(false, message);
+        Assert.Fail(message);
     }
 
     private static void Compare<T>(string field, T expected, T actual, List<string> mismatches)
