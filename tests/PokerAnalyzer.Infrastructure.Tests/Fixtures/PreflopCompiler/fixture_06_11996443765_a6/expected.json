@@ -4,7 +4,7 @@
     "facingPosition": "CO",
     "historySignature": "VS_OPEN",
     "raiseDepth": 1,
-    "toCallBb": 2.0,
+    "toCallBb": 2.5,
     "effectiveStackBb": 81.0,
     "buckets": {
       "open": "MEDIUM",
@@ -13,6 +13,6 @@
       "squeeze": "NA",
       "fourBet": "NA"
     },
-    "solverKey": "VS_OPEN|A:SB|F:CO|D:1|TC:2|O:MEDIUM|3B:NA|4B:NA"
+    "solverKey": "VS_OPEN|A:SB|F:CO|D:1|TC:2.5|O:MEDIUM|3B:NA|4B:NA"
   }
 }
