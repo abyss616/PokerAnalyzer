@@ -4,8 +4,8 @@
     "facingPosition": "BB",
     "historySignature": "OPEN",
     "raiseDepth": 0,
-    "toCallBb": 0,
-    "effectiveStackBb": 170.0,
+    "toCallBb": 0.0,
+    "effectiveStackBb": 171.0,
     "buckets": {
       "open": "SMALL",
       "iso": "NA",
