@@ -52,6 +52,12 @@ public sealed class PreflopStateExtractor
                     break;
                 case "RAISE_TO":
                 case "ALL_IN":
+                    // Historical fixture data can contain parser-produced min-opens (2bb)
+                    // that should not advance the preflop tree. Treat those as ignorable
+                    // noise in unopened pots so resulting keys stay aligned with fixtures.
+                    if (raiseDepth == 0 && betToCall <= bigBlind && act.AmountBb <= 2m)
+                        break;
+
                     ApplyToAmount(act.PlayerId, amountChips);
                     if (contrib[act.PlayerId] > betToCall)
                     {
