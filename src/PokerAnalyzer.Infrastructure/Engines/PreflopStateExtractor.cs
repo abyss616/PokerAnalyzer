@@ -43,7 +43,11 @@ public sealed class PreflopStateExtractor
             {
                 case "POST_SB":
                 case "POST_BB":
-                    ApplyDelta(act.PlayerId, amountChips);
+                    // Table blinds are posted up front, but action history can also include
+                    // additional blind posts (e.g. dead/missed blinds by non-SB/BB players).
+                    // Applying to the target amount avoids double-counting regular blinds
+                    // while still accounting for extra posted blinds.
+                    ApplyToAmount(act.PlayerId, amountChips);
                     betToCall = Math.Max(betToCall, contrib[act.PlayerId]);
                     break;
                 case "RAISE_TO":
