@@ -1,9 +1,9 @@
 {
   "expectedExtraction": {
     "actingPosition": "CO",
-    "facingPosition": "BB",
-    "historySignature": "OPEN",
-    "raiseDepth": 0,
+    "facingPosition": "UTG",
+    "historySignature": "VS_OPEN",
+    "raiseDepth": 1,
     "toCallBb": 2.0,
     "effectiveStackBb": 121.0,
     "buckets": {
@@ -13,6 +13,6 @@
       "squeeze": "NA",
       "fourBet": "NA"
     },
-    "solverKey": "OPEN|A:CO|F:BB|D:0|TC:2|O:SMALL|3B:NA|4B:NA"
+    "solverKey": "VS_OPEN|A:CO|F:UTG|D:1|TC:2|O:SMALL|3B:NA|4B:NA"
   }
 }

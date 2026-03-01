@@ -1,18 +1,18 @@
 {
   "expectedExtraction": {
     "actingPosition": "SB",
-    "facingPosition": "BB",
-    "historySignature": "UNOPENED_SB",
-    "raiseDepth": 0,
-    "toCallBb": 1.0,
+    "facingPosition": "BTN",
+    "historySignature": "VS_OPEN",
+    "raiseDepth": 1,
+    "toCallBb": 1.5,
     "effectiveStackBb": 116.0,
     "buckets": {
-      "open": "SMALL",
+      "open": "MEDIUM",
       "iso": "NA",
       "threeBet": "NA",
       "squeeze": "NA",
       "fourBet": "NA"
     },
-    "solverKey": "UNOPENED_SB|A:SB|F:BB|D:0|TC:1|O:SMALL|3B:NA|4B:NA"
+    "solverKey": "VS_OPEN|A:SB|F:BTN|D:1|TC:1.5|O:MEDIUM|3B:NA|4B:NA"
   }
 }
