@@ -43,8 +43,12 @@ public sealed class PreflopStateExtractor
             {
                 case "POST_SB":
                 case "POST_BB":
-                    // Blinds are posted from table metadata before replaying action history.
-                    // Keep these entries for traceability, but do not apply them again.
+                    // Table blinds are posted up front, but action history can also include
+                    // additional blind posts (e.g. dead/missed blinds by non-SB/BB players).
+                    // Applying to the target amount avoids double-counting regular blinds
+                    // while still accounting for extra posted blinds.
+                    ApplyToAmount(act.PlayerId, amountChips);
+                    betToCall = Math.Max(betToCall, contrib[act.PlayerId]);
                     break;
                 case "RAISE_TO":
                 case "ALL_IN":
