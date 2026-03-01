@@ -143,7 +143,7 @@ public sealed class PreflopCompilerFixturesTests
     {
         return Path.GetFullPath(Path.Combine(
             AppContext.BaseDirectory,
-            "..", "..", "..", "..",
+            "..", "..", "..",
             "Fixtures",
             "PreflopCompiler"));
     }
