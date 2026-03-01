@@ -84,6 +84,9 @@ public sealed class PreflopStateExtractor
         var potBb = bigBlind == 0 ? 0 : decimal.Round(pot / bigBlind, 2);
 
         var historySignature = BuildSignature(actingSeat.Position, raiseDepth);
+        if (historySignature == "OPEN" && actingSeat.Position != Position.BB)
+            toCallBb = Math.Max(toCallBb, 2m);
+
         var bigBlindSeat = seats.FirstOrDefault(s => s.Position == Position.BB);
         Position? facingPos = lastAggressor.HasValue
             ? byId[lastAggressor.Value].Position
