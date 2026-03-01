@@ -11,13 +11,14 @@ public sealed class PreflopStateExtractor
         decimal smallBlind,
         decimal bigBlind)
     {
+        var byId = seats.ToDictionary(s => s.Id);
         if (seats.Count == 0)
             return Unsupported("Cannot extract preflop key: no seats were provided.", []);
 
         if (bigBlind <= 0)
             return Unsupported($"Cannot extract preflop key: invalid big blind ({bigBlind}).", []);
 
-        var byId = seats.ToDictionary(s => s.Id);
+     
         if (!byId.ContainsKey(actingPlayerId))
             return Unsupported("Cannot extract preflop key: acting player was not found in seat list.", []);
 
