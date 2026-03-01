@@ -11,6 +11,14 @@
 
 <InputFile OnChange="OnFileSelected" accept=".xml" />
 
+@if (_traceLines.Count > 0)
+{
+    <div class="alert alert-secondary mt-3">
+        <strong>Trace</strong>
+        <pre style="white-space:pre-wrap; margin-bottom: 0;">@string.Join("\n", _traceLines)</pre>
+    </div>
+}
+
 @if (!string.IsNullOrWhiteSpace(_status))
 {
     <div class="alert alert-info mt-3">
@@ -80,6 +88,7 @@
 @code {
     private string? _status;
     private string? _error;
+    private readonly List<string> _traceLines = new();
     private IReadOnlyList<PokerStatsGridModel> _playerStats = Array.Empty<PokerStatsGridModel>();
     private static readonly IReadOnlyList<StatColumn> StatColumns = new[]
     {
@@ -142,10 +151,11 @@
 
     private async Task OnFileSelected(InputFileChangeEventArgs e)
     {
-        _status = "OnFileSelected fired.";
         _status = null;
         _error = null;
         _playerStats = Array.Empty<PokerStatsGridModel>();
+        _traceLines.Clear();
+        AddTrace("InputFile selection changed.");
 
         try
         {
@@ -153,23 +163,33 @@
             if (file is null)
             {
                 _error = "No file received from InputFile.";
+                AddTrace("No file received from InputFile.");
                 return;
             }
 
             _status = $"Selected: {file.Name} ({file.Size} bytes). Uploading...";
+            AddTrace($"Selected file '{file.Name}' ({file.Size} bytes).");
+            AddTrace("Uploading XML hand history to API.");
 
             var result = await Api.UploadHandHistoryXmlAsync(file);
 
             _status = $"Upload successful. SessionId: {result.SessionId}";
+            AddTrace($"Upload succeeded. SessionId: {result.SessionId}");
+            AddTrace("Fetching player stats for uploaded session.");
 
             var stats = await Api.GetPlayerStatsAsync(result.SessionId);
             _playerStats = stats.Select(MapToGridModel).ToList();
+            AddTrace($"Received {_playerStats.Count} player stat rows.");
         }
         catch (Exception ex)
         {
             _error = ex.ToString();
+            AddTrace($"Error: {ex.Message}");
         }
     }
+
+    private void AddTrace(string message)
+        => _traceLines.Add($"[{DateTime.Now:HH:mm:ss}] {message}");
 
     private static string GetStatDescription(string statName) =>
         StatDescriptions.TryGetValue(statName, out var description)
