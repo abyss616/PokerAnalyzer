@@ -4,7 +4,7 @@
     "facingPosition": "SB",
     "historySignature": "VS_3BET",
     "raiseDepth": 2,
-    "toCallBb": 9.0,
+    "toCallBb": 10.0,
     "effectiveStackBb": 92.0,
     "buckets": {
       "open": "JAM",
@@ -13,6 +13,6 @@
       "squeeze": "NA",
       "fourBet": "NA"
     },
-    "solverKey": "VS_3BET|A:BB|F:SB|D:2|TC:9|O:JAM|3B:JAM|4B:NA"
+    "solverKey": "VS_3BET|A:BB|F:SB|D:2|TC:10|O:JAM|3B:JAM|4B:NA"
   }
 }
