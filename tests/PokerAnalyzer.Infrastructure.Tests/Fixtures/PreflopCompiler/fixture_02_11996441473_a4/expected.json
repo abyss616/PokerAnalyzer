@@ -4,16 +4,16 @@
     "facingPosition": "BB",
     "historySignature": "OPEN",
     "raiseDepth": 0,
-    "toCallBb": 2.0,
+    "toCallBb": 0.0,
     "effectiveStackBb": 79.0,
     "buckets": {
-      "openSizeBucket": "SMALL",
-      "isoSizeBucket": "NA",
-      "threeBetSizeBucket": "NA",
-      "squeezeSizeBucket": "NA",
-      "fourBetSizeBucket": "NA",
-      "jamThreshold": 18
+      "openSizeBucketBb": null,
+      "isoSizeBucketBb": null,
+      "threeBetSizeBucketBb": null,
+      "squeezeSizeBucketBb": null,
+      "fourBetSizeBucketBb": null,
+      "jamThresholdBucketBb": 18.0
     },
-    "solverKey": "OPEN|A:HJ|F:BB|D:0|TC:2|O:SMALL|3B:NA|4B:NA"
+    "solverKey": "v2/OPEN/HJ/eff=79/jam=18"
   }
 }

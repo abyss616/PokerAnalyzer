@@ -7,13 +7,13 @@
     "toCallBb": 3.0,
     "effectiveStackBb": 76.0,
     "buckets": {
-      "openSizeBucket": "MEDIUM",
-      "isoSizeBucket": "NA",
-      "threeBetSizeBucket": "NA",
-      "squeezeSizeBucket": "NA",
-      "fourBetSizeBucket": "NA",
-      "jamThreshold": 18
+      "openSizeBucketBb": 4.0,
+      "isoSizeBucketBb": null,
+      "threeBetSizeBucketBb": null,
+      "squeezeSizeBucketBb": null,
+      "fourBetSizeBucketBb": null,
+      "jamThresholdBucketBb": 18.0
     },
-    "solverKey": "VS_OPEN|A:HJ|F:BB|D:1|TC:3|O:MEDIUM|3B:NA|4B:NA"
+    "solverKey": "v2/VS_OPEN/HJ/eff=76/open=4/jam=18"
   }
 }

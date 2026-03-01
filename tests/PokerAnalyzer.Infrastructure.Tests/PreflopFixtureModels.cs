@@ -53,32 +53,23 @@ public sealed class ExpectedExtraction
     public required string SolverKey { get; init; }
 }
 
-/// <summary>
-/// Bucket completeness convention for preflop fixtures:
-/// - OPEN/UNOPENED_SB: <see cref="OpenSizeBucket"/> set when there is a live opening size; others are "NA".
-/// - VS_OPEN: <see cref="OpenSizeBucket"/> reflects the open that hero faces; 3B/4B are "NA".
-/// - VS_3BET: <see cref="ThreeBetSizeBucket"/> must be set.
-/// - VS_4BET and deeper: <see cref="FourBetSizeBucket"/> must be set.
-/// - Non-participating buckets are encoded as "NA" (not null) for deterministic assertions.
-/// - <see cref="JamThreshold"/> must always be present because it influences solver behavior.
-/// </summary>
 public sealed class ExpectedBuckets
 {
-    [JsonPropertyName("openSizeBucket")]
-    public required string OpenSizeBucket { get; init; }
+    [JsonPropertyName("openSizeBucketBb")]
+    public decimal? OpenSizeBucketBb { get; init; }
 
-    [JsonPropertyName("isoSizeBucket")]
-    public required string IsoSizeBucket { get; init; }
+    [JsonPropertyName("isoSizeBucketBb")]
+    public decimal? IsoSizeBucketBb { get; init; }
 
-    [JsonPropertyName("threeBetSizeBucket")]
-    public required string ThreeBetSizeBucket { get; init; }
+    [JsonPropertyName("threeBetSizeBucketBb")]
+    public decimal? ThreeBetSizeBucketBb { get; init; }
 
-    [JsonPropertyName("squeezeSizeBucket")]
-    public required string SqueezeSizeBucket { get; init; }
+    [JsonPropertyName("squeezeSizeBucketBb")]
+    public decimal? SqueezeSizeBucketBb { get; init; }
 
-    [JsonPropertyName("fourBetSizeBucket")]
-    public required string FourBetSizeBucket { get; init; }
+    [JsonPropertyName("fourBetSizeBucketBb")]
+    public decimal? FourBetSizeBucketBb { get; init; }
 
-    [JsonPropertyName("jamThreshold")]
-    public required decimal JamThreshold { get; init; }
+    [JsonPropertyName("jamThresholdBucketBb")]
+    public decimal? JamThresholdBucketBb { get; init; }
 }

@@ -6,14 +6,23 @@ public static class PreflopKeyValidator
 {
     public static PreflopValidationResult Validate(PreflopInfoSetKey key, PreflopSpotContext ctx)
     {
-        if (key.HistorySignature == "OPEN" && key.ToCallBb == 0 && key.ActingPosition != Position.BB)
-            return PreflopValidationResult.Invalid("Invalid key: OPEN with ToCall == 0.");
+        if (key.HistorySignature == "OPEN" && key.ToCallBb != 0)
+            return PreflopValidationResult.Invalid("Invalid key: OPEN with non-zero ToCall.");
 
-        if (key.HistorySignature.StartsWith("VS_", StringComparison.Ordinal) && key.ToCallBb == 0)
-            return PreflopValidationResult.Invalid("Invalid key: VS_* signature with ToCall == 0.");
+        if (key.HistorySignature.StartsWith("VS_", StringComparison.Ordinal) && key.ToCallBb <= 0)
+            return PreflopValidationResult.Invalid("Invalid key: VS_* signature with ToCall <= 0.");
 
         if (!IsDepthValid(key.HistorySignature, ctx.RaiseDepth))
             return PreflopValidationResult.Invalid($"Invalid key: {key.HistorySignature} requires higher raise depth (actual={ctx.RaiseDepth}).");
+
+        if (key.HistorySignature == "VS_OPEN" && !key.OpenSizeBucketBb.HasValue)
+            return PreflopValidationResult.Invalid("Invalid key: VS_OPEN requires open size bucket.");
+
+        if (key.HistorySignature == "VS_3BET" && !key.ThreeBetSizeBucketBb.HasValue)
+            return PreflopValidationResult.Invalid("Invalid key: VS_3BET requires 3bet size bucket.");
+
+        if (key.HistorySignature == "VS_4BET" && !key.FourBetSizeBucketBb.HasValue)
+            return PreflopValidationResult.Invalid("Invalid key: VS_4BET requires 4bet size bucket.");
 
         if (ctx.ActingPosition == Position.Unknown || key.ActingPosition == Position.Unknown || key.ActingPosition != ctx.ActingPosition)
             return PreflopValidationResult.Invalid("Invalid key: acting position undefined/inconsistent with player to act.");
