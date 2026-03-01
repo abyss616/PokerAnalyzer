@@ -1,4 +1,5 @@
 using PokerAnalyzer.Domain.Game;
+using System.Globalization;
 
 namespace PokerAnalyzer.Infrastructure.Engines;
 
@@ -28,6 +29,7 @@ public sealed class PreflopStateExtractor
         var betToCall = 0m;
         var raiseDepth = 0;
         PlayerId? lastAggressor = null;
+        var raiseSizesBb = new List<decimal>();
 
         void PostBlind(Position position, decimal amount)
         {
@@ -76,6 +78,7 @@ public sealed class PreflopStateExtractor
                             betToCall = contrib[act.PlayerId];
                             lastAggressor = act.PlayerId;
                             raiseDepth++;
+                            raiseSizesBb.Add(decimal.Round(contrib[act.PlayerId] / bigBlind, 2));
                         }
                         break;
                     case "CALL":
@@ -96,8 +99,9 @@ public sealed class PreflopStateExtractor
         var potBb = bigBlind == 0 ? 0 : decimal.Round(pot / bigBlind, 2);
 
         var historySignature = BuildSignature(actingSeat.Position, raiseDepth);
-        if (historySignature == "OPEN" && actingSeat.Position != Position.BB)
-            toCallBb = Math.Max(toCallBb, 2m);
+
+        if (historySignature == "OPEN")
+            toCallBb = 0m;
 
         var bigBlindSeat = seats.FirstOrDefault(s => s.Position == Position.BB);
         Position? facingPos = lastAggressor.HasValue
@@ -108,14 +112,23 @@ public sealed class PreflopStateExtractor
             : (bigBlindSeat is not null ? stacks[bigBlindSeat.Id] : stacks.Values.Max());
             var effectiveStackBb = decimal.Round(Math.Min(stacks[actingPlayerId], facingStack) / bigBlind, 2);
 
-            var openBucket = PreflopSizingNormalizer.Bucket(currentBetBb);
-        var threeBetBucket = raiseDepth >= 2 ? PreflopSizingNormalizer.Bucket(currentBetBb) : "NA";
-        var fourBetBucket = raiseDepth >= 3 ? PreflopSizingNormalizer.Bucket(currentBetBb) : "NA";
-        var isoBucket = "NA";
-        var squeezeBucket = "NA";
-        var jamThreshold = 18m;
+        decimal? openSizeBucketBb = raiseSizesBb.Count >= 1 ? raiseSizesBb[0] : null;
+        decimal? isoSizeBucketBb = null;
+        decimal? threeBetSizeBucketBb = raiseSizesBb.Count >= 2 ? raiseSizesBb[1] : null;
+        decimal? squeezeSizeBucketBb = null;
+        decimal? fourBetSizeBucketBb = raiseSizesBb.Count >= 3 ? raiseSizesBb[2] : null;
+        decimal? jamThresholdBucketBb = 18m;
 
-        var solverKey = $"{historySignature}|A:{actingSeat.Position}|F:{facingPos?.ToString() ?? "NONE"}|D:{raiseDepth}|TC:{toCallBb:0.##}|O:{openBucket}|3B:{threeBetBucket}|4B:{fourBetBucket}";
+        var solverKey = BuildSolverKey(
+            historySignature,
+            actingSeat.Position,
+            effectiveStackBb,
+            openSizeBucketBb,
+            isoSizeBucketBb,
+            threeBetSizeBucketBb,
+            squeezeSizeBucketBb,
+            fourBetSizeBucketBb,
+            jamThresholdBucketBb);
         var key = new PreflopInfoSetKey(
             actingSeat.Position,
             facingPos,
@@ -123,12 +136,12 @@ public sealed class PreflopStateExtractor
             raiseDepth,
             toCallBb,
             effectiveStackBb,
-            openBucket,
-            isoBucket,
-            threeBetBucket,
-            squeezeBucket,
-            fourBetBucket,
-            jamThreshold,
+            openSizeBucketBb,
+            isoSizeBucketBb,
+            threeBetSizeBucketBb,
+            squeezeSizeBucketBb,
+            fourBetSizeBucketBb,
+            jamThresholdBucketBb,
             solverKey);
 
         var ctx = new PreflopSpotContext(
@@ -156,12 +169,12 @@ public sealed class PreflopStateExtractor
                 ActingContribBb = actingContribBb,
                 PotBb = potBb,
                 EffectiveStackBb = effectiveStackBb,
-                OpenSizeBucket = openBucket,
-                IsoSizeBucket = isoBucket,
-                ThreeBetBucket = threeBetBucket,
-                SqueezeBucket = squeezeBucket,
-                FourBetBucket = fourBetBucket,
-                JamThreshold = jamThreshold,
+                OpenSizeBucket = FormatBucket(openSizeBucketBb),
+                IsoSizeBucket = FormatBucket(isoSizeBucketBb),
+                ThreeBetBucket = FormatBucket(threeBetSizeBucketBb),
+                SqueezeBucket = FormatBucket(squeezeSizeBucketBb),
+                FourBetBucket = FormatBucket(fourBetSizeBucketBb),
+                JamThreshold = jamThresholdBucketBb ?? 0m,
                 SolverKey = solverKey,
                 RawActionHistory = raw
             };
@@ -234,6 +247,47 @@ public sealed class PreflopStateExtractor
             _ => "VS_5BET"
         };
     }
+
+    private static string BuildSolverKey(
+        string historySignature,
+        Position actingPosition,
+        decimal effectiveStackBb,
+        decimal? openSizeBucketBb,
+        decimal? isoSizeBucketBb,
+        decimal? threeBetSizeBucketBb,
+        decimal? squeezeSizeBucketBb,
+        decimal? fourBetSizeBucketBb,
+        decimal? jamThresholdBucketBb)
+    {
+        var parts = new List<string>
+        {
+            $"v2/{historySignature}/{actingPosition}",
+            $"eff={FormatBucketValue(effectiveStackBb)}"
+        };
+
+        AppendIfValue(parts, "open", openSizeBucketBb);
+        AppendIfValue(parts, "iso", isoSizeBucketBb);
+        AppendIfValue(parts, "3bet", threeBetSizeBucketBb);
+        AppendIfValue(parts, "squeeze", squeezeSizeBucketBb);
+        AppendIfValue(parts, "4bet", fourBetSizeBucketBb);
+        AppendIfValue(parts, "jam", jamThresholdBucketBb);
+
+        return string.Join('/', parts);
+    }
+
+    private static void AppendIfValue(List<string> parts, string name, decimal? value)
+    {
+        if (!value.HasValue)
+            return;
+
+        parts.Add($"{name}={FormatBucketValue(value.Value)}");
+    }
+
+    private static string FormatBucket(decimal? value)
+        => value.HasValue ? FormatBucketValue(value.Value) : "NA";
+
+    private static string FormatBucketValue(decimal value)
+        => value.ToString("0.##", CultureInfo.InvariantCulture);
 }
 
 public sealed record PreflopInputAction(PlayerId PlayerId, string Type, decimal AmountBb);

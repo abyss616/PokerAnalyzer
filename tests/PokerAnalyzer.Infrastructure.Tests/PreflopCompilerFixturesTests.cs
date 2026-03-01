@@ -65,38 +65,67 @@ public sealed class PreflopCompilerFixturesTests
             var e = fixture.Expected.ExpectedExtraction;
             Assert.False(string.IsNullOrWhiteSpace(e.SolverKey), $"Fixture '{fixture.Name}' is missing expectedExtraction.solverKey");
 
-            AssertBucketPresent(fixture.Name, "openSizeBucket", e.Buckets.OpenSizeBucket);
-            AssertBucketPresent(fixture.Name, "isoSizeBucket", e.Buckets.IsoSizeBucket);
-            AssertBucketPresent(fixture.Name, "threeBetSizeBucket", e.Buckets.ThreeBetSizeBucket);
-            AssertBucketPresent(fixture.Name, "squeezeSizeBucket", e.Buckets.SqueezeSizeBucket);
-            AssertBucketPresent(fixture.Name, "fourBetSizeBucket", e.Buckets.FourBetSizeBucket);
+                        Assert.NotNull(e.Buckets.JamThresholdBucketBb);
+            Assert.True(e.Buckets.JamThresholdBucketBb > 0, $"Fixture '{fixture.Name}' must include a positive expectedExtraction.buckets.jamThresholdBucketBb");
 
-            Assert.True(e.Buckets.JamThreshold > 0, $"Fixture '{fixture.Name}' must include a positive expectedExtraction.buckets.jamThreshold");
+            if (e.HistorySignature == "VS_OPEN")
+                Assert.NotNull(e.Buckets.OpenSizeBucketBb);
 
             if (e.HistorySignature == "VS_3BET")
-                Assert.NotEqual("NA", e.Buckets.ThreeBetSizeBucket);
+                Assert.NotNull(e.Buckets.ThreeBetSizeBucketBb);
 
             if (e.HistorySignature is "VS_4BET" or "VS_5BET")
-                Assert.NotEqual("NA", e.Buckets.FourBetSizeBucket);
+                Assert.NotNull(e.Buckets.FourBetSizeBucketBb);
+        }
+    }
+
+
+    [Fact]
+    public void Extraction_Uses_Literal_ToCall_For_Open_And_VsOpen()
+    {
+        var fixtureRoot = ResolveFixtureRoot();
+        var fixtures = PreflopFixtureLoader.LoadAll(fixtureRoot);
+        var extractor = new PreflopStateExtractor();
+
+        foreach (var fixture in fixtures)
+        {
+            var idMap = fixture.Players.Seats.ToDictionary(x => x.PlayerId, _ => PlayerId.New());
+            var seats = fixture.Players.Seats.Select(s => new PlayerSeat(
+                idMap[s.PlayerId],
+                s.PlayerId,
+                s.Seat,
+                Enum.Parse<Position>(s.Position),
+                new ChipAmount(s.StackChips))).ToList();
+
+            var hero = fixture.Players.Seats.Single(s => s.IsHero);
+            var actions = fixture.Actions.Actions.Select(a => new PreflopInputAction(idMap[a.Actor], a.Type, a.AmountBb)).ToList();
+            var result = extractor.TryExtract(seats, actions, idMap[hero.PlayerId], fixture.Players.Table.SmallBlind, fixture.Players.Table.BigBlind);
+            Assert.True(result.IsSupported, $"Fixture '{fixture.Name}' unsupported: {result.UnsupportedReason}");
+
+            if (result.Key!.HistorySignature == "OPEN")
+                Assert.Equal(0m, result.Key.ToCallBb);
+
+            if (result.Key.HistorySignature == "VS_OPEN")
+                Assert.True(result.Key.ToCallBb > 0m, $"Fixture '{fixture.Name}' expected VS_OPEN to have ToCallBb > 0 but got {result.Key.ToCallBb}");
         }
     }
 
     [Fact]
-    public void Validation_Invalid_Open_With_Zero_ToCall_IsUnsupported()
+    public void Validation_Invalid_Open_With_NonZero_ToCall_IsUnsupported()
     {
-        var key = new PreflopInfoSetKey(Position.CO, null, "OPEN", 0, 0m, 100m, "MEDIUM", "NA", "NA", "NA", "NA", 18m, "k");
+        var key = new PreflopInfoSetKey(Position.CO, null, "OPEN", 0, 1m, 100m, null, null, null, null, null, 18m, "k");
         var ctx = new PreflopSpotContext(PlayerId.New(), Position.CO, null, null, 0, 0m, 2m, 1m, 3m, 100m);
 
         var result = PreflopKeyValidator.Validate(key, ctx);
 
         Assert.False(result.IsValid);
-        Assert.Contains("OPEN with ToCall == 0", result.Reason);
+        Assert.Contains("OPEN with non-zero ToCall", result.Reason);
     }
 
     [Fact]
     public void Validation_Open_With_Zero_ToCall_In_BigBlind_IsSupported()
     {
-        var key = new PreflopInfoSetKey(Position.BB, Position.BB, "OPEN", 0, 0m, 100m, "SMALL", "NA", "NA", "NA", "NA", 18m, "k");
+        var key = new PreflopInfoSetKey(Position.BB, Position.BB, "OPEN", 0, 0m, 100m, null, null, null, null, null, 18m, "k");
         var ctx = new PreflopSpotContext(PlayerId.New(), Position.BB, null, Position.BB, 0, 0m, 1m, 1m, 1.5m, 100m);
 
         var result = PreflopKeyValidator.Validate(key, ctx);
@@ -107,19 +136,19 @@ public sealed class PreflopCompilerFixturesTests
     [Fact]
     public void Validation_Invalid_VsOpen_With_Zero_ToCall_IsUnsupported()
     {
-        var key = new PreflopInfoSetKey(Position.BB, Position.BTN, "VS_OPEN", 1, 0m, 100m, "MEDIUM", "NA", "NA", "NA", "NA", 18m, "k");
+        var key = new PreflopInfoSetKey(Position.BB, Position.BTN, "VS_OPEN", 1, 0m, 100m, 2.5m, null, null, null, null, 18m, "k");
         var ctx = new PreflopSpotContext(PlayerId.New(), Position.BB, PlayerId.New(), Position.BTN, 1, 0m, 2.5m, 2.5m, 4m, 100m);
 
         var result = PreflopKeyValidator.Validate(key, ctx);
 
         Assert.False(result.IsValid);
-        Assert.Contains("VS_*", result.Reason);
+        Assert.Contains("ToCall <= 0", result.Reason);
     }
 
     [Fact]
     public void Validation_Valid_Unopened_Sb_Spot_Passes()
     {
-        var key = new PreflopInfoSetKey(Position.SB, null, "UNOPENED_SB", 0, 0m, 100m, "SMALL", "NA", "NA", "NA", "NA", 18m, "k");
+        var key = new PreflopInfoSetKey(Position.SB, null, "UNOPENED_SB", 0, 0m, 100m, null, null, null, null, null, 18m, "k");
         var ctx = new PreflopSpotContext(PlayerId.New(), Position.SB, null, null, 0, 0m, 0.5m, 0.5m, 1.5m, 100m);
 
         var result = PreflopKeyValidator.Validate(key, ctx);
@@ -130,7 +159,7 @@ public sealed class PreflopCompilerFixturesTests
     [Fact]
     public async Task Validation_Failure_DoesNot_Invoke_Solver_Query()
     {
-        var key = new PreflopInfoSetKey(Position.CO, null, "OPEN", 0, 0m, 100m, "MEDIUM", "NA", "NA", "NA", "NA", 18m, "k");
+        var key = new PreflopInfoSetKey(Position.CO, null, "OPEN", 0, 1m, 100m, null, null, null, null, null, 18m, "k");
         var ctx = new PreflopSpotContext(PlayerId.New(), Position.CO, null, null, 0, 0m, 2m, 1m, 3m, 100m);
         var solver = new RecordingSolverClient();
 
@@ -164,9 +193,6 @@ public sealed class PreflopCompilerFixturesTests
     private static bool ShouldUpdateFixtures()
         => string.Equals(Environment.GetEnvironmentVariable("UPDATE_FIXTURES"), "1", StringComparison.Ordinal);
 
-    private static void AssertBucketPresent(string fixtureName, string bucketName, string value)
-        => Assert.False(string.IsNullOrWhiteSpace(value), $"Fixture '{fixtureName}' is missing expectedExtraction.buckets.{bucketName}");
-
     private void AssertFixtureMatchesExpected(string fixtureName, ExpectedExtraction expected, PreflopInfoSetKey actual, PreflopQueryTrace trace)
     {
         var mismatches = new List<string>();
@@ -177,12 +203,12 @@ public sealed class PreflopCompilerFixturesTests
         Compare("raiseDepth", expected.RaiseDepth, actual.RaiseDepth, mismatches);
         Compare("toCallBb", expected.ToCallBb, actual.ToCallBb, mismatches);
         Compare("effectiveStackBb", expected.EffectiveStackBb, actual.EffectiveStackBb, mismatches);
-        Compare("buckets.openSizeBucket", expected.Buckets.OpenSizeBucket, actual.OpenSizeBucket, mismatches);
-        Compare("buckets.isoSizeBucket", expected.Buckets.IsoSizeBucket, actual.IsoSizeBucket, mismatches);
-        Compare("buckets.threeBetSizeBucket", expected.Buckets.ThreeBetSizeBucket, actual.ThreeBetBucket, mismatches);
-        Compare("buckets.squeezeSizeBucket", expected.Buckets.SqueezeSizeBucket, actual.SqueezeBucket, mismatches);
-        Compare("buckets.fourBetSizeBucket", expected.Buckets.FourBetSizeBucket, actual.FourBetBucket, mismatches);
-        Compare("buckets.jamThreshold", expected.Buckets.JamThreshold, actual.JamThreshold, mismatches);
+        Compare("buckets.openSizeBucketBb", expected.Buckets.OpenSizeBucketBb, actual.OpenSizeBucketBb, mismatches);
+        Compare("buckets.isoSizeBucketBb", expected.Buckets.IsoSizeBucketBb, actual.IsoSizeBucketBb, mismatches);
+        Compare("buckets.threeBetSizeBucketBb", expected.Buckets.ThreeBetSizeBucketBb, actual.ThreeBetSizeBucketBb, mismatches);
+        Compare("buckets.squeezeSizeBucketBb", expected.Buckets.SqueezeSizeBucketBb, actual.SqueezeSizeBucketBb, mismatches);
+        Compare("buckets.fourBetSizeBucketBb", expected.Buckets.FourBetSizeBucketBb, actual.FourBetSizeBucketBb, mismatches);
+        Compare("buckets.jamThresholdBucketBb", expected.Buckets.JamThresholdBucketBb, actual.JamThresholdBucketBb, mismatches);
         Compare("solverKey", expected.SolverKey, actual.SolverKey, mismatches);
         Compare("trace.solverKey", expected.SolverKey, trace.SolverKey, mismatches);
 
@@ -217,12 +243,12 @@ public sealed class PreflopCompilerFixturesTests
                 effectiveStackBb = key.EffectiveStackBb,
                 buckets = new
                 {
-                    openSizeBucket = key.OpenSizeBucket,
-                    isoSizeBucket = key.IsoSizeBucket,
-                    threeBetSizeBucket = key.ThreeBetBucket,
-                    squeezeSizeBucket = key.SqueezeBucket,
-                    fourBetSizeBucket = key.FourBetBucket,
-                    jamThreshold = key.JamThreshold
+                    openSizeBucketBb = key.OpenSizeBucketBb,
+                    isoSizeBucketBb = key.IsoSizeBucketBb,
+                    threeBetSizeBucketBb = key.ThreeBetSizeBucketBb,
+                    squeezeSizeBucketBb = key.SqueezeSizeBucketBb,
+                    fourBetSizeBucketBb = key.FourBetSizeBucketBb,
+                    jamThresholdBucketBb = key.JamThresholdBucketBb
                 },
                 solverKey = key.SolverKey
             }

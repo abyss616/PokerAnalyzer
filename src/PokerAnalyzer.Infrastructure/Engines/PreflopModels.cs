@@ -9,12 +9,12 @@ public sealed record PreflopInfoSetKey(
     int RaiseDepth,
     decimal ToCallBb,
     decimal EffectiveStackBb,
-    string OpenSizeBucket,
-    string IsoSizeBucket,
-    string ThreeBetBucket,
-    string SqueezeBucket,
-    string FourBetBucket,
-    decimal JamThreshold,
+    decimal? OpenSizeBucketBb,
+    decimal? IsoSizeBucketBb,
+    decimal? ThreeBetSizeBucketBb,
+    decimal? SqueezeSizeBucketBb,
+    decimal? FourBetSizeBucketBb,
+    decimal? JamThresholdBucketBb,
     string SolverKey);
 
 public sealed record PreflopSpotContext(

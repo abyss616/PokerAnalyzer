@@ -7,13 +7,13 @@
     "toCallBb": 2.5,
     "effectiveStackBb": 92.0,
     "buckets": {
-      "openSizeBucket": "LARGE",
-      "isoSizeBucket": "NA",
-      "threeBetSizeBucket": "LARGE",
-      "squeezeSizeBucket": "NA",
-      "fourBetSizeBucket": "NA",
-      "jamThreshold": 18
+      "openSizeBucketBb": 3.5,
+      "isoSizeBucketBb": null,
+      "threeBetSizeBucketBb": 6.0,
+      "squeezeSizeBucketBb": null,
+      "fourBetSizeBucketBb": null,
+      "jamThresholdBucketBb": 18.0
     },
-    "solverKey": "VS_3BET|A:CO|F:BTN|D:2|TC:2.5|O:LARGE|3B:LARGE|4B:NA"
+    "solverKey": "v2/VS_3BET/CO/eff=92/open=3.5/3bet=6/jam=18"
   }
 }
