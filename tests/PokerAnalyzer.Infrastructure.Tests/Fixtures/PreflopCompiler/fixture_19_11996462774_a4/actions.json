@@ -14,6 +14,11 @@
       "actor": "kribardos",
       "type": "RAISE_TO",
       "amountBb": 2.0
+    },
+    {
+      "actor": "tigerfluffy676",
+      "type": "CALL",
+      "amountBb": 2.0
     }
   ]
 }

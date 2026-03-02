@@ -2,9 +2,9 @@
   "expectedExtraction": {
     "actingPosition": "CO",
     "facingPosition": "BB",
-    "historySignature": "UNOPENED",
+    "historySignature": "LIMP",
     "raiseDepth": 0,
-    "toCallBb": 0.0,
+    "toCallBb": 1.0,
     "effectiveStackBb": 121.0,
     "buckets": {
       "openSizeBucketBb": null,
@@ -14,6 +14,6 @@
       "fourBetSizeBucketBb": null,
       "jamThresholdBucketBb": 18.0
     },
-    "solverKey": "v2/UNOPENED/CO/eff=121/jam=18"
+    "solverKey": "v2/LIMP/CO/eff=121/jam=18"
   }
 }

@@ -14,6 +14,11 @@
       "actor": "xlnt",
       "type": "FOLD",
       "amountBb": 0.0
+    },
+    {
+      "actor": "tigerfluffy676",
+      "type": "CALL",
+      "amountBb": 1.0
     }
   ]
 }
