@@ -174,7 +174,7 @@ namespace PokerAnalyzer.Infrastructure.Persistence
                 board.Navigation(b => b.Flop).HasField("_flop");
 
                 // FLOP (owned collection)
-                board.OwnsMany<Card>("_flop", cb =>
+                board.OwnsMany<Card>(f=>f.Flop, cb =>
                 {
                     cb.ToTable("BoardFlopCards");
                     cb.WithOwner().HasForeignKey("BoardId");
