@@ -1,4 +1,5 @@
 using System.Text;
+using System.Text.Json;
 using PokerAnalyzer.Domain.Game;
 using PokerAnalyzer.Infrastructure.Engines;
 using Xunit;
@@ -50,7 +51,9 @@ public sealed class PreflopCompilerFixturesTests
 
             Assert.True(result.IsSupported, $"Fixture '{fixture.Name}' unsupported: {result.UnsupportedReason}\n{FormatTrace(result.Trace)}");
             Assert.NotNull(result.Key);
+            var stringResult = JsonSerializer.Serialize<PreflopInfoSetKey>(result.Key);
             AssertFixtureMatchesExpected(fixture.Name, e, result.Key!, result.Trace);
+
         }
     }
 
