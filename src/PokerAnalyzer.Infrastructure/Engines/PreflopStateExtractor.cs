@@ -30,6 +30,7 @@ public sealed class PreflopStateExtractor
         var raiseDepth = 0;
         PlayerId? lastAggressor = null;
         var raiseSizesBb = new List<decimal>();
+        var hasLimpers = false;
 
         void PostBlind(Position position, decimal amount)
         {
@@ -83,6 +84,8 @@ public sealed class PreflopStateExtractor
                         break;
                     case "CALL":
                         ApplyDelta(act.PlayerId, amountChips);
+                        if (raiseDepth == 0)
+                            hasLimpers = true;
                         break;
                     case "CHECK":
                     case "FOLD":
@@ -98,7 +101,7 @@ public sealed class PreflopStateExtractor
         var actingContribBb = bigBlind == 0 ? 0 : decimal.Round(contrib[actingPlayerId] / bigBlind, 2);
         var potBb = bigBlind == 0 ? 0 : decimal.Round(pot / bigBlind, 2);
 
-        var historySignature = BuildSignature(actingSeat.Position, raiseDepth);
+        var historySignature = BuildSignature(actingSeat.Position, raiseDepth, hasLimpers);
 
         if (historySignature == "OPEN")
             toCallBb = 0m;
@@ -234,10 +237,12 @@ public sealed class PreflopStateExtractor
         }
     }
 
-    private static string BuildSignature(Position acting, int raiseDepth)
+    private static string BuildSignature(Position acting, int raiseDepth, bool hasLimpers)
     {
         if (raiseDepth == 0)
-            return acting == Position.SB ? "UNOPENED_SB" : "OPEN";
+            return hasLimpers
+                ? "LIMP"
+                : acting == Position.SB ? "UNOPENED_SB" : "OPEN";
 
         return raiseDepth switch
         {
