@@ -4,7 +4,7 @@
     "facingPosition": "BB",
     "historySignature": "UNOPENED_SB",
     "raiseDepth": 0,
-    "toCallBb": 0.5,
+    "toCallBb": 0.0,
     "effectiveStackBb": 117.0,
     "buckets": {
       "openSizeBucketBb": null,

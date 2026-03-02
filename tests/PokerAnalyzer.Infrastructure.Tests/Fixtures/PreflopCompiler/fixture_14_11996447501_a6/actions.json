@@ -24,6 +24,11 @@
       "actor": "xlnt",
       "type": "RAISE_TO",
       "amountBb": 3.0
+    },
+    {
+      "actor": "tigerfluffy676",
+      "type": "FOLD",
+      "amountBb": 0.0
     }
   ]
 }

@@ -19,6 +19,11 @@
       "actor": "pivo9ka",
       "type": "RAISE_TO",
       "amountBb": 2.0
+    },
+    {
+      "actor": "tigerfluffy676",
+      "type": "RAISE_TO",
+      "amountBb": 7.0
     }
   ]
 }

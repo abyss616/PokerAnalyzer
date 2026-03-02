@@ -1,19 +1,19 @@
 {
   "expectedExtraction": {
     "actingPosition": "CO",
-    "facingPosition": "BTN",
-    "historySignature": "VS_3BET",
-    "raiseDepth": 2,
-    "toCallBb": 2.5,
-    "effectiveStackBb": 92.0,
+    "facingPosition": "BB",
+    "historySignature": "OPEN",
+    "raiseDepth": 0,
+    "toCallBb": 0.0,
+    "effectiveStackBb": 141.0,
     "buckets": {
-      "openSizeBucketBb": 3.5,
+      "openSizeBucketBb": null,
       "isoSizeBucketBb": null,
-      "threeBetSizeBucketBb": 6.0,
+      "threeBetSizeBucketBb": null,
       "squeezeSizeBucketBb": null,
       "fourBetSizeBucketBb": null,
       "jamThresholdBucketBb": 18.0
     },
-    "solverKey": "v2/VS_3BET/CO/eff=92/open=3.5/3bet=6/jam=18"
+    "solverKey": "v2/OPEN/CO/eff=141/jam=18"
   }
 }

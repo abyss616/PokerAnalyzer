@@ -2,7 +2,7 @@
   "expectedExtraction": {
     "actingPosition": "BB",
     "facingPosition": "BB",
-    "historySignature": "UNOPENED",
+    "historySignature": "UNOPENED_FOLD",
     "raiseDepth": 0,
     "toCallBb": 0.0,
     "effectiveStackBb": 171.0,
@@ -14,6 +14,6 @@
       "fourBetSizeBucketBb": null,
       "jamThresholdBucketBb": 18.0
     },
-    "solverKey": "v2/UNOPENED/BB/eff=171/jam=18"
+    "solverKey": "v2/UNOPENED_FOLD/BB/eff=171/jam=18"
   }
 }

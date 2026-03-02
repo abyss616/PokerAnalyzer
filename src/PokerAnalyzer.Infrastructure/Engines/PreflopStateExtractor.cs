@@ -51,8 +51,17 @@ public sealed class PreflopStateExtractor
                 if (!byId.ContainsKey(act.PlayerId))
                     continue;
 
-                if (act.PlayerId == actingPlayerId && actingPlayersFirstActionType is null)
+                if (act.PlayerId == actingPlayerId
+                    && act.Type is not "POST_SB" and not "POST_BB"
+                    && actingPlayersFirstActionType is null)
+                {
+                    // Fixture/action feeds may include the hero's chosen action.
+                    // Capture the action type for signature shaping (OPEN/LIMP/etc.)
+                    // but stop processing at this point so ToCall/stack context stays
+                    // as the pre-decision state.
                     actingPlayersFirstActionType = act.Type;
+                    break;
+                }
 
                 var amountChips = act.AmountBb * bigBlind;
                 raw.Add(new PreflopRawActionTrace(Street.Preflop, act.PlayerId, byId[act.PlayerId].Position, act.Type, amountChips, act.AmountBb));
