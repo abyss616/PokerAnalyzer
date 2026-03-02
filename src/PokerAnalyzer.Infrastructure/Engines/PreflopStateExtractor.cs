@@ -249,7 +249,9 @@ public sealed class PreflopStateExtractor
             {
                 "RAISE_TO" or "ALL_IN" => "OPEN",
                 "CALL" => "LIMP",
-                _ => "OPEN"
+                "CHECK" => "UNOPENED_CHECK",   // or whatever you already use for BB check nodes
+                "FOLD" => "UNOPENED_FOLD",     // if folds are modeled
+                _ => "UNOPENED"                // safest non-OPEN fallback
             };
         }
 
