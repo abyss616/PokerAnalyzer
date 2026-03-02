@@ -104,7 +104,7 @@ public sealed class PreflopStateExtractor
 
         var historySignature = BuildSignature(actingSeat.Position, raiseDepth, actingPlayersFirstActionType);
 
-        if (historySignature == "OPEN")
+        if (historySignature is "OPEN" or "UNOPENED" or "UNOPENED_SB" or "UNOPENED_CHECK" or "UNOPENED_FOLD")
             toCallBb = 0m;
 
         var bigBlindSeat = seats.FirstOrDefault(s => s.Position == Position.BB);
