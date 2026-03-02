@@ -1,3 +1,4 @@
+using System.Text.Json.Serialization;
 using PokerAnalyzer.Application.Analysis;
 using PokerAnalyzer.Domain.Cards;
 using PokerAnalyzer.Domain.Game;
@@ -10,7 +11,12 @@ builder.Services.AddSwaggerGen();
 builder.Services.AddScoped<IHandHistoryIngestService, HandHistoryIngestService>();
 
 builder.Services.AddPokerAnalyzer();
-builder.Services.AddControllers();
+builder.Services
+    .AddControllers()
+    .AddJsonOptions(options =>
+    {
+        options.JsonSerializerOptions.Converters.Add(new JsonStringEnumConverter());
+    });
 var app = builder.Build();
 
 app.MapControllers();
