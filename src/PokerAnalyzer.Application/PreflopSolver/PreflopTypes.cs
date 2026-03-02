@@ -10,7 +10,7 @@ public sealed record PreflopSolverConfig(
     decimal StartingStackBb = 100m,
     RakeConfig? Rake = null)
 {
-    public RakeConfig RakeConfig { get; init; } = Rake ?? new RakeConfig(0.05m, 1.0m, noFlopNoDrop: true);
+    public RakeConfig RakeConfig { get; init; } = Rake ?? new RakeConfig(0.05m, 1.0m, NoFlopNoDrop: true);
 }
 
 public sealed record PreflopNodeState(
