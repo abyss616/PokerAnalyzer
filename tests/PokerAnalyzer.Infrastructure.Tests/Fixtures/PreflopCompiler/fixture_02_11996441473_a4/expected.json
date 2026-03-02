@@ -2,9 +2,9 @@
   "expectedExtraction": {
     "actingPosition": "HJ",
     "facingPosition": "BB",
-    "historySignature": "LIMP",
+    "historySignature": "OPEN",
     "raiseDepth": 0,
-    "toCallBb": 1.0,
+    "toCallBb": 0.0,
     "effectiveStackBb": 79.0,
     "buckets": {
       "openSizeBucketBb": null,
@@ -14,6 +14,6 @@
       "fourBetSizeBucketBb": null,
       "jamThresholdBucketBb": 18.0
     },
-    "solverKey": "v2/LIMP/HJ/eff=79/jam=18"
+    "solverKey": "v2/OPEN/HJ/eff=79/jam=18"
   }
 }
