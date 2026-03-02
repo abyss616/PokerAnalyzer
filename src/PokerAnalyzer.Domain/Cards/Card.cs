@@ -1,9 +1,19 @@
-using System.Globalization;
-
 namespace PokerAnalyzer.Domain.Cards;
 
-public readonly record struct Card(Rank Rank, Suit Suit)
+public sealed class Card
 {
+    public Rank Rank { get; private set; }
+    public Suit Suit { get; private set; }
+
+    // EF
+    private Card() { }
+
+    public Card(Rank rank, Suit suit)
+    {
+        Rank = rank;
+        Suit = suit;
+    }
+
     public override string ToString() => $"{RankToChar(Rank)}{SuitToChar(Suit)}";
 
     public static Card Parse(string text)
@@ -21,7 +31,7 @@ public readonly record struct Card(Rank Rank, Suit Suit)
     public static bool TryParse(string text, out Card card)
     {
         try { card = Parse(text); return true; }
-        catch { card = default; return false; }
+        catch { card = null!; return false; }
     }
 
     private static Rank ParseRank(char c)
@@ -79,4 +89,9 @@ public readonly record struct Card(Rank Rank, Suit Suit)
         Suit.Spades => 's',
         _ => throw new ArgumentOutOfRangeException(nameof(s))
     };
+
+    public override bool Equals(object? obj)
+        => obj is Card other && other.Rank == Rank && other.Suit == Suit;
+
+    public override int GetHashCode() => HashCode.Combine((int)Rank, (int)Suit);
 }

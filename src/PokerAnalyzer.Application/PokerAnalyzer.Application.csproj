@@ -1,4 +1,4 @@
-<Project Sdk="Microsoft.NET.Sdk">
+﻿<Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <AssemblyName>PokerAnalyzer.Application</AssemblyName>
     <RootNamespace>PokerAnalyzer.Application</RootNamespace>

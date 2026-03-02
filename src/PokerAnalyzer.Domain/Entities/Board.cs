@@ -1,4 +1,5 @@
-﻿public class Board
+﻿using PokerAnalyzer.Domain.Cards;
+public class Board
 {
     public Guid Id { get; private set; }   // PK
     public Guid HandId { get; private set; }
