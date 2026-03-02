@@ -1,0 +1,82 @@
+{
+  "meta": {
+    "gamecode": "11996443765",
+    "hero": "tigerfluffy676",
+    "heroCards": "HK DK",
+    "decisionActionNo": 9,
+    "signature": "VS_4BET"
+  },
+  "actionsBeforeHero": [
+    {
+      "player": "tigerfluffy676",
+      "position": "SB",
+      "action": {
+        "type": "POST_SB",
+        "amount": 0.01
+      }
+    },
+    {
+      "player": "RATEG",
+      "position": "BB",
+      "action": {
+        "type": "POST_BB",
+        "amount": 0.02
+      }
+    },
+    {
+      "player": "pivo9ka",
+      "position": "UTG",
+      "action": {
+        "type": "FOLD",
+        "amount": 0.0
+      }
+    },
+    {
+      "player": "Methodicalred87",
+      "position": "CO",
+      "action": {
+        "type": "RAISE_TO",
+        "amount": 0.06
+      }
+    },
+    {
+      "player": "xlnt",
+      "position": "BTN",
+      "action": {
+        "type": "FOLD",
+        "amount": 0.0
+      }
+    },
+    {
+      "player": "tigerfluffy676",
+      "position": "SB",
+      "action": {
+        "type": "RAISE_TO",
+        "amount": 0.2
+      }
+    },
+    {
+      "player": "RATEG",
+      "position": "BB",
+      "action": {
+        "type": "FOLD",
+        "amount": 0.0
+      }
+    },
+    {
+      "player": "Methodicalred87",
+      "position": "CO",
+      "action": {
+        "type": "RAISE_TO",
+        "amount": 0.46
+      }
+    }
+  ],
+  "heroAction": {
+    "position": "SB",
+    "action": {
+      "type": "RAISE_TO",
+      "amount": 1.98
+    }
+  }
+}

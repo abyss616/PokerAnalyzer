@@ -1,0 +1,54 @@
+{
+  "actions": [
+    {
+      "actor": "RATEG",
+      "type": "POST_SB",
+      "amountBb": 0.5
+    },
+    {
+      "actor": "pivo9ka",
+      "type": "POST_BB",
+      "amountBb": 1.0
+    },
+    {
+      "actor": "tigerfluffy676",
+      "type": "POST_BB",
+      "amountBb": 1.0
+    },
+    {
+      "actor": "Methodicalred87",
+      "type": "FOLD",
+      "amountBb": 0.0
+    },
+    {
+      "actor": "xlnt",
+      "type": "FOLD",
+      "amountBb": 0.0
+    },
+    {
+      "actor": "tigerfluffy676",
+      "type": "TYPE_4",
+      "amountBb": 0.0
+    },
+    {
+      "actor": "Nutshxt",
+      "type": "FOLD",
+      "amountBb": 0.0
+    },
+    {
+      "actor": "RATEG",
+      "type": "RAISE_TO",
+      "amountBb": 3.5
+    },
+    {
+      "actor": "pivo9ka",
+      "type": "FOLD",
+      "amountBb": 0.0
+    },
+    {
+      "actor": "tigerfluffy676",
+      "type": "CALL",
+      "amountBb": 2.5
+    }
+  ]
+}

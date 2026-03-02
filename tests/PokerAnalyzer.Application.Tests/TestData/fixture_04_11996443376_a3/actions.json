@@ -1,0 +1,34 @@
+{
+  "meta": {
+    "gamecode": "11996443376",
+    "hero": "tigerfluffy676",
+    "heroCards": "D2 SJ",
+    "decisionActionNo": 3,
+    "signature": "RFI"
+  },
+  "actionsBeforeHero": [
+    {
+      "player": "Methodicalred87",
+      "position": "SB",
+      "action": {
+        "type": "POST_SB",
+        "amount": 0.01
+      }
+    },
+    {
+      "player": "xlnt",
+      "position": "BB",
+      "action": {
+        "type": "POST_BB",
+        "amount": 0.02
+      }
+    }
+  ],
+  "heroAction": {
+    "position": "UTG",
+    "action": {
+      "type": "FOLD",
+      "amount": 0.0
+    }
+  }
+}

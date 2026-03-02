@@ -1,0 +1,19 @@
+{
+  "expectedExtraction": {
+    "actingPosition": "SB",
+    "facingPosition": "BB",
+    "historySignature": "UNOPENED_SB",
+    "raiseDepth": 0,
+    "toCallBb": 0.0,
+    "effectiveStackBb": 99.0,
+    "buckets": {
+      "openSizeBucketBb": null,
+      "isoSizeBucketBb": null,
+      "threeBetSizeBucketBb": null,
+      "squeezeSizeBucketBb": null,
+      "fourBetSizeBucketBb": null,
+      "jamThresholdBucketBb": 18.0
+    },
+    "solverKey": "v2/UNOPENED_SB/SB/eff=99/jam=18"
+  }
+}

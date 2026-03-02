@@ -1,0 +1,19 @@
+{
+  "expectedExtraction": {
+    "actingPosition": "CO",
+    "facingPosition": "BB",
+    "historySignature": "OPEN",
+    "raiseDepth": 0,
+    "toCallBb": 0.0,
+    "effectiveStackBb": 141.0,
+    "buckets": {
+      "openSizeBucketBb": null,
+      "isoSizeBucketBb": null,
+      "threeBetSizeBucketBb": null,
+      "squeezeSizeBucketBb": null,
+      "fourBetSizeBucketBb": null,
+      "jamThresholdBucketBb": 18.0
+    },
+    "solverKey": "v2/OPEN/CO/eff=141/jam=18"
+  }
+}

@@ -1,0 +1,42 @@
+{
+  "meta": {
+    "gamecode": "11996462774",
+    "hero": "tigerfluffy676",
+    "heroCards": "C4 D5",
+    "decisionActionNo": 4,
+    "signature": "VS_OPEN"
+  },
+  "actionsBeforeHero": [
+    {
+      "player": "RATEG",
+      "position": "SB",
+      "action": {
+        "type": "POST_SB",
+        "amount": 0.01
+      }
+    },
+    {
+      "player": "pivo9ka",
+      "position": "BB",
+      "action": {
+        "type": "POST_BB",
+        "amount": 0.02
+      }
+    },
+    {
+      "player": "kribardos",
+      "position": "UTG",
+      "action": {
+        "type": "RAISE_TO",
+        "amount": 0.04
+      }
+    }
+  ],
+  "heroAction": {
+    "position": "CO",
+    "action": {
+      "type": "CALL",
+      "amount": 0.04
+    }
+  }
+}

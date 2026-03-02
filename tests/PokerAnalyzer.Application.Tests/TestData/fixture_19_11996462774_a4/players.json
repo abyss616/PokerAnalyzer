@@ -1,0 +1,51 @@
+{
+  "meta": {
+    "gamecode": "11996462774",
+    "hero": "tigerfluffy676",
+    "heroCards": "C4 D5",
+    "decisionActionNo": 4,
+    "signature": "VS_OPEN"
+  },
+  "blinds": {
+    "sb": 0.01,
+    "bb": 0.02,
+    "currency": "EUR"
+  },
+  "players": [
+    {
+      "name": "kribardos",
+      "seat": 8,
+      "position": "UTG",
+      "stack": "\u20ac2.12",
+      "dealer": false
+    },
+    {
+      "name": "tigerfluffy676",
+      "seat": 1,
+      "position": "CO",
+      "stack": "\u20ac2.42",
+      "dealer": false
+    },
+    {
+      "name": "Artas50",
+      "seat": 3,
+      "position": "BTN",
+      "stack": "\u20ac1.84",
+      "dealer": true
+    },
+    {
+      "name": "RATEG",
+      "seat": 5,
+      "position": "SB",
+      "stack": "\u20ac2.32",
+      "dealer": false
+    },
+    {
+      "name": "pivo9ka",
+      "seat": 6,
+      "position": "BB",
+      "stack": "\u20ac3.10",
+      "dealer": false
+    }
+  ]
+}

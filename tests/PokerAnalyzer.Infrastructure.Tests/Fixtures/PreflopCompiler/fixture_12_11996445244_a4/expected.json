@@ -1,0 +1,19 @@
+{
+  "expectedExtraction": {
+    "actingPosition": "CO",
+    "facingPosition": "BB",
+    "historySignature": "UNOPENED_FOLD",
+    "raiseDepth": 0,
+    "toCallBb": 0.0,
+    "effectiveStackBb": 121.0,
+    "buckets": {
+      "openSizeBucketBb": null,
+      "isoSizeBucketBb": null,
+      "threeBetSizeBucketBb": null,
+      "squeezeSizeBucketBb": null,
+      "fourBetSizeBucketBb": null,
+      "jamThresholdBucketBb": 18.0
+    },
+    "solverKey": "v2/UNOPENED_FOLD/CO/eff=121/jam=18"
+  }
+}

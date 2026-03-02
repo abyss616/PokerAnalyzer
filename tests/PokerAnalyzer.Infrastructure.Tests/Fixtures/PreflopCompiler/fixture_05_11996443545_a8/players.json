@@ -1,0 +1,51 @@
+{
+  "table": {
+    "smallBlind": 0.5,
+    "bigBlind": 1.0,
+    "buttonSeat": 8
+  },
+  "seats": [
+    {
+      "playerId": "Nutshxt",
+      "seat": 3,
+      "stackChips": 122,
+      "position": "UTG",
+      "isHero": false
+    },
+    {
+      "playerId": "RATEG",
+      "seat": 5,
+      "stackChips": 100,
+      "position": "HJ",
+      "isHero": false
+    },
+    {
+      "playerId": "pivo9ka",
+      "seat": 6,
+      "stackChips": 132,
+      "position": "CO",
+      "isHero": false
+    },
+    {
+      "playerId": "Methodicalred87",
+      "seat": 8,
+      "stackChips": 87,
+      "position": "BTN",
+      "isHero": false
+    },
+    {
+      "playerId": "xlnt",
+      "seat": 10,
+      "stackChips": 103,
+      "position": "SB",
+      "isHero": false
+    },
+    {
+      "playerId": "tigerfluffy676",
+      "seat": 1,
+      "stackChips": 100,
+      "position": "BB",
+      "isHero": true
+    }
+  ]
+}

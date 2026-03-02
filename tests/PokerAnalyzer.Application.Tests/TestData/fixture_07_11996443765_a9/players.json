@@ -1,0 +1,51 @@
+{
+  "meta": {
+    "gamecode": "11996443765",
+    "hero": "tigerfluffy676",
+    "heroCards": "HK DK",
+    "decisionActionNo": 9,
+    "signature": "VS_4BET"
+  },
+  "blinds": {
+    "sb": 0.01,
+    "bb": 0.02,
+    "currency": "EUR"
+  },
+  "players": [
+    {
+      "name": "pivo9ka",
+      "seat": 6,
+      "position": "UTG",
+      "stack": "\u20ac2.63",
+      "dealer": false
+    },
+    {
+      "name": "Methodicalred87",
+      "seat": 8,
+      "position": "CO",
+      "stack": "\u20ac1.68",
+      "dealer": false
+    },
+    {
+      "name": "xlnt",
+      "seat": 10,
+      "position": "BTN",
+      "stack": "\u20ac2.14",
+      "dealer": true
+    },
+    {
+      "name": "tigerfluffy676",
+      "seat": 1,
+      "position": "SB",
+      "stack": "\u20ac1.98",
+      "dealer": false
+    },
+    {
+      "name": "RATEG",
+      "seat": 5,
+      "position": "BB",
+      "stack": "\u20ac2",
+      "dealer": false
+    }
+  ]
+}

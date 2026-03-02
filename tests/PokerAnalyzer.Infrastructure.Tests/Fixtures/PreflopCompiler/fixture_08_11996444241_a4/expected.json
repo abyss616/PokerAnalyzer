@@ -1,0 +1,19 @@
+{
+  "expectedExtraction": {
+    "actingPosition": "BTN",
+    "facingPosition": "BB",
+    "historySignature": "LIMP",
+    "raiseDepth": 0,
+    "toCallBb": 1.0,
+    "effectiveStackBb": 131.0,
+    "buckets": {
+      "openSizeBucketBb": null,
+      "isoSizeBucketBb": null,
+      "threeBetSizeBucketBb": null,
+      "squeezeSizeBucketBb": null,
+      "fourBetSizeBucketBb": null,
+      "jamThresholdBucketBb": 18.0
+    },
+    "solverKey": "v2/LIMP/BTN/eff=131/jam=18"
+  }
+}

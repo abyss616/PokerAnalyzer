@@ -1,0 +1,22 @@
+{
+  "meta": {
+    "gamecode": "11996447501",
+    "hero": "tigerfluffy676",
+    "heroCards": "H7 S4",
+    "decisionActionNo": 6,
+    "signature": "VS_OPEN"
+  },
+  "expectedExtraction": {
+    "actingPosition": "BTN",
+    "facingPosition": "CO",
+    "raiseDepth": 1,
+    "toCallBb": 3.0,
+    "historySignature": "VS_OPEN"
+  },
+  "expectedSolution": {
+    "expectedActionClass": "MIX",
+    "foldEvBb": -0.0,
+    "noRake": true,
+    "notes": "Only fold EV is exact; action class is a sanity expectation, not a full GTO target."
+  }
+}

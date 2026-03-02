@@ -1,0 +1,34 @@
+{
+  "actions": [
+    {
+      "actor": "tigerfluffy676",
+      "type": "POST_SB",
+      "amountBb": 0.5
+    },
+    {
+      "actor": "RATEG",
+      "type": "POST_BB",
+      "amountBb": 1.0
+    },
+    {
+      "actor": "pivo9ka",
+      "type": "FOLD",
+      "amountBb": 0.0
+    },
+    {
+      "actor": "Methodicalred87",
+      "type": "RAISE_TO",
+      "amountBb": 3.0
+    },
+    {
+      "actor": "xlnt",
+      "type": "FOLD",
+      "amountBb": 0.0
+    },
+    {
+      "actor": "tigerfluffy676",
+      "type": "RAISE_TO",
+      "amountBb": 10.0
+    }
+  ]
+}

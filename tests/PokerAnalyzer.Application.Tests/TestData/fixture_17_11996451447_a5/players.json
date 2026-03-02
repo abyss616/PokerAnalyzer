@@ -1,0 +1,44 @@
+{
+  "meta": {
+    "gamecode": "11996451447",
+    "hero": "tigerfluffy676",
+    "heroCards": "SJ HA",
+    "decisionActionNo": 5,
+    "signature": "VS_OPEN"
+  },
+  "blinds": {
+    "sb": 0.01,
+    "bb": 0.02,
+    "currency": "EUR"
+  },
+  "players": [
+    {
+      "name": "RATEG",
+      "seat": 5,
+      "position": "UTG",
+      "stack": "\u20ac2",
+      "dealer": false
+    },
+    {
+      "name": "pivo9ka",
+      "seat": 6,
+      "position": "BTN",
+      "stack": "\u20ac2.82",
+      "dealer": true
+    },
+    {
+      "name": "tigerfluffy676",
+      "seat": 1,
+      "position": "SB",
+      "stack": "\u20ac2.84",
+      "dealer": false
+    },
+    {
+      "name": "Artas50",
+      "seat": 3,
+      "position": "BB",
+      "stack": "\u20ac2.37",
+      "dealer": false
+    }
+  ]
+}

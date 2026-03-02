@@ -1,0 +1,90 @@
+{
+  "meta": {
+    "gamecode": "11996441111",
+    "hero": "tigerfluffy676",
+    "heroCards": "S2 S4",
+    "decisionActionNo": 10,
+    "signature": "VS_OPEN"
+  },
+  "actionsBeforeHero": [
+    {
+      "player": "RATEG",
+      "position": "SB",
+      "action": {
+        "type": "POST_SB",
+        "amount": 0.01
+      }
+    },
+    {
+      "player": "pivo9ka",
+      "position": "BB",
+      "action": {
+        "type": "POST_BB",
+        "amount": 0.02
+      }
+    },
+    {
+      "player": "tigerfluffy676",
+      "position": "CO",
+      "action": {
+        "type": "POST_BB",
+        "amount": 0.02
+      }
+    },
+    {
+      "player": "Methodicalred87",
+      "position": "UTG",
+      "action": {
+        "type": "FOLD",
+        "amount": 0.0
+      }
+    },
+    {
+      "player": "xlnt",
+      "position": "HJ",
+      "action": {
+        "type": "FOLD",
+        "amount": 0.0
+      }
+    },
+    {
+      "player": "tigerfluffy676",
+      "position": "CO",
+      "action": {
+        "type": "TYPE_4",
+        "amount": 0.0
+      }
+    },
+    {
+      "player": "Nutshxt",
+      "position": "BTN",
+      "action": {
+        "type": "FOLD",
+        "amount": 0.0
+      }
+    },
+    {
+      "player": "RATEG",
+      "position": "SB",
+      "action": {
+        "type": "RAISE_TO",
+        "amount": 0.07
+      }
+    },
+    {
+      "player": "pivo9ka",
+      "position": "BB",
+      "action": {
+        "type": "FOLD",
+        "amount": 0.0
+      }
+    }
+  ],
+  "heroAction": {
+    "position": "CO",
+    "action": {
+      "type": "CALL",
+      "amount": 0.05
+    }
+  }
+}

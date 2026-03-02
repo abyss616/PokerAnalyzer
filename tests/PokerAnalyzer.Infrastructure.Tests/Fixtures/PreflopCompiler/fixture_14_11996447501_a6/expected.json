@@ -1,0 +1,19 @@
+{
+  "expectedExtraction": {
+    "actingPosition": "BTN",
+    "facingPosition": "CO",
+    "historySignature": "VS_OPEN",
+    "raiseDepth": 1,
+    "toCallBb": 3.0,
+    "effectiveStackBb": 104.0,
+    "buckets": {
+      "openSizeBucketBb": 3.0,
+      "isoSizeBucketBb": null,
+      "threeBetSizeBucketBb": null,
+      "squeezeSizeBucketBb": null,
+      "fourBetSizeBucketBb": null,
+      "jamThresholdBucketBb": 18.0
+    },
+    "solverKey": "v2/VS_OPEN/BTN/eff=104/open=3/jam=18"
+  }
+}

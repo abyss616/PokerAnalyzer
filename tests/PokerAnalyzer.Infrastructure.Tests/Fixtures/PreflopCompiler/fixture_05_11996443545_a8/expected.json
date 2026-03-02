@@ -1,0 +1,19 @@
+{
+  "expectedExtraction": {
+    "actingPosition": "BB",
+    "facingPosition": "SB",
+    "historySignature": "VS_3BET",
+    "raiseDepth": 2,
+    "toCallBb": 10.0,
+    "effectiveStackBb": 92.0,
+    "buckets": {
+      "openSizeBucketBb": 3.0,
+      "isoSizeBucketBb": null,
+      "threeBetSizeBucketBb": 11.0,
+      "squeezeSizeBucketBb": null,
+      "fourBetSizeBucketBb": null,
+      "jamThresholdBucketBb": 18.0
+    },
+    "solverKey": "v2/VS_3BET/BB/eff=92/open=3/3bet=11/jam=18"
+  }
+}

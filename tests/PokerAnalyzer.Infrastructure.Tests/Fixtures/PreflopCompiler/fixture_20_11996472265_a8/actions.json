@@ -1,0 +1,44 @@
+{
+  "actions": [
+    {
+      "actor": "Nutshxt",
+      "type": "POST_SB",
+      "amountBb": 0.5
+    },
+    {
+      "actor": "tigerfluffy676",
+      "type": "POST_BB",
+      "amountBb": 1.0
+    },
+    {
+      "actor": "Artas50",
+      "type": "FOLD",
+      "amountBb": 0.0
+    },
+    {
+      "actor": "RATEG",
+      "type": "RAISE_TO",
+      "amountBb": 3.5
+    },
+    {
+      "actor": "pivo9ka",
+      "type": "FOLD",
+      "amountBb": 0.0
+    },
+    {
+      "actor": "kribardos",
+      "type": "FOLD",
+      "amountBb": 0.0
+    },
+    {
+      "actor": "Nutshxt",
+      "type": "FOLD",
+      "amountBb": 0.0
+    },
+    {
+      "actor": "tigerfluffy676",
+      "type": "FOLD",
+      "amountBb": 0.0
+    }
+  ]
+}

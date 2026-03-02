@@ -1,0 +1,58 @@
+{
+  "meta": {
+    "gamecode": "11996447958",
+    "hero": "tigerfluffy676",
+    "heroCards": "CJ C10",
+    "decisionActionNo": 9,
+    "signature": "VS_3BET"
+  },
+  "blinds": {
+    "sb": 0.01,
+    "bb": 0.02,
+    "currency": "EUR"
+  },
+  "players": [
+    {
+      "name": "Nutshxt",
+      "seat": 8,
+      "position": "UTG",
+      "stack": "\u20ac2.44",
+      "dealer": false
+    },
+    {
+      "name": "xlnt",
+      "seat": 10,
+      "position": "HJ",
+      "stack": "\u20ac2.17",
+      "dealer": false
+    },
+    {
+      "name": "tigerfluffy676",
+      "seat": 1,
+      "position": "CO",
+      "stack": "\u20ac3.25",
+      "dealer": false
+    },
+    {
+      "name": "Artas50",
+      "seat": 3,
+      "position": "BTN",
+      "stack": "\u20ac1.97",
+      "dealer": true
+    },
+    {
+      "name": "RATEG",
+      "seat": 5,
+      "position": "SB",
+      "stack": "\u20ac2",
+      "dealer": false
+    },
+    {
+      "name": "pivo9ka",
+      "seat": 6,
+      "position": "BB",
+      "stack": "\u20ac2.85",
+      "dealer": false
+    }
+  ]
+}

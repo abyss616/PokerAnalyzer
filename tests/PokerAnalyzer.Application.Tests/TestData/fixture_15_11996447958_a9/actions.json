@@ -1,0 +1,82 @@
+{
+  "meta": {
+    "gamecode": "11996447958",
+    "hero": "tigerfluffy676",
+    "heroCards": "CJ C10",
+    "decisionActionNo": 9,
+    "signature": "VS_3BET"
+  },
+  "actionsBeforeHero": [
+    {
+      "player": "RATEG",
+      "position": "SB",
+      "action": {
+        "type": "POST_SB",
+        "amount": 0.01
+      }
+    },
+    {
+      "player": "pivo9ka",
+      "position": "BB",
+      "action": {
+        "type": "POST_BB",
+        "amount": 0.02
+      }
+    },
+    {
+      "player": "Nutshxt",
+      "position": "UTG",
+      "action": {
+        "type": "FOLD",
+        "amount": 0.0
+      }
+    },
+    {
+      "player": "xlnt",
+      "position": "HJ",
+      "action": {
+        "type": "FOLD",
+        "amount": 0.0
+      }
+    },
+    {
+      "player": "tigerfluffy676",
+      "position": "CO",
+      "action": {
+        "type": "RAISE_TO",
+        "amount": 0.07
+      }
+    },
+    {
+      "player": "Artas50",
+      "position": "BTN",
+      "action": {
+        "type": "RAISE_TO",
+        "amount": 0.12
+      }
+    },
+    {
+      "player": "RATEG",
+      "position": "SB",
+      "action": {
+        "type": "FOLD",
+        "amount": 0.0
+      }
+    },
+    {
+      "player": "pivo9ka",
+      "position": "BB",
+      "action": {
+        "type": "FOLD",
+        "amount": 0.0
+      }
+    }
+  ],
+  "heroAction": {
+    "position": "CO",
+    "action": {
+      "type": "CALL",
+      "amount": 0.05
+    }
+  }
+}

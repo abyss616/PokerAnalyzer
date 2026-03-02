@@ -9,10 +9,12 @@
     <PackageReference Include="xunit.runner.visualstudio" Version="2.8.2" />
   </ItemGroup>
   <ItemGroup>
-    <ProjectReference Include="..\..\src\PokerAnalyzer.Application\PokerAnalyzer.Application.csproj" />
+    <ProjectReference Include="..\..\src\PokerAnalyzer.Infrastructure\PokerAnalyzer.Infrastructure.csproj" />
     <ProjectReference Include="..\..\src\PokerAnalyzer.Domain\PokerAnalyzer.Domain.csproj" />
   </ItemGroup>
   <ItemGroup>
-    <Folder Include="TestData\" />
+    <None Update="Fixtures\**\*.json">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
   </ItemGroup>
 </Project>
