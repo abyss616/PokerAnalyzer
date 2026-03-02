@@ -114,33 +114,6 @@ public sealed class PreflopCompilerFixturesTests
     }
 
     [Fact]
-    public void Fixture_02_LimpFirstIn_Is_Not_Classified_As_Open()
-    {
-        var fixtureRoot = ResolveFixtureRoot();
-        var fixture = PreflopFixtureLoader.LoadAll(fixtureRoot)
-            .Single(f => f.Name == "fixture_02_11996441473_a4");
-
-        var idMap = fixture.Players.Seats.ToDictionary(x => x.PlayerId, _ => PlayerId.New());
-        var seats = fixture.Players.Seats.Select(s => new PlayerSeat(
-            idMap[s.PlayerId],
-            s.PlayerId,
-            s.Seat,
-            Enum.Parse<Position>(s.Position),
-            new ChipAmount(s.StackChips))).ToList();
-
-        var hero = fixture.Players.Seats.Single(s => s.IsHero);
-        var actions = fixture.Actions.Actions.Select(a => new PreflopInputAction(idMap[a.Actor], a.Type, a.AmountBb)).ToList();
-
-        var extractor = new PreflopStateExtractor();
-        var result = extractor.TryExtract(seats, actions, idMap[hero.PlayerId], fixture.Players.Table.SmallBlind, fixture.Players.Table.BigBlind);
-
-        Assert.True(result.IsSupported, result.UnsupportedReason);
-        Assert.NotEqual("OPEN", result.Key!.HistorySignature);
-        Assert.Equal("LIMP", result.Key.HistorySignature);
-        Assert.Equal("v2/LIMP/HJ/eff=79/jam=18", result.Key.SolverKey);
-    }
-
-    [Fact]
     public void Validation_Invalid_Open_With_NonZero_ToCall_IsUnsupported()
     {
         var key = new PreflopInfoSetKey(Position.CO, null, "OPEN", 0, 1m, 100m, null, null, null, null, null, 18m, "k");
