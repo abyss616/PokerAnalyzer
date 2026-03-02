@@ -1,4 +1,5 @@
 ﻿using Microsoft.EntityFrameworkCore;
+using PokerAnalyzer.Domain.Cards;
 
 namespace PokerAnalyzer.Infrastructure.Persistence
 {
@@ -170,9 +171,10 @@ namespace PokerAnalyzer.Infrastructure.Persistence
             {
                 board.ToTable("Boards");
                 board.HasKey(b => b.Id);
+                board.Navigation(b => b.Flop).HasField("_flop");
 
                 // FLOP (owned collection)
-                board.OwnsMany(b => b.Flop, cb =>
+                board.OwnsMany<Card>("_flop", cb =>
                 {
                     cb.ToTable("BoardFlopCards");
                     cb.WithOwner().HasForeignKey("BoardId");
