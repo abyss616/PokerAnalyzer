@@ -30,6 +30,7 @@ public sealed class PreflopStateExtractor
         var raiseDepth = 0;
         PlayerId? lastAggressor = null;
         var raiseSizesBb = new List<decimal>();
+        string? actingPlayersFirstActionType = null;
 
         void PostBlind(Position position, decimal amount)
         {
@@ -49,6 +50,9 @@ public sealed class PreflopStateExtractor
             {
                 if (!byId.ContainsKey(act.PlayerId))
                     continue;
+
+                if (act.PlayerId == actingPlayerId && actingPlayersFirstActionType is null)
+                    actingPlayersFirstActionType = act.Type;
 
                 var amountChips = act.AmountBb * bigBlind;
                 raw.Add(new PreflopRawActionTrace(Street.Preflop, act.PlayerId, byId[act.PlayerId].Position, act.Type, amountChips, act.AmountBb));
@@ -98,7 +102,7 @@ public sealed class PreflopStateExtractor
         var actingContribBb = bigBlind == 0 ? 0 : decimal.Round(contrib[actingPlayerId] / bigBlind, 2);
         var potBb = bigBlind == 0 ? 0 : decimal.Round(pot / bigBlind, 2);
 
-        var historySignature = BuildSignature(actingSeat.Position, raiseDepth);
+        var historySignature = BuildSignature(actingSeat.Position, raiseDepth, actingPlayersFirstActionType);
 
         if (historySignature == "OPEN")
             toCallBb = 0m;
@@ -234,10 +238,20 @@ public sealed class PreflopStateExtractor
         }
     }
 
-    private static string BuildSignature(Position acting, int raiseDepth)
+    private static string BuildSignature(Position acting, int raiseDepth, string? actingPlayersFirstActionType)
     {
         if (raiseDepth == 0)
-            return acting == Position.SB ? "UNOPENED_SB" : "OPEN";
+        {
+            if (acting == Position.SB)
+                return "UNOPENED_SB";
+
+            return actingPlayersFirstActionType switch
+            {
+                "RAISE_TO" or "ALL_IN" => "OPEN",
+                "CALL" => "LIMP",
+                _ => "OPEN"
+            };
+        }
 
         return raiseDepth switch
         {
