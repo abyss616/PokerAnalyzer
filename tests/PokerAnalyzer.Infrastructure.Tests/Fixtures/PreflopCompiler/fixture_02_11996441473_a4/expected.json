@@ -2,7 +2,7 @@
   "expectedExtraction": {
     "actingPosition": "HJ",
     "facingPosition": "BB",
-    "historySignature": "OPEN",
+    "historySignature": "UNOPENED",
     "raiseDepth": 0,
     "toCallBb": 0.0,
     "effectiveStackBb": 79.0,
@@ -14,6 +14,6 @@
       "fourBetSizeBucketBb": null,
       "jamThresholdBucketBb": 18.0
     },
-    "solverKey": "v2/OPEN/HJ/eff=79/jam=18"
+    "solverKey": "v2/UNOPENED/HJ/eff=79/jam=18"
   }
 }
