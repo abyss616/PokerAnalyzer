@@ -2,6 +2,7 @@ using PokerAnalyzer.Application.Analysis;
 using PokerAnalyzer.Application.Engines;
 using PokerAnalyzer.Domain.Cards;
 using PokerAnalyzer.Domain.Game;
+using Xunit;
 
 namespace PokerAnalyzer.Application.Tests;
 
