@@ -34,6 +34,7 @@ public class HandAnalyzerTests
             Seats: seats,
             HeroId: hero,
             HeroHoleCards: HoleCards.Parse("AsKh"),
+            RevealedHoleCards: null,
             Board: new Board(),
             Actions: new List<BettingAction>
             {
