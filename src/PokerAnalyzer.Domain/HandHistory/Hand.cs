@@ -10,6 +10,7 @@ public sealed record Hand(
     IReadOnlyList<PlayerSeat> Seats,
     PlayerId HeroId,
     HoleCards? HeroHoleCards,
+    IReadOnlyDictionary<PlayerId, HoleCards>? RevealedHoleCards,
     Board Board,
     IReadOnlyList<BettingAction> Actions
 );

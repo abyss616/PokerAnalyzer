@@ -86,6 +86,7 @@ public sealed record AnalyzeHandRequest(
             seats,
             heroId,
             hc,
+            null,
             board,
             actions
         );

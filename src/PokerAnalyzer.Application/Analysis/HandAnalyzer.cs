@@ -1,4 +1,5 @@
 using PokerAnalyzer.Application.Engines;
+using PokerAnalyzer.Domain.Cards;
 using PokerAnalyzer.Domain.Game;
 using PokerAnalyzer.Domain.HandHistory;
 
@@ -11,10 +12,16 @@ namespace PokerAnalyzer.Application.Analysis;
 public sealed class HandAnalyzer
 {
     private readonly IStrategyEngine _engine;
+    private readonly IAllInEquityCalculator? _allInEquityCalculator;
 
-    public HandAnalyzer(IStrategyEngine engine)
+    public HandAnalyzer(IStrategyEngine engine) : this(engine, null)
+    {
+    }
+
+    public HandAnalyzer(IStrategyEngine engine, IAllInEquityCalculator? allInEquityCalculator)
     {
         _engine = engine ?? throw new ArgumentNullException(nameof(engine));
+        _allInEquityCalculator = allInEquityCalculator;
     }
 
     public HandAnalysisResult Analyze(Domain.HandHistory.Hand hand)
@@ -51,7 +58,62 @@ public sealed class HandAnalyzer
             state = state.Apply(a);
         }
 
-        return new HandAnalysisResult(hand.HandId, decisions);
+        var preflopAllIn = TryComputePreflopAllIn(hand);
+        return new HandAnalysisResult(hand.HandId, decisions, preflopAllIn);
+    }
+
+    private PreflopAllInTerminalResult? TryComputePreflopAllIn(Domain.HandHistory.Hand hand)
+    {
+        if (_allInEquityCalculator is null)
+            return null;
+
+        var revealed = hand.RevealedHoleCards is null
+            ? new Dictionary<PlayerId, HoleCards>()
+            : new Dictionary<PlayerId, HoleCards>(hand.RevealedHoleCards);
+        if (hand.HeroHoleCards.HasValue)
+            revealed[hand.HeroId] = hand.HeroHoleCards.Value;
+
+        if (revealed.Count < 2)
+            return null;
+
+        var state = HandState.CreateNewHand(hand.Seats, hand.SmallBlind, hand.BigBlind, Street.Preflop, hand.Board);
+        for (var i = 0; i < hand.Actions.Count; i++)
+        {
+            var action = hand.Actions[i];
+            if (action.Street != Street.Preflop)
+                break;
+
+            state = state.Apply(action);
+
+            var active = state.ActivePlayers.ToList();
+            var allInCount = active.Count(p => state.Stacks[p].Value <= 0);
+            var effectivelyClosed = active.All(p => state.Stacks[p].Value <= 0 || state.GetToCall(p).Value == 0);
+            if (allInCount < 2 || !effectivelyClosed)
+                continue;
+
+            var knownPlayers = active.Where(revealed.ContainsKey).Select(p => (p, revealed[p])).ToList();
+            if (knownPlayers.Count < 2)
+                continue;
+
+            var equity = _allInEquityCalculator.ComputePreflopAsync(knownPlayers, samples: knownPlayers.Count == 2 ? null : 100_000, seed: 12345, CancellationToken.None)
+                .GetAwaiter()
+                .GetResult();
+
+            var holeCardsKnown = active.ToDictionary(p => p, p => revealed.TryGetValue(p, out var cards) ? cards : (HoleCards?)null);
+            var committed = active.ToDictionary(p => p, p => (decimal)state.StreetContrib[p].Value);
+            return new PreflopAllInTerminalResult(
+                Street.Preflop,
+                active,
+                holeCardsKnown,
+                state.Pot.Value,
+                committed,
+                equity.Equities,
+                equity.Method,
+                equity.SamplesUsed,
+                equity.SeedUsed);
+        }
+
+        return null;
     }
 
     private static DecisionSeverity Score(BettingAction actual, Recommendation rec)
