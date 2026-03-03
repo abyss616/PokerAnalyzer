@@ -136,7 +136,7 @@ internal static class HandRankEvaluator
 {
     public static long Evaluate7(HoleCards hole, Card[] board)
     {
-        Span<Card> cards = stackalloc Card[7];
+        var cards = new Card[7];
         cards[0] = hole.First;
         cards[1] = hole.Second;
         for (var i = 0; i < 5; i++) cards[i + 2] = board[i];
