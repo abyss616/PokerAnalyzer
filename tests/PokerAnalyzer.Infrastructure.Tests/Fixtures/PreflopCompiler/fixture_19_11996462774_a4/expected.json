@@ -1,19 +1,19 @@
 {
   "expectedExtraction": {
     "actingPosition": "CO",
-    "facingPosition": "BB",
-    "historySignature": "LIMP",
-    "raiseDepth": 0,
-    "toCallBb": 1.0,
-    "effectiveStackBb": 121.0,
+    "facingPosition": "UTG",
+    "historySignature": "VS_OPEN",
+    "raiseDepth": 1,
+    "toCallBb": 2.0,
+    "effectiveStackBb": 104.0,
     "buckets": {
-      "openSizeBucketBb": null,
+      "openSizeBucketBb": 2.0,
       "isoSizeBucketBb": null,
       "threeBetSizeBucketBb": null,
       "squeezeSizeBucketBb": null,
       "fourBetSizeBucketBb": null,
       "jamThresholdBucketBb": 18.0
     },
-    "solverKey": "v2/LIMP/CO/eff=121/jam=18"
+    "solverKey": "v2/VS_OPEN/CO/eff=104/open=2/jam=18"
   }
 }

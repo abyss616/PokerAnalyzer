@@ -19,7 +19,7 @@ public sealed class PreflopStateExtractor
         if (bigBlind <= 0)
             return Unsupported($"Cannot extract preflop key: invalid big blind ({bigBlind}).", []);
 
-     
+
         if (!byId.ContainsKey(actingPlayerId))
             return Unsupported("Cannot extract preflop key: acting player was not found in seat list.", []);
 
@@ -79,11 +79,15 @@ public sealed class PreflopStateExtractor
                         break;
                     case "RAISE_TO":
                     case "ALL_IN":
-                        // Historical fixture data can contain parser-produced min-opens (2bb)
-                        // that should not advance the preflop tree. Treat those as ignorable
-                        // noise in unopened pots so resulting keys stay aligned with fixtures.
-                        if (raiseDepth == 0 && betToCall <= bigBlind && act.AmountBb <= 2m)
+                        // Only ignore parser-noise "min-opens" from blinds in unopened pots.
+                        // CO/BTN/etc opens to 2bb are real opens and must advance the tree (fixture_18).
+                        var pos = byId[act.PlayerId].Position;
+
+                        if (raiseDepth == 0 && betToCall <= bigBlind && act.AmountBb <= 2m
+                            && (pos == Position.SB || pos == Position.BB))
+                        {
                             break;
+                        }
 
                         ApplyToAmount(act.PlayerId, amountChips);
                         if (contrib[act.PlayerId] > betToCall)
@@ -94,6 +98,7 @@ public sealed class PreflopStateExtractor
                             raiseSizesBb.Add(decimal.Round(contrib[act.PlayerId] / bigBlind, 2));
                         }
                         break;
+
                     case "CALL":
                         ApplyDelta(act.PlayerId, amountChips);
                         break;
@@ -105,69 +110,69 @@ public sealed class PreflopStateExtractor
             }
 
             var actingSeat = byId[actingPlayerId];
-        var toCallChips = Math.Max(0, betToCall - contrib[actingPlayerId]);
-        var toCallBb = bigBlind == 0 ? 0 : decimal.Round(toCallChips / bigBlind, 2);
-        var currentBetBb = bigBlind == 0 ? 0 : decimal.Round(betToCall / bigBlind, 2);
-        var actingContribBb = bigBlind == 0 ? 0 : decimal.Round(contrib[actingPlayerId] / bigBlind, 2);
-        var potBb = bigBlind == 0 ? 0 : decimal.Round(pot / bigBlind, 2);
+            var toCallChips = Math.Max(0, betToCall - contrib[actingPlayerId]);
+            var toCallBb = bigBlind == 0 ? 0 : decimal.Round(toCallChips / bigBlind, 2);
+            var currentBetBb = bigBlind == 0 ? 0 : decimal.Round(betToCall / bigBlind, 2);
+            var actingContribBb = bigBlind == 0 ? 0 : decimal.Round(contrib[actingPlayerId] / bigBlind, 2);
+            var potBb = bigBlind == 0 ? 0 : decimal.Round(pot / bigBlind, 2);
 
-        var historySignature = BuildSignature(actingSeat.Position, raiseDepth, actingPlayersFirstActionType);
+            var historySignature = BuildSignature(actingSeat.Position, raiseDepth, actingPlayersFirstActionType);
 
-        if (historySignature is "OPEN" or "UNOPENED" or "UNOPENED_SB" or "UNOPENED_CHECK" or "UNOPENED_FOLD")
-            toCallBb = 0m;
+            if (historySignature is "OPEN" or "UNOPENED" or "UNOPENED_SB" or "UNOPENED_CHECK" or "UNOPENED_FOLD")
+                toCallBb = 0m;
 
-        var bigBlindSeat = seats.FirstOrDefault(s => s.Position == Position.BB);
-        Position? facingPos = lastAggressor.HasValue
-            ? byId[lastAggressor.Value].Position
-            : bigBlindSeat?.Position;
-        var facingStack = lastAggressor.HasValue
-            ? stacks[lastAggressor.Value]
-            : (bigBlindSeat is not null ? stacks[bigBlindSeat.Id] : stacks.Values.Max());
+            var bigBlindSeat = seats.FirstOrDefault(s => s.Position == Position.BB);
+            Position? facingPos = lastAggressor.HasValue
+                ? byId[lastAggressor.Value].Position
+                : bigBlindSeat?.Position;
+            var facingStack = lastAggressor.HasValue
+                ? stacks[lastAggressor.Value]
+                : (bigBlindSeat is not null ? stacks[bigBlindSeat.Id] : stacks.Values.Max());
             var effectiveStackBb = decimal.Round(Math.Min(stacks[actingPlayerId], facingStack) / bigBlind, 2);
 
-        decimal? openSizeBucketBb = raiseSizesBb.Count >= 1 ? raiseSizesBb[0] : null;
-        decimal? isoSizeBucketBb = null;
-        decimal? threeBetSizeBucketBb = raiseSizesBb.Count >= 2 ? raiseSizesBb[1] : null;
-        decimal? squeezeSizeBucketBb = null;
-        decimal? fourBetSizeBucketBb = raiseSizesBb.Count >= 3 ? raiseSizesBb[2] : null;
-        decimal? jamThresholdBucketBb = 18m;
+            decimal? openSizeBucketBb = raiseSizesBb.Count >= 1 ? raiseSizesBb[0] : null;
+            decimal? isoSizeBucketBb = null;
+            decimal? threeBetSizeBucketBb = raiseSizesBb.Count >= 2 ? raiseSizesBb[1] : null;
+            decimal? squeezeSizeBucketBb = null;
+            decimal? fourBetSizeBucketBb = raiseSizesBb.Count >= 3 ? raiseSizesBb[2] : null;
+            decimal? jamThresholdBucketBb = 18m;
 
-        var solverKey = BuildSolverKey(
-            historySignature,
-            actingSeat.Position,
-            effectiveStackBb,
-            openSizeBucketBb,
-            isoSizeBucketBb,
-            threeBetSizeBucketBb,
-            squeezeSizeBucketBb,
-            fourBetSizeBucketBb,
-            jamThresholdBucketBb);
-        var key = new PreflopInfoSetKey(
-            actingSeat.Position,
-            facingPos,
-            historySignature,
-            raiseDepth,
-            toCallBb,
-            effectiveStackBb,
-            openSizeBucketBb,
-            isoSizeBucketBb,
-            threeBetSizeBucketBb,
-            squeezeSizeBucketBb,
-            fourBetSizeBucketBb,
-            jamThresholdBucketBb,
-            solverKey);
+            var solverKey = BuildSolverKey(
+                historySignature,
+                actingSeat.Position,
+                effectiveStackBb,
+                openSizeBucketBb,
+                isoSizeBucketBb,
+                threeBetSizeBucketBb,
+                squeezeSizeBucketBb,
+                fourBetSizeBucketBb,
+                jamThresholdBucketBb);
+            var key = new PreflopInfoSetKey(
+                actingSeat.Position,
+                facingPos,
+                historySignature,
+                raiseDepth,
+                toCallBb,
+                effectiveStackBb,
+                openSizeBucketBb,
+                isoSizeBucketBb,
+                threeBetSizeBucketBb,
+                squeezeSizeBucketBb,
+                fourBetSizeBucketBb,
+                jamThresholdBucketBb,
+                solverKey);
 
-        var ctx = new PreflopSpotContext(
-            actingPlayerId,
-            actingSeat.Position,
-            lastAggressor,
-            facingPos,
-            raiseDepth,
-            toCallBb,
-            currentBetBb,
-            actingContribBb,
-            potBb,
-            effectiveStackBb);
+            var ctx = new PreflopSpotContext(
+                actingPlayerId,
+                actingSeat.Position,
+                lastAggressor,
+                facingPos,
+                raiseDepth,
+                toCallBb,
+                currentBetBb,
+                actingContribBb,
+                potBb,
+                effectiveStackBb);
 
             var trace = new PreflopQueryTrace
             {
