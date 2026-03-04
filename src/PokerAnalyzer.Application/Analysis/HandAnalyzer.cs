@@ -62,7 +62,7 @@ public sealed class HandAnalyzer
         }
 
         var preflopAllIn = TryComputePreflopAllIn(hand);
-        var preflopToFlop = TryComputePreflopToFlopTerminal(hand);
+        var preflopToFlop = preflopAllIn is null ? TryComputePreflopToFlopTerminal(hand) : null;
         return new HandAnalysisResult(hand.HandId, decisions, preflopAllIn, preflopToFlop);
     }
 
