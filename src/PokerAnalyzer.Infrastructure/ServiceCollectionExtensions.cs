@@ -14,6 +14,7 @@ public static class ServiceCollectionExtensions
     {
         services.AddSingleton<IStrategyEngine, DummyStrategyEngine>();
         services.AddSingleton<IAllInEquityCalculator, AllInEquityCalculator>();
+        services.AddSingleton<IFlopContinuationValueCalculator, FlopContinuationValueCalculator>();
         services.AddTransient<HandAnalyzer>();
         services.AddPokerAnalyzerDb();
         services.AddScoped<IHandHistoryRepository, HandHistoryRepository>();
