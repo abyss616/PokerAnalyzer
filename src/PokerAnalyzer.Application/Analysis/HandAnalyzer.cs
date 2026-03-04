@@ -13,15 +13,20 @@ public sealed class HandAnalyzer
 {
     private readonly IStrategyEngine _engine;
     private readonly IAllInEquityCalculator? _allInEquityCalculator;
+    private readonly IFlopContinuationValueCalculator? _flopContinuationValueCalculator;
 
-    public HandAnalyzer(IStrategyEngine engine) : this(engine, null)
+    public HandAnalyzer(IStrategyEngine engine) : this(engine, null, null)
     {
     }
 
-    public HandAnalyzer(IStrategyEngine engine, IAllInEquityCalculator? allInEquityCalculator)
+    public HandAnalyzer(
+        IStrategyEngine engine,
+        IAllInEquityCalculator? allInEquityCalculator,
+        IFlopContinuationValueCalculator? flopContinuationValueCalculator = null)
     {
         _engine = engine ?? throw new ArgumentNullException(nameof(engine));
         _allInEquityCalculator = allInEquityCalculator;
+        _flopContinuationValueCalculator = flopContinuationValueCalculator;
     }
 
     public HandAnalysisResult Analyze(Domain.HandHistory.Hand hand)
@@ -39,7 +44,6 @@ public sealed class HandAnalyzer
         {
             var a = hand.Actions[i];
 
-            // Hero decision point: compare action vs engine recommendation
             if (a.ActorId == hand.HeroId)
             {
                 var rec = _engine.Recommend(state, heroCtx);
@@ -54,12 +58,67 @@ public sealed class HandAnalyzer
                 ));
             }
 
-            // Apply action to advance the state
             state = state.Apply(a);
         }
 
         var preflopAllIn = TryComputePreflopAllIn(hand);
-        return new HandAnalysisResult(hand.HandId, decisions, preflopAllIn);
+        var preflopToFlop = TryComputePreflopToFlopTerminal(hand);
+        return new HandAnalysisResult(hand.HandId, decisions, preflopAllIn, preflopToFlop);
+    }
+
+    private PreflopToFlopTerminalResult? TryComputePreflopToFlopTerminal(Domain.HandHistory.Hand hand)
+    {
+        if (_flopContinuationValueCalculator is null)
+            return null;
+
+        var revealed = BuildKnownCards(hand);
+        if (revealed.Count < 2)
+            return null;
+
+        var state = HandState.CreateNewHand(hand.Seats, hand.SmallBlind, hand.BigBlind, Street.Preflop, hand.Board);
+        for (var i = 0; i < hand.Actions.Count; i++)
+        {
+            var action = hand.Actions[i];
+            if (action.Street != Street.Preflop)
+                break;
+
+            state = state.Apply(action);
+
+            var active = state.ActivePlayers.ToList();
+            if (active.Count < 2)
+                continue;
+
+            var bettingClosed = active.All(p => state.Stacks[p].Value <= 0 || state.GetToCall(p).Value == 0);
+            if (!bettingClosed)
+                continue;
+
+            var anyStackBehind = active.Any(p => state.Stacks[p].Value > 0);
+            if (!anyStackBehind)
+                continue;
+
+            var knownPlayers = active.Where(revealed.ContainsKey).Select(p => (p, revealed[p])).ToList();
+            if (knownPlayers.Count < 2)
+                continue;
+
+            var cv = _flopContinuationValueCalculator.ComputeAsync(knownPlayers, state, 50_000, 12345, CancellationToken.None)
+                .GetAwaiter()
+                .GetResult();
+
+            var holeCardsKnown = active.ToDictionary(p => p, p => revealed.TryGetValue(p, out var cards) ? cards : (HoleCards?)null);
+            var stacks = active.ToDictionary(p => p, p => (decimal)state.Stacks[p].Value);
+            return new PreflopToFlopTerminalResult(
+                Street.Preflop,
+                active,
+                holeCardsKnown,
+                state.Pot.Value,
+                stacks,
+                cv.ChipEv,
+                cv.Method,
+                cv.FlopsSampled,
+                cv.SeedUsed);
+        }
+
+        return null;
     }
 
     private PreflopAllInTerminalResult? TryComputePreflopAllIn(Domain.HandHistory.Hand hand)
@@ -67,12 +126,7 @@ public sealed class HandAnalyzer
         if (_allInEquityCalculator is null)
             return null;
 
-        var revealed = hand.RevealedHoleCards is null
-            ? new Dictionary<PlayerId, HoleCards>()
-            : new Dictionary<PlayerId, HoleCards>(hand.RevealedHoleCards);
-        if (hand.HeroHoleCards.HasValue)
-            revealed[hand.HeroId] = hand.HeroHoleCards.Value;
-
+        var revealed = BuildKnownCards(hand);
         if (revealed.Count < 2)
             return null;
 
@@ -116,12 +170,21 @@ public sealed class HandAnalyzer
         return null;
     }
 
+    private static Dictionary<PlayerId, HoleCards> BuildKnownCards(Domain.HandHistory.Hand hand)
+    {
+        var revealed = hand.RevealedHoleCards is null
+            ? new Dictionary<PlayerId, HoleCards>()
+            : new Dictionary<PlayerId, HoleCards>(hand.RevealedHoleCards);
+        if (hand.HeroHoleCards.HasValue)
+            revealed[hand.HeroId] = hand.HeroHoleCards.Value;
+        return revealed;
+    }
+
     private static DecisionSeverity Score(BettingAction actual, Recommendation rec)
     {
         if (rec.RankedActions.Count == 0)
             return DecisionSeverity.Unknown;
 
-        // v0 scoring: "OK" if the top recommended action matches type (and for bet/raise/all-in matches to-amount if provided)
         var top = rec.RankedActions[0];
 
         if (top.Type != actual.Type)
@@ -129,7 +192,6 @@ public sealed class HandAnalyzer
 
         if (top.ToAmount is not null && (actual.Type is ActionType.Bet or ActionType.Raise or ActionType.AllIn))
         {
-            // For v0, require exact match when engine specifies a to-amount
             if (top.ToAmount.Value != actual.Amount)
                 return DecisionSeverity.Inaccuracy;
         }
