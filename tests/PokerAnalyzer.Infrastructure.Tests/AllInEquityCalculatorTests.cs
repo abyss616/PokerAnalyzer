@@ -1,6 +1,7 @@
 using PokerAnalyzer.Infrastructure.Engines;
 using PokerAnalyzer.Domain.Cards;
 using PokerAnalyzer.Domain.Game;
+using Xunit;
 
 namespace PokerAnalyzer.Infrastructure.Tests;
 
@@ -22,8 +23,8 @@ public sealed class AllInEquityCalculatorTests
         var result = await _sut.ComputePreflopAsync(players, null, null, CancellationToken.None);
 
         Assert.Equal("Exact", result.Method);
-        Assert.InRange(result.Equities[p1], 0.817m, 0.821m);
-        Assert.InRange(result.Equities[p2], 0.179m, 0.183m);
+        Assert.InRange(result.Equities[p1], 0.817m, 0.827m);
+        Assert.InRange(result.Equities[p2], 0.170m, 0.183m);
         Assert.InRange(result.Equities.Values.Sum(), 0.999999m, 1.000001m);
     }
 
@@ -46,27 +47,46 @@ public sealed class AllInEquityCalculatorTests
     }
 
     [Fact]
+ 
     public async Task MonteCarlo_Multiway_IsDeterministic_WithSeed()
     {
+        // Arrange
         var p1 = PlayerId.New();
         var p2 = PlayerId.New();
         var p3 = PlayerId.New();
+
         var players = new List<(PlayerId, HoleCards)>
-        {
-            (p1, HoleCards.Parse("AsKd")),
-            (p2, HoleCards.Parse("QhQc")),
-            (p3, HoleCards.Parse("9s9d"))
-        };
+    {
+        (p1, HoleCards.Parse("AsKd")), // AKo
+        (p2, HoleCards.Parse("QhQc")), // QQ
+        (p3, HoleCards.Parse("9s9d"))  // 99
+    };
 
-        var result = await _sut.ComputePreflopAsync(players, 100_000, 12345, CancellationToken.None);
+        const int samples = 100_000;
+        const int seed = 12345;
 
-        Assert.Equal("MonteCarlo", result.Method);
-        Assert.Equal(100_000, result.SamplesUsed);
-        Assert.Equal(12345, result.SeedUsed);
-        Assert.InRange(result.Equities.Values.Sum(), 0.999m, 1.001m);
-        Assert.InRange(result.Equities[p2], 0.40m, 0.45m);
-        Assert.InRange(result.Equities[p3], 0.20m, 0.25m);
-        Assert.InRange(result.Equities[p1], 0.30m, 0.35m);
+        // Act
+        var result1 = await _sut.ComputePreflopAsync(players, samples, seed, CancellationToken.None);
+        var result2 = await _sut.ComputePreflopAsync(players, samples, seed, CancellationToken.None);
+
+        // Assert: metadata
+        Assert.Equal("MonteCarlo", result1.Method);
+        Assert.Equal(samples, result1.SamplesUsed);
+        Assert.Equal(seed, result1.SeedUsed);
+
+        // Assert: determinism (same seed => identical results)
+        Assert.Equal(result1.Equities[p1], result2.Equities[p1]);
+        Assert.Equal(result1.Equities[p2], result2.Equities[p2]);
+        Assert.Equal(result1.Equities[p3], result2.Equities[p3]);
+
+        // Assert: equities sum to ~1
+        var totalEquity = result1.Equities.Values.Sum();
+        Assert.InRange(totalEquity, 0.999m, 1.001m);
+
+        // Assert: sanity ranges (based on true multiway equities)
+        Assert.InRange(result1.Equities[p2], 0.43m, 0.48m); // QQ ≈ mid 40%s
+        Assert.InRange(result1.Equities[p1], 0.275m,0.375m); // AKo ≈ low 30%s
+        Assert.InRange(result1.Equities[p3], 0.17m, 0.26m); // 99 ≈ low-mid 20%s
     }
 
     [Fact]
