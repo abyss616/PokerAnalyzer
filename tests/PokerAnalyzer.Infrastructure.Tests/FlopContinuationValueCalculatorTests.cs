@@ -8,6 +8,9 @@ namespace PokerAnalyzer.Infrastructure.Tests;
 public sealed class FlopContinuationValueCalculatorTests
 {
     private readonly FlopContinuationValueCalculator _sut = new();
+    private static readonly ChipAmount SmallBlind = new(5);
+    private static readonly ChipAmount BigBlind = new(10);
+    private static readonly ChipAmount StartingStack100Bb = new(BigBlind.Value * 100);
 
     [Fact]
     public async Task Determinism_WithSeed_Multiway()
@@ -29,6 +32,7 @@ public sealed class FlopContinuationValueCalculatorTests
     public async Task EndOfPreflopBaseline_EvSumsToPreflopPot_WhenNoAdditionalFlopInvestment()
     {
         var (state, players) = BuildThreeWayEndOfPreflop();
+        AssertNoSidePotPrecondition(state);
 
         var result = await _sut.ComputeAsync(players, state, flopsToSample: 2_000, seed: 77, CancellationToken.None);
 
@@ -41,6 +45,7 @@ public sealed class FlopContinuationValueCalculatorTests
     public async Task EndOfPreflopBaseline_EvSumsToPreflopPot_WhenFlopBettingIncreasesPot()
     {
         var (state, players) = BuildHeadsUpEndOfPreflopAggressorVsStrongCaller();
+        AssertNoSidePotPrecondition(state);
 
         var result = await _sut.ComputeAsync(players, state, flopsToSample: 2_000, seed: 77, CancellationToken.None);
 
@@ -86,12 +91,12 @@ public sealed class FlopContinuationValueCalculatorTests
 
         var seats = new List<PlayerSeat>
         {
-            new(p1, "SB", 1, Position.SB, new ChipAmount(200)),
-            new(p2, "BB", 2, Position.BB, new ChipAmount(200)),
-            new(p3, "BTN", 3, Position.BTN, new ChipAmount(200))
+            new(p1, "SB", 1, Position.SB, StartingStack100Bb),
+            new(p2, "BB", 2, Position.BB, StartingStack100Bb),
+            new(p3, "BTN", 3, Position.BTN, StartingStack100Bb)
         };
 
-        var state = HandState.CreateNewHand(seats, new ChipAmount(5), new ChipAmount(10), Street.Preflop, new Board());
+        var state = HandState.CreateNewHand(seats, SmallBlind, BigBlind, Street.Preflop, new Board());
         state = state.Apply(new BettingAction(Street.Preflop, p3, ActionType.Raise, new ChipAmount(30)));
         state = state.Apply(new BettingAction(Street.Preflop, p1, ActionType.Call, ChipAmount.Zero));
         state = state.Apply(new BettingAction(Street.Preflop, p2, ActionType.Call, ChipAmount.Zero));
@@ -113,11 +118,11 @@ public sealed class FlopContinuationValueCalculatorTests
 
         var seats = new List<PlayerSeat>
         {
-            new(p1, "SB", 1, Position.SB, new ChipAmount(200)),
-            new(p2, "BB", 2, Position.BB, new ChipAmount(200))
+            new(p1, "SB", 1, Position.SB, StartingStack100Bb),
+            new(p2, "BB", 2, Position.BB, StartingStack100Bb)
         };
 
-        var state = HandState.CreateNewHand(seats, new ChipAmount(5), new ChipAmount(10), Street.Preflop, new Board());
+        var state = HandState.CreateNewHand(seats, SmallBlind, BigBlind, Street.Preflop, new Board());
         state = state.Apply(new BettingAction(Street.Preflop, p2, ActionType.Raise, new ChipAmount(30)));
         state = state.Apply(new BettingAction(Street.Preflop, p1, ActionType.Call, ChipAmount.Zero));
 
@@ -128,5 +133,11 @@ public sealed class FlopContinuationValueCalculatorTests
         };
 
         return (state, players);
+    }
+
+    private static void AssertNoSidePotPrecondition(HandState state)
+    {
+        var effectiveStacks = state.ActivePlayers.Select(player => state.Stacks[player].Value).Distinct().ToList();
+        Assert.Single(effectiveStacks);
     }
 }
