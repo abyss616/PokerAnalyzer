@@ -86,7 +86,7 @@ public sealed class FlopContinuationValueCalculator : IFlopContinuationValueCalc
                 if (showdownPlayers.Count == 1)
                 {
                     deltas[aggressor] += pot;
-                    NormalizeZeroSum(deltas);
+                    EnsureZeroSumInvariant(deltas);
                     Accumulate(evAccumulator, deltas);
                     continue;
                 }
@@ -97,7 +97,7 @@ public sealed class FlopContinuationValueCalculator : IFlopContinuationValueCalc
             }
 
             AwardShowdown(deltas, pot, showdownPlayers, knownById, flop, cards, rng, ct);
-            NormalizeZeroSum(deltas);
+            EnsureZeroSumInvariant(deltas);
             Accumulate(evAccumulator, deltas);
         }
 
@@ -213,15 +213,14 @@ public sealed class FlopContinuationValueCalculator : IFlopContinuationValueCalc
             total[player] += value;
     }
 
-    private static void NormalizeZeroSum(Dictionary<PlayerId, double> deltas)
+    private static void EnsureZeroSumInvariant(Dictionary<PlayerId, double> deltas)
     {
+        const double epsilon = 1e-9;
         var sum = deltas.Values.Sum();
-        if (Math.Abs(sum) < 1e-9)
+        if (Math.Abs(sum) <= epsilon)
             return;
 
-        var adjust = sum / deltas.Count;
-        foreach (var player in deltas.Keys.ToList())
-            deltas[player] -= adjust;
+        throw new InvalidOperationException($"Flop EV deltas must be zero-sum. Sum={sum:R}, Players={deltas.Count}.");
     }
 
     private static PlayerId ResolveAggressor(HandState state, IReadOnlyList<PlayerId> activeOrder)
