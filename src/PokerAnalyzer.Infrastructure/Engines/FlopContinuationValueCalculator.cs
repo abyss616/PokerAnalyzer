@@ -117,6 +117,7 @@ public sealed class FlopContinuationValueCalculator : IFlopContinuationValueCalc
     {
         var wins = contenders.ToDictionary(p => p, _ => 0d);
         var board = new Card[5];
+        var ranks = new long[contenders.Count];
         board[0] = flop[0]; board[1] = flop[1]; board[2] = flop[2];
 
         for (var i = 0; i < TurnRiverSamplesPerFlop; i++)
@@ -128,7 +129,6 @@ public sealed class FlopContinuationValueCalculator : IFlopContinuationValueCalc
 
             var best = long.MinValue;
             var winnerCount = 0;
-            Span<long> ranks = stackalloc long[contenders.Count];
             for (var p = 0; p < contenders.Count; p++)
             {
                 var pid = contenders[p];
