@@ -1,9 +1,34 @@
 ﻿using PokerAnalyzer.Domain.Cards;
+using PokerAnalyzer.Domain.Game;
 
 namespace PokerAnalyzer.Application.PreflopSolver;
 
 public static class TerminalUtilities
 {
+    public static Dictionary<PlayerId, double> ComputeFoldTerminalUtility(
+        IReadOnlyList<PlayerId> players,
+        PlayerId winner,
+        double potSize,
+        double rake = 0d)
+    {
+        if (players is null) throw new ArgumentNullException(nameof(players));
+        if (players.Count == 0)
+            throw new ArgumentException("At least one player is required.", nameof(players));
+        if (potSize < 0d)
+            throw new ArgumentOutOfRangeException(nameof(potSize), "potSize must be >= 0.");
+        if (rake < 0d)
+            throw new ArgumentOutOfRangeException(nameof(rake), "rake must be >= 0.");
+        if (rake > potSize)
+            throw new ArgumentOutOfRangeException(nameof(rake), "rake cannot exceed potSize.");
+
+        var utilities = players.ToDictionary(playerId => playerId, _ => 0d);
+        if (!utilities.ContainsKey(winner))
+            throw new ArgumentException("winner must be present in players.", nameof(winner));
+
+        utilities[winner] = potSize - rake;
+        return utilities;
+    }
+
     /// <summary>
     /// Computes realized terminal utility for an all-in showdown on a fully known 5-card runout.
     /// Baseline matches <see cref="ComputeEveryoneFoldsUtility"/>: utility is net chips relative
