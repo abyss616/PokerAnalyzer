@@ -26,14 +26,27 @@ public sealed class FlopContinuationValueCalculatorTests
     }
 
     [Fact]
-    public async Task ZeroSum_EvSumsToZero()
+    public async Task EndOfPreflopBaseline_EvSumsToPreflopPot_WhenNoAdditionalFlopInvestment()
     {
         var (state, players) = BuildThreeWayEndOfPreflop();
 
         var result = await _sut.ComputeAsync(players, state, flopsToSample: 2_000, seed: 77, CancellationToken.None);
 
-        var sum = result.ChipEv.Values.Sum();
-        Assert.True(Math.Abs(sum) <= 0.0001m, $"sum was {sum}");
+        var sum = (double)result.ChipEv.Values.Sum();
+        var expected = (double)state.Pot.Value;
+        Assert.True(Math.Abs(sum - expected) <= 1e-9, $"sum was {sum}, expected {expected}");
+    }
+
+    [Fact]
+    public async Task EndOfPreflopBaseline_EvSumsToPreflopPot_WhenFlopBettingIncreasesPot()
+    {
+        var (state, players) = BuildHeadsUpEndOfPreflopAggressorVsStrongCaller();
+
+        var result = await _sut.ComputeAsync(players, state, flopsToSample: 2_000, seed: 77, CancellationToken.None);
+
+        var sum = (double)result.ChipEv.Values.Sum();
+        var expected = (double)state.Pot.Value;
+        Assert.True(Math.Abs(sum - expected) <= 1e-9, $"sum was {sum}, expected {expected}");
     }
 
     [Fact]
@@ -88,6 +101,30 @@ public sealed class FlopContinuationValueCalculatorTests
             (p1, HoleCards.Parse("AsKd")),
             (p2, HoleCards.Parse("QhQc")),
             (p3, HoleCards.Parse("9s9d"))
+        };
+
+        return (state, players);
+    }
+
+    private static (HandState State, List<(PlayerId PlayerId, HoleCards Cards)> Players) BuildHeadsUpEndOfPreflopAggressorVsStrongCaller()
+    {
+        var p1 = PlayerId.New();
+        var p2 = PlayerId.New();
+
+        var seats = new List<PlayerSeat>
+        {
+            new(p1, "SB", 1, Position.SB, new ChipAmount(200)),
+            new(p2, "BB", 2, Position.BB, new ChipAmount(200))
+        };
+
+        var state = HandState.CreateNewHand(seats, new ChipAmount(5), new ChipAmount(10), Street.Preflop, new Board());
+        state = state.Apply(new BettingAction(Street.Preflop, p2, ActionType.Raise, new ChipAmount(30)));
+        state = state.Apply(new BettingAction(Street.Preflop, p1, ActionType.Call, ChipAmount.Zero));
+
+        var players = new List<(PlayerId PlayerId, HoleCards Cards)>
+        {
+            (p1, HoleCards.Parse("AsAh")),
+            (p2, HoleCards.Parse("7c2d"))
         };
 
         return (state, players);
