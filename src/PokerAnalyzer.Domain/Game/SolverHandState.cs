@@ -100,6 +100,9 @@ public sealed record SolverHandState
             deadCards ?? DeadCards,
             privateCardsByPlayer ?? PrivateCardsByPlayer);
 
+    public IReadOnlyList<LegalAction> GenerateLegalActions(IBetSizeSetProvider? sizeProvider = null)
+        => SolverLegalActionGenerator.GenerateLegalActions(this, sizeProvider);
+
     internal void ValidateNonNegativeStacks()
     {
         foreach (var player in Players)
