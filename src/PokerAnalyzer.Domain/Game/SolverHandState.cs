@@ -224,7 +224,7 @@ public sealed record SolverHandState
 
         var stateByPlayer = Players.ToDictionary(
             p => p.PlayerId,
-            _ => new ActionValidationState(active: true, allIn: false, contribution: ChipAmount.Zero));
+            _ => new ActionValidationState(Active: true, AllIn: false, Contribution: ChipAmount.Zero));
 
         var currentBet = ChipAmount.Zero;
         var lastRaiseSize = ChipAmount.Zero;
