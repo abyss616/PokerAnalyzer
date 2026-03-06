@@ -94,7 +94,7 @@ public class SolverStateStepperTests
         var p2 = Player(1, Position.BB, stack: 80, street: 20, total: 20);
         var state = CreateState(p2.PlayerId, [p1, p2], pot: 40, currentBetSize: 20, lastRaiseSize: 10, raisesThisStreet: 1,
             actionHistory: [
-                new SolverActionEntry(p1.PlayerId, ActionType.Raise, new ChipAmount(20))
+                new SolverActionEntry(p1.PlayerId, ActionType.Bet, new ChipAmount(20))
             ]);
 
         var next = SolverStateStepper.Step(state, new LegalAction(ActionType.Check));
@@ -159,7 +159,8 @@ public class SolverStateStepperTests
         var p3 = Player(2, Position.BTN, stack: 100, street: 0, total: 0);
         return CreateState(p1.PlayerId, [p1, p2, p3], pot: 30, currentBetSize: 20, lastRaiseSize: 10, raisesThisStreet: 1,
             actionHistory: [
-                new SolverActionEntry(p2.PlayerId, ActionType.Raise, new ChipAmount(20))
+                new SolverActionEntry(p1.PlayerId, ActionType.PostSmallBlind, new ChipAmount(10)),
+                new SolverActionEntry(p2.PlayerId, ActionType.PostBigBlind, new ChipAmount(20))
             ]);
     }
 
