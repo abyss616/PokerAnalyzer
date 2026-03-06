@@ -76,7 +76,7 @@ public class SolverHandStateTests
     [Fact]
     public void Constructor_SameActionInputs_ShouldProduceDeterministicSignature()
     {
-        var p1 = new SolverPlayerState(PlayerId.New(), 0, Position.SB, new ChipAmount(95), new ChipAmount(5), new ChipAmount(5), false, false);
+        var p1 = new SolverPlayerState(PlayerId.New(), 0, Position.SB, new ChipAmount(90), new ChipAmount(10), new ChipAmount(10), false, false);
         var p2 = new SolverPlayerState(PlayerId.New(), 1, Position.BB, new ChipAmount(90), new ChipAmount(10), new ChipAmount(10), false, false);
 
         var actions = new[]
