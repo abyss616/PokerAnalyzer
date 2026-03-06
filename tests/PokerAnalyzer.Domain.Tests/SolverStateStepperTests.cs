@@ -42,7 +42,6 @@ public class SolverStateStepperTests
         Assert.Equal(40, next.Pot.Value);
         Assert.Equal(state.Players[2].PlayerId, next.ActingPlayerId);
     }
-
     [Fact]
     public void Step_Bet_UpdatesBettingFields_AndAdvancesActingPlayer()
     {
@@ -92,9 +91,19 @@ public class SolverStateStepperTests
     {
         var p1 = Player(0, Position.SB, stack: 80, street: 20, total: 20);
         var p2 = Player(1, Position.BB, stack: 80, street: 20, total: 20);
-        var state = CreateState(p2.PlayerId, [p1, p2], pot: 40, currentBetSize: 20, lastRaiseSize: 10, raisesThisStreet: 1,
-            actionHistory: [
-                new SolverActionEntry(p1.PlayerId, ActionType.Bet, new ChipAmount(20))
+
+        var state = CreateState(
+            p2.PlayerId,
+            [p1, p2],
+            pot: 40,
+            currentBetSize: 20,
+            lastRaiseSize: 10,
+            raisesThisStreet: 1,
+            actionHistory:
+            [
+                new SolverActionEntry(p1.PlayerId, ActionType.PostSmallBlind, new ChipAmount(10)),
+        new SolverActionEntry(p2.PlayerId, ActionType.PostBigBlind, new ChipAmount(20)),
+        new SolverActionEntry(p1.PlayerId, ActionType.Call, new ChipAmount(20))
             ]);
 
         var next = SolverStateStepper.Step(state, new LegalAction(ActionType.Check));
@@ -133,15 +142,29 @@ public class SolverStateStepperTests
     public void Step_EquivalentInputs_AreDeterministic()
     {
         var stateA = CreateFacingBetState();
-        var stateB = CreateState(stateA.ActingPlayerId, stateA.Players, stateA.Pot.Value, stateA.CurrentBetSize.Value, stateA.LastRaiseSize.Value, stateA.RaisesThisStreet, stateA.ActionHistory);
+        var stateB = CreateState(
+            stateA.ActingPlayerId,
+            stateA.Players,
+            stateA.Pot.Value,
+            stateA.CurrentBetSize.Value,
+            stateA.LastRaiseSize.Value,
+            stateA.RaisesThisStreet,
+            stateA.ActionHistory);
 
         var nextA = SolverStateStepper.Step(stateA, new LegalAction(ActionType.Call, new ChipAmount(10)));
         var nextB = SolverStateStepper.Step(stateB, new LegalAction(ActionType.Call, new ChipAmount(10)));
 
-        Assert.Equal(nextA, nextB);
         Assert.Equal(nextA.ActionHistorySignature, nextB.ActionHistorySignature);
+        Assert.Equal(nextA.Pot, nextB.Pot);
+        Assert.Equal(nextA.CurrentBetSize, nextB.CurrentBetSize);
+        Assert.Equal(nextA.LastRaiseSize, nextB.LastRaiseSize);
+        Assert.Equal(nextA.RaisesThisStreet, nextB.RaisesThisStreet);
+        Assert.Equal(nextA.ActingPlayerId, nextB.ActingPlayerId);
+        Assert.Equal(nextA.Street, nextB.Street);
+        Assert.Equal(nextA.ToCall, nextB.ToCall);
+        Assert.Equal(nextA.Players, nextB.Players);
+        Assert.Equal(nextA.ActionHistory, nextB.ActionHistory);
     }
-
     [Fact]
     public void Step_IllegalAction_ThrowsUsefulMessage()
     {
@@ -152,15 +175,23 @@ public class SolverStateStepperTests
         Assert.Contains("not legal", ex.Message, StringComparison.OrdinalIgnoreCase);
     }
 
-    private static SolverHandState CreateFacingBetState()
+    private SolverHandState CreateFacingBetState()
     {
         var p1 = Player(0, Position.SB, stack: 90, street: 10, total: 10);
         var p2 = Player(1, Position.BB, stack: 80, street: 20, total: 20);
         var p3 = Player(2, Position.BTN, stack: 100, street: 0, total: 0);
-        return CreateState(p1.PlayerId, [p1, p2, p3], pot: 30, currentBetSize: 20, lastRaiseSize: 10, raisesThisStreet: 1,
-            actionHistory: [
+
+        return CreateState(
+            p1.PlayerId,
+            [p1, p2, p3],
+            pot: 30,
+            currentBetSize: 20,
+            lastRaiseSize: 10,
+            raisesThisStreet: 1,
+            actionHistory:
+            [
                 new SolverActionEntry(p1.PlayerId, ActionType.PostSmallBlind, new ChipAmount(10)),
-                new SolverActionEntry(p2.PlayerId, ActionType.PostBigBlind, new ChipAmount(20))
+            new SolverActionEntry(p2.PlayerId, ActionType.PostBigBlind, new ChipAmount(20))
             ]);
     }
 
