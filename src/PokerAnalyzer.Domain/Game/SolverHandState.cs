@@ -103,6 +103,9 @@ public sealed record SolverHandState
     public IReadOnlyList<LegalAction> GenerateLegalActions(IBetSizeSetProvider? sizeProvider = null)
         => SolverLegalActionGenerator.GenerateLegalActions(this, sizeProvider);
 
+    public SolverHandState Apply(LegalAction action)
+        => SolverStateStepper.Step(this, action);
+
     internal void ValidateNonNegativeStacks()
     {
         if (CurrentBetSize.Value < 0)
