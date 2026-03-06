@@ -1,0 +1,103 @@
+namespace PokerAnalyzer.Domain.Game;
+
+public static class SolverLegalActionGenerator
+{
+    public static IReadOnlyList<LegalAction> GenerateLegalActions(SolverHandState state, IBetSizeSetProvider? sizeProvider = null)
+    {
+        var acting = state.Players.FirstOrDefault(p => p.PlayerId == state.ActingPlayerId);
+        if (acting is null || !acting.IsActive || acting.IsAllIn || acting.Stack.Value <= 0)
+            return Array.Empty<LegalAction>();
+
+        var toCall = state.ToCall;
+        var maxTotalBet = acting.CurrentStreetContribution + acting.Stack;
+
+        var actions = new List<LegalAction>(8);
+
+        if (toCall.Value == 0)
+        {
+            actions.Add(new LegalAction(ActionType.Check));
+
+            if (sizeProvider is null)
+            {
+                actions.Add(new LegalAction(ActionType.Bet));
+                return actions.AsReadOnly();
+            }
+
+            var betSizes = GetDistinctSortedSizes(sizeProvider.GetBetSizes(state));
+            AddSizedAggressionActions(actions, ActionType.Bet, betSizes, acting.CurrentStreetContribution, maxTotalBet, includeMinBound: true);
+
+            // AllIn exists in the enum but this solver model represents jams as Bet/Raise amounts for deterministic sizing.
+            return actions.AsReadOnly();
+        }
+
+        actions.Add(new LegalAction(ActionType.Fold));
+
+        var callAmount = toCall.Value > acting.Stack.Value ? acting.Stack : toCall;
+        if (callAmount.Value > 0)
+            actions.Add(new LegalAction(ActionType.Call, callAmount));
+
+        var minTotalBet = state.CurrentBetSize + state.LastRaiseSize;
+        var canFullRaise = maxTotalBet >= minTotalBet;
+
+        if (sizeProvider is null)
+        {
+            if (canFullRaise)
+                actions.Add(new LegalAction(ActionType.Raise));
+
+            return actions.AsReadOnly();
+        }
+
+        var raiseSizes = GetDistinctSortedSizes(sizeProvider.GetRaiseSizes(state));
+        if (canFullRaise)
+        {
+            AddSizedAggressionActions(actions, ActionType.Raise, raiseSizes, minTotalBet, maxTotalBet, includeMinBound: true);
+        }
+        else
+        {
+            // No full raise is available; keep the model deterministic and avoid generating short all-in raise
+            // categories until explicitly modeled by the domain.
+        }
+
+        return actions.AsReadOnly();
+    }
+
+    private static void AddSizedAggressionActions(
+        ICollection<LegalAction> actions,
+        ActionType actionType,
+        IReadOnlyList<ChipAmount> candidateSizes,
+        ChipAmount minTotalBet,
+        ChipAmount maxTotalBet,
+        bool includeMinBound)
+    {
+        foreach (var size in candidateSizes)
+        {
+            var aboveMin = includeMinBound ? size >= minTotalBet : size > minTotalBet;
+            if (!aboveMin)
+                continue;
+
+            if (size > maxTotalBet)
+                continue;
+
+            actions.Add(new LegalAction(actionType, size));
+        }
+
+        // Always include a jam amount as a deterministic fallback if it is legal and not duplicated.
+        if ((includeMinBound ? maxTotalBet >= minTotalBet : maxTotalBet > minTotalBet)
+            && !actions.Any(a => a.ActionType == actionType && a.Amount == maxTotalBet))
+        {
+            actions.Add(new LegalAction(actionType, maxTotalBet));
+        }
+    }
+
+    private static IReadOnlyList<ChipAmount> GetDistinctSortedSizes(IReadOnlyList<ChipAmount>? sizes)
+    {
+        if (sizes is null || sizes.Count == 0)
+            return Array.Empty<ChipAmount>();
+
+        return sizes
+            .Where(size => size.Value > 0)
+            .Distinct()
+            .OrderBy(size => size.Value)
+            .ToArray();
+    }
+}
