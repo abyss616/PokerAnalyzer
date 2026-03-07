@@ -157,7 +157,7 @@ public sealed class SolverInfoSetKeyMapperTests
             actingPlayerId: bbId,
             pot: new ChipAmount(25),
             currentBetSize: new ChipAmount(10),
-            lastRaiseSize: new ChipAmount(5),
+            lastRaiseSize: ChipAmount.Zero,
             raisesThisStreet: 0,
             players:
             [

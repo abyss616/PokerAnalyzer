@@ -168,23 +168,6 @@ public class SolverHandStateTests
         Assert.Contains("all-in", ex.Message, StringComparison.OrdinalIgnoreCase);
     }
 
-
-    [Fact]
-    public void Constructor_ActingPlayerAllIn_WithNoActionablePlayers_ShouldBeValid()
-    {
-        var p1 = new SolverPlayerState(PlayerId.New(), 0, Position.SB, ChipAmount.Zero, ChipAmount.Zero, new ChipAmount(100), false, true);
-        var p2 = new SolverPlayerState(PlayerId.New(), 1, Position.BB, ChipAmount.Zero, ChipAmount.Zero, new ChipAmount(100), false, true);
-
-        var ex = Record.Exception(() =>
-            CreateState(
-                actingPlayerId: p1.PlayerId,
-                players: [p1, p2],
-                pot: new ChipAmount(200),
-                currentBetSize: ChipAmount.Zero));
-
-        Assert.Null(ex);
-    }
-
     [Fact]
     public void Constructor_CurrentBetSizeNotMatchingPlayerContributions_ShouldThrow()
     {

@@ -128,10 +128,7 @@ public static class SolverStateStepper
             nextRaisesThisStreet = 0;
         }
 
-        var actionablePlayersRemain = players.Any(p => p.IsActive && !p.IsAllIn && p.Stack.Value > 0);
-        var nextActingPlayer = actionablePlayersRemain
-            ? ResolveNextActingPlayer(state, players, acting.SeatIndex, bettingRoundComplete)
-            : players.First(p => p.IsActive);
+        var nextActingPlayer = ResolveNextActingPlayer(state, players, acting.SeatIndex, bettingRoundComplete);
 
         var nextState = state.With(
             actingPlayerId: nextActingPlayer.PlayerId,
