@@ -137,7 +137,7 @@ public sealed class SolverTrajectorySamplerTests
                 {
                     Assert.NotNull(sampledAction.Amount);
                     Assert.True(
-                        sampledAction.Amount!.Value > acting.CurrentStreetContribution.Value,
+                        sampledAction.Amount!.Value > acting.CurrentStreetContribution,
                         $"Seed {seed}, depth {depth}: sampled post-transition bet target {sampledAction.Amount.Value.Value} was not greater than acting contribution {acting.CurrentStreetContribution.Value}.");
                 }
 
