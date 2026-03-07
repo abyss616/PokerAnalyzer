@@ -34,6 +34,8 @@ public interface IPreflopLeafDetector
 
 public sealed class PreflopTrajectoryTraverser
 {
+    private const int MaxTraversalDepth = 256;
+
     private readonly IPreflopRootStateProvider _rootStateProvider;
     private readonly IChanceSampler _chanceSampler;
     private readonly IPreflopInfoSetMapper _infoSetMapper;
@@ -76,6 +78,9 @@ public sealed class PreflopTrajectoryTraverser
 
         while (true)
         {
+            if (visited.Count >= MaxTraversalDepth)
+                throw new InvalidOperationException($"Preflop traversal exceeded max depth of {MaxTraversalDepth}. This usually indicates a non-progress loop.");
+
             if (_leafDetector.IsLeaf(current))
             {
                 var leafEvaluation = _leafEvaluator.Evaluate(current);
@@ -246,7 +251,7 @@ public sealed class PlaceholderPreflopLeafEvaluator : IPreflopLeafEvaluator
     }
 }
 
-public sealed class PublicStateInfoSetMapper : IPreflopInfoSetMapper
+public sealed class PreflopInfoSetMapper : IPreflopInfoSetMapper
 {
     public string MapInfoSetKey(SolverHandState state, PlayerId actingPlayerId)
     {
@@ -256,7 +261,7 @@ public sealed class PublicStateInfoSetMapper : IPreflopInfoSetMapper
             ?? throw new InvalidOperationException($"Acting player {actingPlayerId} not found.");
 
         var privateCards = state.PrivateCardsByPlayer.TryGetValue(actingPlayerId, out var holeCards)
-            ? $"{holeCards.First}-{holeCards.Second}"
+            ? ToCanonicalPreflopHand(holeCards)
             : "unknown";
 
         return string.Join('|',
@@ -268,6 +273,43 @@ public sealed class PublicStateInfoSetMapper : IPreflopInfoSetMapper
             $"bet={state.CurrentBetSize.Value}",
             $"toCall={state.ToCall.Value}");
     }
+
+    private static string ToCanonicalPreflopHand(Domain.Cards.HoleCards holeCards)
+    {
+        var first = holeCards.First;
+        var second = holeCards.Second;
+
+        if (first.Rank == second.Rank)
+        {
+            var pairRank = RankToChar(first.Rank);
+            return string.Concat(pairRank, pairRank);
+        }
+
+        var (high, low) = first.Rank > second.Rank
+            ? (first, second)
+            : (second, first);
+
+        var suitedness = first.Suit == second.Suit ? 's' : 'o';
+        return string.Concat(RankToChar(high.Rank), RankToChar(low.Rank), suitedness);
+    }
+
+    private static char RankToChar(Domain.Cards.Rank rank) => rank switch
+    {
+        Domain.Cards.Rank.Two => '2',
+        Domain.Cards.Rank.Three => '3',
+        Domain.Cards.Rank.Four => '4',
+        Domain.Cards.Rank.Five => '5',
+        Domain.Cards.Rank.Six => '6',
+        Domain.Cards.Rank.Seven => '7',
+        Domain.Cards.Rank.Eight => '8',
+        Domain.Cards.Rank.Nine => '9',
+        Domain.Cards.Rank.Ten => 'T',
+        Domain.Cards.Rank.Jack => 'J',
+        Domain.Cards.Rank.Queen => 'Q',
+        Domain.Cards.Rank.King => 'K',
+        Domain.Cards.Rank.Ace => 'A',
+        _ => throw new ArgumentOutOfRangeException(nameof(rank))
+    };
 }
 
 public sealed class InMemoryPolicyProvider : IPreflopPolicyProvider
@@ -298,7 +340,18 @@ public sealed class InMemoryPolicyProvider : IPreflopPolicyProvider
             return false;
         }
 
-        policy = filtered;
+        var filteredTotal = filtered.Values.Sum();
+        if (filteredTotal <= 0d)
+        {
+            policy = new Dictionary<LegalAction, double>();
+            return false;
+        }
+
+        var normalized = new Dictionary<LegalAction, double>(filtered.Count);
+        foreach (var (action, probability) in filtered)
+            normalized[action] = probability / filteredTotal;
+
+        policy = normalized;
         return true;
     }
 
