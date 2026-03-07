@@ -61,6 +61,31 @@ public sealed class SolverTrajectorySamplerTests
     }
 
     [Fact]
+    public void Sampling_Produces_Executable_Aggression_Actions_With_Explicit_Target_Amounts()
+    {
+        var sampler = new SolverTrajectorySampler(new SolverStrategyStore());
+        var chanceSampler = new SolverChanceSampler();
+        var mapper = new SolverInfoSetKeyMapper();
+        var state = CreateHeadsUpPreflopState(includePrivateCards: true);
+
+        for (var seed = 0; seed < 100; seed++)
+        {
+            var trajectory = sampler.Sample(state, chanceSampler, mapper, new Random(seed));
+            Assert.NotEmpty(trajectory.Steps);
+
+            foreach (var step in trajectory.Steps)
+            {
+                if (step.SampledAction.ActionType is ActionType.Bet or ActionType.Raise)
+                    Assert.NotNull(step.SampledAction.Amount);
+
+                Assert.All(
+                    step.LegalActions.Where(a => a.ActionType is ActionType.Bet or ActionType.Raise),
+                    action => Assert.NotNull(action.Amount));
+            }
+        }
+    }
+
+    [Fact]
     public void Sampling_Is_Deterministic_For_Equivalent_Seeds()
     {
         var chanceSampler = new SolverChanceSampler();

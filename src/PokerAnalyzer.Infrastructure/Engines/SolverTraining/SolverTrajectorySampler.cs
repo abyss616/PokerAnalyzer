@@ -6,11 +6,16 @@ public sealed class SolverTrajectorySampler
 {
     private readonly SolverStrategyStore _strategyStore;
     private readonly SolverTerminalDetector _terminalDetector;
+    private readonly IBetSizeSetProvider _betSizeSetProvider;
 
-    public SolverTrajectorySampler(SolverStrategyStore strategyStore, SolverTerminalDetector? terminalDetector = null)
+    public SolverTrajectorySampler(
+        SolverStrategyStore strategyStore,
+        SolverTerminalDetector? terminalDetector = null,
+        IBetSizeSetProvider? betSizeSetProvider = null)
     {
         _strategyStore = strategyStore ?? throw new ArgumentNullException(nameof(strategyStore));
         _terminalDetector = terminalDetector ?? new SolverTerminalDetector();
+        _betSizeSetProvider = betSizeSetProvider ?? new DefaultBetSizeSetProvider();
     }
 
     public SolverTrajectory Sample(
@@ -44,7 +49,7 @@ public sealed class SolverTrajectorySampler
                 continue;
             }
 
-            var legalActions = current.GenerateLegalActions();
+            var legalActions = current.GenerateLegalActions(_betSizeSetProvider);
             if (legalActions.Count == 0)
                 break;
 
