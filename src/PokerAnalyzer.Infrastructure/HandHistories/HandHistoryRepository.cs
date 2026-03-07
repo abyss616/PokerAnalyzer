@@ -22,4 +22,11 @@ public sealed class HandHistoryRepository : IHandHistoryRepository
             .AsNoTracking()
             .FirstOrDefaultAsync(x => x.Id == handId, ct);
 
+    public Task<Hand?> GetHandByGameCodeAsync(long gameCode, CancellationToken ct) =>
+        _db.HandHistoryHands
+            .AsNoTracking()
+            .Include(x => x.Actions)
+            .Include(x => x.Players)
+            .FirstOrDefaultAsync(x => x.GameCode == gameCode, ct);
+
 }
