@@ -25,7 +25,7 @@ public sealed class PreflopHandAnalysisServiceTests
         var hand = BuildHandWithoutHero();
         var svc = BuildService(hand);
 
-        var result = await svc.AnalyzePreflopByHandNumberAsync(hand.GameCode, CancellationToken.None);
+        var result = await svc.AnalyzePreflopByHandNumberAsync(1, CancellationToken.None);
 
         Assert.NotNull(result);
         Assert.Equal(PreflopHandAnalysisResultDto.NotYetImplemented, result!.CanonicalPreflopSolverNode);
@@ -38,7 +38,7 @@ public sealed class PreflopHandAnalysisServiceTests
         var hand = BuildStandardHeroFacingOpenHand();
         var svc = BuildService(hand);
 
-        var result = await svc.AnalyzePreflopByHandNumberAsync(hand.GameCode, CancellationToken.None);
+        var result = await svc.AnalyzePreflopByHandNumberAsync(1, CancellationToken.None);
 
         Assert.NotNull(result);
         Assert.Contains("Fold", result!.HeroLegalActions);
@@ -52,7 +52,7 @@ public sealed class PreflopHandAnalysisServiceTests
         var hand = BuildStandardHeroFacingOpenHand();
         var svc = BuildService(hand, strategyProvider: new TestStrategyProvider(null));
 
-        var result = await svc.AnalyzePreflopByHandNumberAsync(hand.GameCode, CancellationToken.None);
+        var result = await svc.AnalyzePreflopByHandNumberAsync(1, CancellationToken.None);
 
         Assert.NotNull(result);
         Assert.Equal(PreflopHandAnalysisResultDto.NotYetImplemented, result!.CurrentMixedStrategy);
@@ -64,7 +64,7 @@ public sealed class PreflopHandAnalysisServiceTests
         var hand = BuildStandardHeroFacingOpenHand();
         var svc = BuildService(hand, strategyProvider: new TestStrategyProvider(null));
 
-        var result = await svc.AnalyzePreflopByHandNumberAsync(hand.GameCode, CancellationToken.None);
+        var result = await svc.AnalyzePreflopByHandNumberAsync(1, CancellationToken.None);
 
         Assert.NotNull(result);
         Assert.Contains("Hero Call", result!.ActualActionVsRecommendation);
@@ -133,8 +133,8 @@ public sealed class PreflopHandAnalysisServiceTests
         public Task<Hand?> GetHandAsync(Guid handId, CancellationToken ct) =>
             Task.FromResult<Hand?>(_hand);
 
-        public Task<Hand?> GetHandByGameCodeAsync(long gameCode, CancellationToken ct) =>
-            Task.FromResult(_hand?.GameCode == gameCode ? _hand : null);
+        public Task<Hand?> GetHandByGameCodeAsync(long handNumber, CancellationToken ct) =>
+            Task.FromResult(handNumber == 1 ? _hand : null);
     }
 
     private sealed class TestStrategyProvider : IPreflopStrategyProvider

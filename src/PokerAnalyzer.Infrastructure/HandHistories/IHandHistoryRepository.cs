@@ -4,6 +4,6 @@
     {
         Task<HandHistorySession?> GetSessionAsync(Guid sessionId, CancellationToken ct);
         Task<Hand?> GetHandAsync(Guid handId, CancellationToken ct);
-        Task<Hand?> GetHandByGameCodeAsync(long gameCode, CancellationToken ct);
+        Task<Hand?> GetHandByGameCodeAsync(long handNumber, CancellationToken ct);
     }
 }
