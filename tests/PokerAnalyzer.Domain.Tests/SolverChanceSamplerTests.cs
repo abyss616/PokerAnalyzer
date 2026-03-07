@@ -169,9 +169,32 @@ public class SolverChanceSamplerTests
             privateCardsByPlayer: privateCardsByPlayer);
 
     private static SolverPlayerState[] CreatePlayers(int count)
-        => Enumerable.Range(0, count)
-            .Select(i => new SolverPlayerState(PlayerId.New(), i, i == 0 ? Position.SB : Position.BB, new ChipAmount(100), ChipAmount.Zero, ChipAmount.Zero, false, false))
-            .ToArray();
+    => Enumerable.Range(0, count)
+        .Select(i =>
+        {
+            var posted = i switch
+            {
+                0 => new ChipAmount(5),   // SB
+                1 => new ChipAmount(10),  // BB
+                _ => ChipAmount.Zero
+            };
+
+            return new SolverPlayerState(
+                PlayerId.New(),
+                i,
+                i switch
+                {
+                    0 => Position.SB,
+                    1 => Position.BB,
+                    _ => Position.BTN
+                },
+                new ChipAmount(100 - posted.Value),
+                posted,
+                posted,
+                false,
+                false);
+        })
+        .ToArray();
 
     private static void AssertAllCardsUnique(SolverHandState state)
     {

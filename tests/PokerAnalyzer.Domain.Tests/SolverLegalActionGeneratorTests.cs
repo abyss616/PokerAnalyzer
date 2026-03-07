@@ -9,25 +9,32 @@ public class SolverLegalActionGeneratorTests
     [Fact]
     public void GenerateLegalActions_CheckedToSpot_ReturnsCheckThenBetCategory()
     {
-        var acting = Player(seat: 0, stack: 100, streetContribution: 10, totalContribution: 10);
-        var villain = Player(seat: 1, stack: 100, streetContribution: 10, totalContribution: 10);
-        var state = CreateState(acting.PlayerId, [acting, villain], pot: 20, currentBetSize: 10, lastRaiseSize: 10);
+        var acting = Player(seat: 0, stack: 90, streetContribution: 10, totalContribution: 10);
+        var villain = Player(seat: 1, stack: 90, streetContribution: 10, totalContribution: 10);
+
+        var state = CreateState(
+            acting.PlayerId,
+            [acting, villain],
+            pot: 20,
+            currentBetSize: 10,
+            lastRaiseSize: 10);
 
         var actions = state.GenerateLegalActions();
 
         Assert.Equal(
             [
                 new LegalAction(ActionType.Check),
-                new LegalAction(ActionType.Bet)
+            new LegalAction(ActionType.Bet)
             ],
             actions);
     }
 
     [Fact]
+ 
     public void GenerateLegalActions_FacingBetWithoutFullRaise_ReturnsFoldAndCallOnly()
     {
         var acting = Player(seat: 0, stack: 30, streetContribution: 10, totalContribution: 10);
-        var villain = Player(seat: 1, stack: 100, streetContribution: 20, totalContribution: 20);
+        var villain = Player(seat: 1, stack: 80, streetContribution: 20, totalContribution: 20);
         var state = CreateState(acting.PlayerId, [acting, villain], pot: 30, currentBetSize: 20, lastRaiseSize: 25);
 
         var actions = state.GenerateLegalActions();
@@ -35,16 +42,16 @@ public class SolverLegalActionGeneratorTests
         Assert.Equal(
             [
                 new LegalAction(ActionType.Fold),
-                new LegalAction(ActionType.Call, new ChipAmount(10))
+            new LegalAction(ActionType.Call, new ChipAmount(10))
             ],
             actions);
     }
-
     [Fact]
     public void GenerateLegalActions_FacingBetWithFullRaise_ReturnsFoldCallRaiseCategory()
     {
         var acting = Player(seat: 0, stack: 90, streetContribution: 10, totalContribution: 10);
-        var villain = Player(seat: 1, stack: 100, streetContribution: 20, totalContribution: 20);
+        var villain = Player(seat: 1, stack: 80, streetContribution: 20, totalContribution: 20);
+
         var state = CreateState(acting.PlayerId, [acting, villain], pot: 30, currentBetSize: 20, lastRaiseSize: 10);
 
         var actions = state.GenerateLegalActions();
@@ -52,8 +59,8 @@ public class SolverLegalActionGeneratorTests
         Assert.Equal(
             [
                 new LegalAction(ActionType.Fold),
-                new LegalAction(ActionType.Call, new ChipAmount(10)),
-                new LegalAction(ActionType.Raise)
+            new LegalAction(ActionType.Call, new ChipAmount(10)),
+            new LegalAction(ActionType.Raise)
             ],
             actions);
     }
@@ -62,7 +69,7 @@ public class SolverLegalActionGeneratorTests
     public void GenerateLegalActions_ShortStackFacingBet_UsesCallShortAmount()
     {
         var acting = Player(seat: 0, stack: 7, streetContribution: 10, totalContribution: 10);
-        var villain = Player(seat: 1, stack: 100, streetContribution: 20, totalContribution: 20);
+        var villain = Player(seat: 1, stack: 80, streetContribution: 20, totalContribution: 20);
         var state = CreateState(acting.PlayerId, [acting, villain], pot: 30, currentBetSize: 20, lastRaiseSize: 10);
 
         var actions = state.GenerateLegalActions();
@@ -70,7 +77,7 @@ public class SolverLegalActionGeneratorTests
         Assert.Equal(
             [
                 new LegalAction(ActionType.Fold),
-                new LegalAction(ActionType.Call, new ChipAmount(7))
+            new LegalAction(ActionType.Call, new ChipAmount(7))
             ],
             actions);
     }
@@ -79,7 +86,7 @@ public class SolverLegalActionGeneratorTests
     public void GenerateLegalActions_WithSizeProvider_ExpandsAndFiltersSizedActionsDeterministically()
     {
         var acting = Player(seat: 0, stack: 90, streetContribution: 10, totalContribution: 10);
-        var villain = Player(seat: 1, stack: 100, streetContribution: 20, totalContribution: 20);
+        var villain = Player(seat: 1, stack: 80, streetContribution: 20, totalContribution: 20);
         var state = CreateState(acting.PlayerId, [acting, villain], pot: 30, currentBetSize: 20, lastRaiseSize: 10);
         var provider = new FixedSizeProvider(
             betSizes: [new ChipAmount(40)],
@@ -90,28 +97,60 @@ public class SolverLegalActionGeneratorTests
         Assert.Equal(
             [
                 new LegalAction(ActionType.Fold),
-                new LegalAction(ActionType.Call, new ChipAmount(10)),
-                new LegalAction(ActionType.Raise, new ChipAmount(30)),
-                new LegalAction(ActionType.Raise, new ChipAmount(100))
+            new LegalAction(ActionType.Call, new ChipAmount(10)),
+            new LegalAction(ActionType.Raise, new ChipAmount(30)),
+            new LegalAction(ActionType.Raise, new ChipAmount(100))
             ],
             actions);
     }
 
     [Fact]
-    public void GenerateLegalActions_ActingPlayerHasNoChips_ReturnsNoActions()
+    public void CreateState_ActingPlayerIsAllIn_Throws()
     {
-        var acting = Player(seat: 0, stack: 0, streetContribution: 10, totalContribution: 10);
-        var villain = Player(seat: 1, stack: 100, streetContribution: 10, totalContribution: 10);
-        var state = CreateState(acting.PlayerId, [acting, villain], pot: 20, currentBetSize: 10, lastRaiseSize: 10);
+        var acting = Player(
+            seat: 0,
+            stack: 0,
+            streetContribution: 10,
+            totalContribution: 10,
+            isAllIn: true);
 
-        var actions = SolverLegalActionGenerator.GenerateLegalActions(state);
+        var villain = Player(
+            seat: 1,
+            stack: 90,
+            streetContribution: 10,
+            totalContribution: 10);
 
-        Assert.Empty(actions);
+        var ex = Assert.Throws<InvalidOperationException>(() =>
+            CreateState(
+                acting.PlayerId,
+                [acting, villain],
+                pot: 20,
+                currentBetSize: 10,
+                lastRaiseSize: 10));
+
+        Assert.Contains("is all-in and cannot act", ex.Message);
     }
 
-    private static SolverPlayerState Player(int seat, long stack, long streetContribution, long totalContribution)
-        => new(PlayerId.New(), seat, seat == 0 ? Position.SB : Position.BB, new ChipAmount(stack), new ChipAmount(streetContribution), new ChipAmount(totalContribution), false, false);
+    private static SolverPlayerState Player(
+     int seat,
+     long stack,
+     long streetContribution = 0,
+     long totalContribution = 0,
+     bool isFolded = false,
+     bool? isAllIn = null)
+    {
+        var resolvedIsAllIn = isAllIn ?? (stack == 0 && !isFolded);
 
+        return new SolverPlayerState(
+            PlayerId: PlayerId.New(),
+            SeatIndex: seat,
+            Position: seat == 0 ? Position.SB : Position.BB,
+            Stack: new ChipAmount(stack),
+            CurrentStreetContribution: new ChipAmount(streetContribution),
+            TotalContribution: new ChipAmount(totalContribution),
+            IsFolded: isFolded,
+            IsAllIn: resolvedIsAllIn);
+    }
     private static SolverHandState CreateState(
         PlayerId actingPlayerId,
         IReadOnlyList<SolverPlayerState> players,
