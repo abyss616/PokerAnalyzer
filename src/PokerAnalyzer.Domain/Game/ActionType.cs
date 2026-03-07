@@ -10,5 +10,8 @@ public enum ActionType : byte
     AllIn = 5,
     PostBigBlind = 6,
     PostSmallBlind = 7,
-    SitOut = 8
+    SitOut = 8,
+    DealFlop = 9,
+    DealTurn = 10,
+    DealRiver = 11
 }
