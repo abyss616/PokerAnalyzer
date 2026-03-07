@@ -124,7 +124,7 @@ public static class SolverStateStepper
                 .ToArray();
 
             nextCurrentBet = ChipAmount.Zero;
-            nextLastRaiseSize = state.Config.BigBlind;
+            nextLastRaiseSize = ChipAmount.Zero;
             nextRaisesThisStreet = 0;
         }
 
