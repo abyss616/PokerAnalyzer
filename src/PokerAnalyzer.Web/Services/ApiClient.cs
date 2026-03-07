@@ -17,6 +17,13 @@ public sealed class ApiClient
     public sealed record PlayerStatPercent(string Name, decimal Percent);
     public sealed record PlayerStatsResult(string Player, int Hands, IReadOnlyList<PlayerStatPercent> Stats);
 
+    public sealed record PreflopHandAnalysisResult(
+        string HandNumber,
+        string CanonicalPreflopSolverNode,
+        string HeroLegalActions,
+        string CurrentMixedStrategy,
+        string ActualActionVsRecommendation);
+
     public async Task<UploadHandHistoryResult> UploadHandHistoryXmlAsync(
         IBrowserFile file,
         CancellationToken ct = default)
@@ -69,6 +76,24 @@ public sealed class ApiClient
 
         var result = await resp.Content.ReadFromJsonAsync<IReadOnlyList<PlayerStatsResult>>(cancellationToken: ct);
         return result ?? Array.Empty<PlayerStatsResult>();
+    }
+
+    public async Task<PreflopHandAnalysisResult?> AnalyzePreflopByHandNumberAsync(
+        long handNumber,
+        CancellationToken ct = default)
+    {
+        using var resp = await _http.GetAsync($"api/preflop-analysis/hand-number/{handNumber}", ct);
+        if (resp.StatusCode == System.Net.HttpStatusCode.NotFound)
+            return null;
+
+        if (!resp.IsSuccessStatusCode)
+        {
+            var body = await resp.Content.ReadAsStringAsync(ct);
+            throw new InvalidOperationException(
+                $"Preflop analysis request failed: {(int)resp.StatusCode} {resp.ReasonPhrase}. {body}");
+        }
+
+        return await resp.Content.ReadFromJsonAsync<PreflopHandAnalysisResult>(cancellationToken: ct);
     }
 
     public async Task<IReadOnlyList<PlayerStatsResult>> GetLatestPlayerStatsAsync(

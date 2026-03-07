@@ -2,9 +2,11 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using PokerAnalyzer.Application.Analysis;
 using PokerAnalyzer.Application.Engines;
+using PokerAnalyzer.Application.PreflopAnalysis;
 using PokerAnalyzer.Infrastructure.Engines;
 using PokerAnalyzer.Infrastructure.HandHistories;
 using PokerAnalyzer.Infrastructure.Persistence;
+using PokerAnalyzer.Infrastructure.PreflopAnalysis;
 
 namespace PokerAnalyzer.Infrastructure;
 
@@ -19,6 +21,9 @@ public static class ServiceCollectionExtensions
         services.AddPokerAnalyzerDb();
         services.AddScoped<IHandHistoryRepository, HandHistoryRepository>();
         services.AddSingleton<IHandHistoryParser, XmlHandHistoryParser>();
+        services.AddSingleton<PreflopStateExtractor>();
+        services.AddScoped<IPreflopHandAnalysisService, PreflopHandAnalysisService>();
+        services.AddSingleton<IPreflopStrategyProvider, NullPreflopStrategyProvider>();
         return services;
     }
 
