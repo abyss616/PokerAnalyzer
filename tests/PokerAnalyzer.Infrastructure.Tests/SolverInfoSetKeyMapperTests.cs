@@ -94,6 +94,38 @@ public sealed class SolverInfoSetKeyMapperTests
         Assert.Equal(2, ordered.Length);
     }
 
+
+    [Fact]
+    public void Postflop_States_With_Different_Effective_Stacks_Do_Not_Collide()
+    {
+        var mapper = new SolverInfoSetKeyMapper();
+        var shallow = CreatePostflopStateWithPublicPlayerState(heroStack: 40, villainStack: 90, villainIsFolded: false, villainIsAllIn: false);
+        var deep = CreatePostflopStateWithPublicPlayerState(heroStack: 80, villainStack: 90, villainIsFolded: false, villainIsAllIn: false);
+
+        var keyA = mapper.Map(shallow);
+        var keyB = mapper.Map(deep);
+
+        Assert.True(keyA.IsSupported);
+        Assert.True(keyB.IsSupported);
+        Assert.NotEqual(keyA.Key, keyB.Key);
+        Assert.NotEqual(keyA.Key!.PublicPlayerStateKey, keyB.Key!.PublicPlayerStateKey);
+    }
+
+    [Fact]
+    public void Postflop_States_With_Different_Active_AllIn_Masks_Do_Not_Collide()
+    {
+        var mapper = new SolverInfoSetKeyMapper();
+        var activeVillain = CreatePostflopStateWithPublicPlayerState(heroStack: 80, villainStack: 80, villainIsFolded: false, villainIsAllIn: false);
+        var allInVillain = CreatePostflopStateWithPublicPlayerState(heroStack: 80, villainStack: 0, villainIsFolded: false, villainIsAllIn: true);
+
+        var keyA = mapper.Map(activeVillain);
+        var keyB = mapper.Map(allInVillain);
+
+        Assert.True(keyA.IsSupported);
+        Assert.True(keyB.IsSupported);
+        Assert.NotEqual(keyA.Key, keyB.Key);
+        Assert.NotEqual(keyA.Key!.PublicPlayerStateKey, keyB.Key!.PublicPlayerStateKey);
+    }
     [Fact]
     public void Postflop_Board_Cards_Affect_Key()
     {
@@ -205,4 +237,32 @@ public sealed class SolverInfoSetKeyMapperTests
                 [bbId] = HoleCards.Parse("AsKh")
             });
     }
+
+    private static SolverHandState CreatePostflopStateWithPublicPlayerState(decimal heroStack, decimal villainStack, bool villainIsFolded, bool villainIsAllIn)
+    {
+        var sbId = PlayerId.New();
+        var bbId = PlayerId.New();
+
+        return new SolverHandState(
+            Config,
+            Street.Flop,
+            buttonSeatIndex: 1,
+            actingPlayerId: bbId,
+            pot: new ChipAmount(20),
+            currentBetSize: ChipAmount.Zero,
+            lastRaiseSize: ChipAmount.Zero,
+            raisesThisStreet: 0,
+            players:
+            [
+                new SolverPlayerState(sbId, 0, Position.SB, new ChipAmount(villainStack), ChipAmount.Zero, new ChipAmount(10), villainIsFolded, villainIsAllIn),
+                new SolverPlayerState(bbId, 1, Position.BB, new ChipAmount(heroStack), ChipAmount.Zero, new ChipAmount(10), false, false)
+            ],
+            boardCards: [Card.Parse("Ah"), Card.Parse("Kd"), Card.Parse("7c")],
+            privateCardsByPlayer: new Dictionary<PlayerId, HoleCards>
+            {
+                [sbId] = HoleCards.Parse("2s3s"),
+                [bbId] = HoleCards.Parse("AsKh")
+            });
+    }
+
 }

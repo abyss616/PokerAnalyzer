@@ -37,7 +37,9 @@ public sealed class SolverInfoSetKeyMapper
             state.CurrentBetSize,
             state.ToCall,
             state.RaisesThisStreet,
-            state.Street);
+            state.Street,
+            state.Players,
+            state.ActingPlayerId);
 
         return SolverInfoSetMappingResult.Supported(key, preflopKey: null);
     }
@@ -109,6 +111,7 @@ public sealed record SolverInfoSetKey(
     string PublicBoardKey,
     string PublicHistoryKey,
     string BettingStateKey,
+    string PublicPlayerStateKey,
     PreflopInfoSetKey? PreflopKey,
     string CanonicalKey) : IComparable<SolverInfoSetKey>
 {
@@ -127,6 +130,7 @@ public sealed record SolverInfoSetKey(
             string.Empty,
             preflopKey.HistorySignature,
             preflopKey.SolverKey,
+            string.Empty,
             preflopKey,
             canonical);
     }
@@ -140,13 +144,18 @@ public sealed record SolverInfoSetKey(
         ChipAmount currentBetSize,
         ChipAmount toCall,
         int raisesThisStreet,
-        Street street)
+        Street street,
+        IReadOnlyList<SolverPlayerState> players,
+        PlayerId actingPlayerId)
     {
         var privateCards = BuildHoleCardsKey(actingHoleCards);
         var board = BuildCardsKey(boardCards);
         var history = BuildPublicActionHistoryKey(actionHistory);
-        var bettingState = $"pot={pot.Value}|bet={currentBetSize.Value}|tocall={toCall.Value}|raises={raisesThisStreet}";
-        var canonical = $"{street.ToString().ToLowerInvariant()}/pos={actingPosition}/hero={privateCards}/board={board}/hist={history}/bet={bettingState}";
+        var bettingState = string.Create(
+            CultureInfo.InvariantCulture,
+            $"pot={pot.Value}|bet={currentBetSize.Value}|tocall={toCall.Value}|raises={raisesThisStreet}");
+        var publicPlayerState = BuildPublicPlayerStateKey(players, actingPlayerId);
+        var canonical = $"{street.ToString().ToLowerInvariant()}/pos={actingPosition}/hero={privateCards}/board={board}/hist={history}/bet={bettingState}/pub={publicPlayerState}";
 
         return new SolverInfoSetKey(
             street,
@@ -155,6 +164,7 @@ public sealed record SolverInfoSetKey(
             board,
             history,
             bettingState,
+            publicPlayerState,
             null,
             canonical);
     }
@@ -178,6 +188,53 @@ public sealed record SolverInfoSetKey(
         if (actionHistory.Count == 0)
             return string.Empty;
 
-        return string.Join('|', actionHistory.Select(a => $"{(int)a.ActionType}:{a.Amount.Value}"));
+        return string.Join('|', actionHistory.Select(a => string.Create(CultureInfo.InvariantCulture, $"{(int)a.ActionType}:{a.Amount.Value}")));
+    }
+
+    private static string BuildPublicPlayerStateKey(IReadOnlyList<SolverPlayerState> players, PlayerId actingPlayerId)
+    {
+        if (players.Count == 0)
+            return string.Empty;
+
+        var ordered = players.OrderBy(p => p.SeatIndex).ToArray();
+        var acting = ordered.FirstOrDefault(p => p.PlayerId == actingPlayerId)
+            ?? throw new InvalidOperationException($"Acting player {actingPlayerId} not found in postflop state.");
+
+        var effectiveStack = ComputeEffectiveStack(ordered, actingPlayerId);
+        var statusMask = new string(ordered.Select(GetPlayerStatusCode).ToArray());
+
+        var stackVector = string.Join('.', ordered.Select(p => FormatChip(p.Stack)));
+        var streetContributionVector = string.Join('.', ordered.Select(p => FormatChip(p.CurrentStreetContribution)));
+        var totalContributionVector = string.Join('.', ordered.Select(p => FormatChip(p.TotalContribution)));
+
+        return string.Create(
+            CultureInfo.InvariantCulture,
+            $"act={acting.SeatIndex}|eff={FormatChip(effectiveStack)}|m={statusMask}|s={stackVector}|sc={streetContributionVector}|tc={totalContributionVector}");
+    }
+
+    private static ChipAmount ComputeEffectiveStack(IReadOnlyList<SolverPlayerState> players, PlayerId actingPlayerId)
+    {
+        var acting = players.First(p => p.PlayerId == actingPlayerId);
+        var opponents = players
+            .Where(p => p.PlayerId != actingPlayerId && !p.IsFolded)
+            .Select(p => p.Stack)
+            .ToArray();
+
+        if (opponents.Length == 0)
+            return acting.Stack;
+
+        var shortestOpponent = opponents.MinBy(s => s.Value)!;
+        return acting.Stack.Value <= shortestOpponent.Value ? acting.Stack : shortestOpponent;
+    }
+
+    private static char GetPlayerStatusCode(SolverPlayerState player)
+        => player.IsFolded
+            ? 'f'
+            : player.IsAllIn
+                ? 'i'
+                : 'a';
+
+    private static string FormatChip(ChipAmount amount)
+        => amount.Value.ToString("0.####", CultureInfo.InvariantCulture);
     }
 }
