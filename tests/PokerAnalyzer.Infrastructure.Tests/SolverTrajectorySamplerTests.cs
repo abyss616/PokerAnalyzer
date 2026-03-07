@@ -72,27 +72,49 @@ public sealed class SolverTrajectorySamplerTests
     }
 
     [Fact]
-    public void Sampling_Produces_Executable_Aggression_Actions_With_Explicit_Target_Amounts()
+    public void Sampling_Preflop_Produces_Executable_Raise_Actions_With_Explicit_Target_Amounts()
     {
         var sampler = new SolverTrajectorySampler(new SolverStrategyStore());
         var chanceSampler = new SolverChanceSampler();
+        var terminalDetector = new SolverTerminalDetector();
         var mapper = new SolverInfoSetKeyMapper();
-        var state = CreateHeadsUpPreflopState(includePrivateCards: true);
 
         for (var seed = 0; seed < 100; seed++)
         {
-            var trajectory = sampler.Sample(state, chanceSampler, mapper, new Random(seed));
-            Assert.NotEmpty(trajectory.Steps);
+            var rng = new Random(seed);
+            var state = CreateHeadsUpPreflopState(includePrivateCards: true);
+            var preflopDecisionStepsObserved = 0;
 
-            foreach (var step in trajectory.Steps)
+            while (state.Street == Street.Preflop && !terminalDetector.IsTerminal(state))
             {
-                if (step.SampledAction.ActionType is ActionType.Bet or ActionType.Raise)
+                if (chanceSampler.IsChanceNode(state))
+                {
+                    var chanceResolved = chanceSampler.Sample(state, rng);
+                    if (chanceResolved.Street != Street.Preflop)
+                        break;
+
+                    state = chanceResolved;
+                    continue;
+                }
+
+                var trajectory = sampler.Sample(state, chanceSampler, mapper, rng);
+                Assert.NotEmpty(trajectory.Steps);
+
+                var step = trajectory.Steps[0];
+                Assert.Equal(Street.Preflop, state.Street);
+
+                if (step.SampledAction.ActionType is ActionType.Raise)
                     Assert.NotNull(step.SampledAction.Amount);
 
                 Assert.All(
-                    step.LegalActions.Where(a => a.ActionType is ActionType.Bet or ActionType.Raise),
+                    step.LegalActions.Where(a => a.ActionType is ActionType.Raise),
                     action => Assert.NotNull(action.Amount));
+
+                preflopDecisionStepsObserved++;
+                state = SolverStateStepper.Step(state, step.SampledAction);
             }
+
+            Assert.True(preflopDecisionStepsObserved > 0);
         }
     }
   
