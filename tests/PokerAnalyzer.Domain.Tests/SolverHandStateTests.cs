@@ -270,6 +270,133 @@ public class SolverHandStateTests
         Assert.Equal(ex1.Message, ex2.Message);
     }
 
+
+    [Fact]
+    public void Constructor_ActionHistory_PostFlopBetAfterPreflop_DoesNotThrow()
+    {
+        var sbId = PlayerId.New();
+        var bbId = PlayerId.New();
+        var players = new[]
+        {
+            new SolverPlayerState(sbId, 0, Position.SB, new ChipAmount(70), new ChipAmount(20), new ChipAmount(30), false, false),
+            new SolverPlayerState(bbId, 1, Position.BB, new ChipAmount(70), new ChipAmount(20), new ChipAmount(30), false, false)
+        };
+
+        var actions = new[]
+        {
+            new SolverActionEntry(sbId, ActionType.PostSmallBlind, new ChipAmount(5)),
+            new SolverActionEntry(bbId, ActionType.PostBigBlind, new ChipAmount(10)),
+            new SolverActionEntry(sbId, ActionType.Call, new ChipAmount(10)),
+            new SolverActionEntry(sbId, ActionType.DealFlop, ChipAmount.Zero),
+            new SolverActionEntry(sbId, ActionType.Bet, new ChipAmount(20)),
+            new SolverActionEntry(bbId, ActionType.Call, new ChipAmount(20))
+        };
+
+        var ex = Record.Exception(() => new SolverHandState(
+            config: new GameConfig(6, new ChipAmount(5), new ChipAmount(10), ChipAmount.Zero, new ChipAmount(100)),
+            street: Street.Turn,
+            buttonSeatIndex: 0,
+            actingPlayerId: sbId,
+            pot: new ChipAmount(60),
+            currentBetSize: ChipAmount.Zero,
+            lastRaiseSize: ChipAmount.Zero,
+            raisesThisStreet: 0,
+            players: players,
+            actionHistory: actions,
+            boardCards: [Card.Parse("2h"), Card.Parse("7d"), Card.Parse("Ks"), Card.Parse("Tc")],
+            deadCards: Array.Empty<Card>(),
+            privateCardsByPlayer: new Dictionary<PlayerId, HoleCards>()));
+
+        Assert.Null(ex);
+    }
+
+    [Fact]
+    public void Constructor_ActionHistory_PostTurnAggression_ReplaysCorrectly()
+    {
+        var sbId = PlayerId.New();
+        var bbId = PlayerId.New();
+        var players = new[]
+        {
+            new SolverPlayerState(sbId, 0, Position.SB, new ChipAmount(40), ChipAmount.Zero, new ChipAmount(60), false, false),
+            new SolverPlayerState(bbId, 1, Position.BB, new ChipAmount(40), ChipAmount.Zero, new ChipAmount(60), false, false)
+        };
+
+        var actions = new[]
+        {
+            new SolverActionEntry(sbId, ActionType.PostSmallBlind, new ChipAmount(5)),
+            new SolverActionEntry(bbId, ActionType.PostBigBlind, new ChipAmount(10)),
+            new SolverActionEntry(sbId, ActionType.Call, new ChipAmount(10)),
+            new SolverActionEntry(sbId, ActionType.DealFlop, ChipAmount.Zero),
+            new SolverActionEntry(sbId, ActionType.Bet, new ChipAmount(20)),
+            new SolverActionEntry(bbId, ActionType.Call, new ChipAmount(20)),
+            new SolverActionEntry(sbId, ActionType.DealTurn, ChipAmount.Zero),
+            new SolverActionEntry(sbId, ActionType.Bet, new ChipAmount(30)),
+            new SolverActionEntry(bbId, ActionType.Call, new ChipAmount(30))
+        };
+
+        var ex = Record.Exception(() => new SolverHandState(
+            config: new GameConfig(6, new ChipAmount(5), new ChipAmount(10), ChipAmount.Zero, new ChipAmount(100)),
+            street: Street.River,
+            buttonSeatIndex: 0,
+            actingPlayerId: sbId,
+            pot: new ChipAmount(120),
+            currentBetSize: ChipAmount.Zero,
+            lastRaiseSize: ChipAmount.Zero,
+            raisesThisStreet: 0,
+            players: players,
+            actionHistory: actions,
+            boardCards: [Card.Parse("2h"), Card.Parse("7d"), Card.Parse("Ks"), Card.Parse("Tc"), Card.Parse("9c")],
+            deadCards: Array.Empty<Card>(),
+            privateCardsByPlayer: new Dictionary<PlayerId, HoleCards>()));
+
+        Assert.Null(ex);
+    }
+
+    [Fact]
+    public void Constructor_ActionHistory_PostRiverAggression_ReplaysCorrectly()
+    {
+        var sbId = PlayerId.New();
+        var bbId = PlayerId.New();
+        var players = new[]
+        {
+            new SolverPlayerState(sbId, 0, Position.SB, new ChipAmount(40), ChipAmount.Zero, new ChipAmount(60), false, false),
+            new SolverPlayerState(bbId, 1, Position.BB, ChipAmount.Zero, new ChipAmount(40), new ChipAmount(100), false, true)
+        };
+
+        var actions = new[]
+        {
+            new SolverActionEntry(sbId, ActionType.PostSmallBlind, new ChipAmount(5)),
+            new SolverActionEntry(bbId, ActionType.PostBigBlind, new ChipAmount(10)),
+            new SolverActionEntry(sbId, ActionType.Call, new ChipAmount(10)),
+            new SolverActionEntry(sbId, ActionType.DealFlop, ChipAmount.Zero),
+            new SolverActionEntry(sbId, ActionType.Bet, new ChipAmount(20)),
+            new SolverActionEntry(bbId, ActionType.Call, new ChipAmount(20)),
+            new SolverActionEntry(sbId, ActionType.DealTurn, ChipAmount.Zero),
+            new SolverActionEntry(sbId, ActionType.Bet, new ChipAmount(30)),
+            new SolverActionEntry(bbId, ActionType.Call, new ChipAmount(30)),
+            new SolverActionEntry(sbId, ActionType.DealRiver, ChipAmount.Zero),
+            new SolverActionEntry(sbId, ActionType.Check, ChipAmount.Zero),
+            new SolverActionEntry(bbId, ActionType.Bet, new ChipAmount(40))
+        };
+
+        var ex = Record.Exception(() => new SolverHandState(
+            config: new GameConfig(6, new ChipAmount(5), new ChipAmount(10), ChipAmount.Zero, new ChipAmount(100)),
+            street: Street.River,
+            buttonSeatIndex: 0,
+            actingPlayerId: sbId,
+            pot: new ChipAmount(160),
+            currentBetSize: new ChipAmount(40),
+            lastRaiseSize: new ChipAmount(40),
+            raisesThisStreet: 1,
+            players: players,
+            actionHistory: actions,
+            boardCards: [Card.Parse("2h"), Card.Parse("7d"), Card.Parse("Ks"), Card.Parse("Tc"), Card.Parse("9c")],
+            deadCards: Array.Empty<Card>(),
+            privateCardsByPlayer: new Dictionary<PlayerId, HoleCards>()));
+
+        Assert.Null(ex);
+    }
+
     private static SolverHandState CreateState(
         PlayerId actingPlayerId,
         IEnumerable<SolverPlayerState> players,

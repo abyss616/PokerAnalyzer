@@ -50,6 +50,7 @@ public class SolverChanceSamplerTests
 
         Assert.Equal(3, sampled.BoardCards.Count);
         Assert.Equal(Street.Flop, sampled.Street);
+        Assert.Equal(ActionType.DealFlop, Assert.Single(sampled.ActionHistory).ActionType);
         AssertAllCardsUnique(sampled);
     }
 
@@ -63,6 +64,7 @@ public class SolverChanceSamplerTests
 
         Assert.Equal(4, sampled.BoardCards.Count);
         Assert.Equal(Street.Turn, sampled.Street);
+        Assert.Equal(ActionType.DealTurn, Assert.Single(sampled.ActionHistory).ActionType);
         AssertAllCardsUnique(sampled);
     }
 
@@ -76,6 +78,7 @@ public class SolverChanceSamplerTests
 
         Assert.Equal(5, sampled.BoardCards.Count);
         Assert.Equal(Street.River, sampled.Street);
+        Assert.Equal(ActionType.DealRiver, Assert.Single(sampled.ActionHistory).ActionType);
         AssertAllCardsUnique(sampled);
     }
 
