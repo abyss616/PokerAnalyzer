@@ -14,7 +14,7 @@ public sealed class PreflopTrajectoryTraverserTests
         var traverser = new PreflopTrajectoryTraverser(
             new FixedRootStateProvider(state),
             new SolverChanceSampler(),
-            new PublicStateInfoSetMapper(),
+            new PreflopInfoSetMapper(),
             new InMemoryPolicyProvider(),
             actionSampler,
             new PlaceholderPreflopLeafEvaluator(),
@@ -43,7 +43,7 @@ public sealed class PreflopTrajectoryTraverserTests
         var traverser = new PreflopTrajectoryTraverser(
             new FixedRootStateProvider(state),
             new SolverChanceSampler(),
-            new PublicStateInfoSetMapper(),
+            new PreflopInfoSetMapper(),
             new InMemoryPolicyProvider(),
             new WeightedRandomActionSampler(),
             new PlaceholderPreflopLeafEvaluator(),
@@ -55,6 +55,24 @@ public sealed class PreflopTrajectoryTraverserTests
         Assert.Equal(3, result.FinalState.BoardCards.Count);
         Assert.Contains(result.Path, node => node.NodeKind == TraversalNodeKind.Chance);
         Assert.Equal(TraversalNodeKind.Leaf, result.Path[^1].NodeKind);
+    }
+
+
+    [Fact]
+    public void SampleTrajectory_WhenTraversalDoesNotProgress_ThrowsDepthGuardException()
+    {
+        var state = CreateHeadsUpPreflopState();
+        var traverser = new PreflopTrajectoryTraverser(
+            new FixedRootStateProvider(state),
+            new NonProgressingChanceSampler(),
+            new PreflopInfoSetMapper(),
+            new InMemoryPolicyProvider(),
+            new WeightedRandomActionSampler(),
+            new PlaceholderPreflopLeafEvaluator(),
+            new DefaultPreflopLeafDetector());
+
+        var ex = Assert.Throws<InvalidOperationException>(() => traverser.RunIteration(new Random(123)));
+        Assert.Contains("exceeded max depth", ex.Message, StringComparison.OrdinalIgnoreCase);
     }
 
     private static SolverHandState CreateHeadsUpPreflopState()
@@ -107,6 +125,13 @@ public sealed class PreflopTrajectoryTraverserTests
             players,
             actionHistory: [],
             privateCardsByPlayer: new Dictionary<PlayerId, Domain.Cards.HoleCards>());
+    }
+
+    private sealed class NonProgressingChanceSampler : IChanceSampler
+    {
+        public bool IsChanceNode(SolverHandState state) => true;
+
+        public SolverHandState Sample(SolverHandState state, Random rng) => state;
     }
 
     private sealed class CapturingActionSampler : IActionSampler
