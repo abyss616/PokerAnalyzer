@@ -113,6 +113,24 @@ public class SolverStateStepperTests
         Assert.All(next.Players, p => Assert.Equal(0, p.CurrentStreetContribution.Value));
     }
 
+
+    [Fact]
+    public void Step_AllInTransition_ToNoActionablePlayers_UsesActivePlaceholderActingPlayer()
+    {
+        var p1 = Player(0, Position.SB, stack: 10, street: 0, total: 0);
+        var p2 = Player(1, Position.BB, stack: 10, street: 0, total: 0);
+        var state = CreateState(p1.PlayerId, [p1, p2], pot: 0, currentBetSize: 0, lastRaiseSize: 10, raisesThisStreet: 0);
+
+        var afterP1AllIn = SolverStateStepper.Step(state, new LegalAction(ActionType.AllIn));
+        var afterP2Call = SolverStateStepper.Step(afterP1AllIn, new LegalAction(ActionType.Call, new ChipAmount(10)));
+
+        Assert.Contains(afterP2Call.ActingPlayerId, afterP2Call.Players.Where(p => p.IsActive).Select(p => p.PlayerId));
+        Assert.Empty(afterP2Call.Players.Where(p => p.IsActive && !p.IsAllIn && p.Stack.Value > 0));
+        Assert.Equal(20, afterP2Call.Pot.Value);
+        Assert.Equal(0, afterP2Call.CurrentBetSize.Value);
+        Assert.Equal(0, afterP2Call.RaisesThisStreet);
+    }
+
     [Fact]
     public void Step_ResultingState_RemainsValid()
     {
