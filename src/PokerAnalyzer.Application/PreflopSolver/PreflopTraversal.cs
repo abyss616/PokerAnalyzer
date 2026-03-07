@@ -32,7 +32,13 @@ public interface IPreflopLeafDetector
     bool IsLeaf(SolverHandState state);
 }
 
-public sealed class PreflopTrajectoryTraverser
+public interface IPreflopTrajectoryTraverser
+{
+    TrajectorySample RunIteration(Random rng);
+    TrajectorySample SampleTrajectory(SolverHandState rootState, Random rng);
+}
+
+public sealed class PreflopTrajectoryTraverser : IPreflopTrajectoryTraverser
 {
     private const int MaxTraversalDepth = 256;
 
@@ -112,7 +118,7 @@ public sealed class PreflopTrajectoryTraverser
                 : UniformPolicyBuilder.Build(legalActions);
 
             var sampledAction = _actionSampler.Sample(legalActions, policy, rng);
-            visited.Add(VisitedNode.CreateAction(visited.Count, current.Street, actingPlayerId, infoSetKey, legalActions, policy, sampledAction));
+            visited.Add(VisitedNode.CreateAction(visited.Count, current.Street, actingPlayerId, infoSetKey, legalActions, policy, sampledAction, current));
 
             current = current.Apply(sampledAction);
         }
@@ -140,10 +146,11 @@ public sealed record VisitedNode(
     IReadOnlyList<LegalAction> LegalActions,
     IReadOnlyDictionary<LegalAction, double> Policy,
     LegalAction? SampledAction,
-    string? Note)
+    string? Note,
+    SolverHandState? StateBeforeAction)
 {
     public static VisitedNode CreateChance(int depth, Street street, Street nextStreet, string note)
-        => new(depth, TraversalNodeKind.Chance, street, null, null, Array.Empty<LegalAction>(), new Dictionary<LegalAction, double>(), null, $"{note} ({street}->{nextStreet})");
+        => new(depth, TraversalNodeKind.Chance, street, null, null, Array.Empty<LegalAction>(), new Dictionary<LegalAction, double>(), null, $"{note} ({street}->{nextStreet})", null);
 
     public static VisitedNode CreateAction(
         int depth,
@@ -152,11 +159,12 @@ public sealed record VisitedNode(
         string infoSetKey,
         IReadOnlyList<LegalAction> legalActions,
         IReadOnlyDictionary<LegalAction, double> policy,
-        LegalAction sampledAction)
-        => new(depth, TraversalNodeKind.Action, street, actingPlayerId, infoSetKey, legalActions, policy, sampledAction, null);
+        LegalAction sampledAction,
+        SolverHandState stateBeforeAction)
+        => new(depth, TraversalNodeKind.Action, street, actingPlayerId, infoSetKey, legalActions, policy, sampledAction, null, stateBeforeAction);
 
     public static VisitedNode CreateLeaf(int depth, Street street, string note)
-        => new(depth, TraversalNodeKind.Leaf, street, null, null, Array.Empty<LegalAction>(), new Dictionary<LegalAction, double>(), null, note);
+        => new(depth, TraversalNodeKind.Leaf, street, null, null, Array.Empty<LegalAction>(), new Dictionary<LegalAction, double>(), null, note, null);
 }
 
 public sealed record PreflopLeafEvaluation(
