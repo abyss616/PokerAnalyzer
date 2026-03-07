@@ -18,8 +18,15 @@ public sealed class DefaultBetSizeSetProvider : IBetSizeSetProvider
     public IReadOnlyList<ChipAmount> GetRaiseSizes(SolverHandState state)
     {
         var acting = state.Players.First(player => player.PlayerId == state.ActingPlayerId);
-        var minRaiseTarget = state.CurrentBetSize + state.LastRaiseSize;
+
+        var minIncrement = Math.Max(1, state.LastRaiseSize.Value);
+        var minRaiseTarget = new ChipAmount(state.CurrentBetSize.Value + minIncrement);
         var jamTarget = acting.CurrentStreetContribution + acting.Stack;
+
+        if (jamTarget <= minRaiseTarget)
+        {
+            return [jamTarget];
+        }
 
         return [minRaiseTarget, jamTarget];
     }
