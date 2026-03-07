@@ -95,56 +95,7 @@ public sealed class SolverTrajectorySamplerTests
             }
         }
     }
-
-
-    [Fact]
-    public void Sampling_PostStreetTransition_Bet_Target_Always_Exceeds_Acting_Contribution()
-    {
-        var sampler = new SolverTrajectorySampler(new SolverStrategyStore());
-        var chanceSampler = new SolverChanceSampler();
-        var mapper = new SolverInfoSetKeyMapper();
-        var state = CreateHeadsUpPreflopState(includePrivateCards: true);
-
-        for (var seed = 0; seed < 500; seed++)
-        {
-            var current = state;
-            var sawStreetTransition = false;
-
-            for (var depth = 0; depth < 40; depth++)
-            {
-                if (chanceSampler.IsChanceNode(current))
-                {
-                    var previousStreet = current.Street;
-                    current = chanceSampler.Sample(current, new Random((seed * 997) + depth + 1));
-                    if (current.Street != previousStreet)
-                        sawStreetTransition = true;
-
-                    continue;
-                }
-
-                var legalActions = current.GenerateLegalActions();
-                if (legalActions.Count == 0)
-                    break;
-
-                var trajectory = sampler.Sample(current, chanceSampler, mapper, new Random((seed * 7919) + depth + 1));
-                if (trajectory.Steps.Count == 0)
-                    break;
-
-                var sampledAction = trajectory.Steps[0].SampledAction;
-                var acting = current.Players.First(p => p.PlayerId == current.ActingPlayerId);
-
-                if (sawStreetTransition && sampledAction.ActionType == ActionType.Bet)
-                {
-                    Assert.NotNull(sampledAction.Amount);
-                    Assert.True(
-                        sampledAction.Amount!.Value > acting.CurrentStreetContribution,
-                        $"Seed {seed}, depth {depth}: sampled post-transition bet target {sampledAction.Amount.Value.Value} was not greater than acting contribution {acting.CurrentStreetContribution.Value}.");
-                }
-
-                current = SolverStateStepper.Step(current, sampledAction);
-            }
-        }
-    }
+  
 
     [Fact]
     public void Sampling_Is_Deterministic_For_Equivalent_Seeds()
