@@ -19,16 +19,17 @@ public sealed class DefaultBetSizeSetProvider : IBetSizeSetProvider
     {
         var acting = state.Players.First(player => player.PlayerId == state.ActingPlayerId);
 
-        var minIncrement = Math.Max(1, state.LastRaiseSize.Value);
-        var minRaiseTarget = new ChipAmount(state.CurrentBetSize.Value + minIncrement);
+        var minRaiseTarget = state.CurrentBetSize + state.LastRaiseSize;
         var jamTarget = acting.CurrentStreetContribution + acting.Stack;
 
-        if (jamTarget <= minRaiseTarget)
+        var raiseTargets = new List<ChipAmount>(2) { minRaiseTarget };
+
+        if (jamTarget >= minRaiseTarget && jamTarget != minRaiseTarget)
         {
-            return [jamTarget];
+            raiseTargets.Add(jamTarget);
         }
 
-        return [minRaiseTarget, jamTarget];
+        return raiseTargets;
     }
 
     private static ChipAmount BuildTargetContribution(

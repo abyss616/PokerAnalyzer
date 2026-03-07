@@ -44,6 +44,17 @@ public sealed class SolverTrajectorySamplerTests
     }
 
     [Fact]
+    public void Preflop_Blind_Root_Minimum_Raise_Target_Is_Fifteen_For_Sb()
+    {
+        var state = CreateHeadsUpPreflopState(includePrivateCards: false);
+        var provider = new DefaultBetSizeSetProvider();
+
+        var raiseSizes = provider.GetRaiseSizes(state);
+
+        Assert.Equal(new ChipAmount(15), raiseSizes[0]);
+    }
+
+    [Fact]
     public void Uniform_Strategy_Sampling_Only_Chooses_Legal_Actions()
     {
         var sampler = new SolverTrajectorySampler(new SolverStrategyStore());
@@ -131,7 +142,7 @@ public sealed class SolverTrajectorySamplerTests
             actingPlayerId: sbId,
             pot: new ChipAmount(15),
             currentBetSize: new ChipAmount(10),
-            lastRaiseSize: ChipAmount.Zero,
+            lastRaiseSize: new ChipAmount(5),
             raisesThisStreet: 0,
             players:
             [
