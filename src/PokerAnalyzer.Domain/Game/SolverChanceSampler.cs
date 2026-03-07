@@ -30,22 +30,12 @@ public sealed class SolverChanceSampler : IChanceSampler
 
         var boardCards = state.BoardCards.ToList();
         var cardsToDeal = GetBoardCardsToDeal(state);
-        var dealtBoardAction = GetDealActionType(state.Street, cardsToDeal);
         if (cardsToDeal > 0)
             DealBoardCards(boardCards, availableDeck, cardsToDeal, rng);
-
-        var actionHistory = state.ActionHistory;
-        if (dealtBoardAction is not null)
-        {
-            actionHistory = actionHistory
-                .Concat([new SolverActionEntry(state.ActingPlayerId, dealtBoardAction.Value, ChipAmount.Zero)])
-                .ToArray();
-        }
 
         return state.With(
             boardCards: boardCards,
             privateCardsByPlayer: privateCardsByPlayer,
-            actionHistory: actionHistory,
             street: AdvanceStreetForBoardCount(state.Street, cardsToDeal));
     }
 
@@ -102,21 +92,6 @@ public sealed class SolverChanceSampler : IChanceSampler
             return false;
 
         return state.Players.All(player => player.CurrentStreetContribution.Value == 0);
-    }
-
-
-    private static ActionType? GetDealActionType(Street street, int boardCardsDealt)
-    {
-        if (boardCardsDealt == 0)
-            return null;
-
-        return street switch
-        {
-            Street.Preflop when boardCardsDealt == 3 => ActionType.DealFlop,
-            Street.Flop when boardCardsDealt == 1 => ActionType.DealTurn,
-            Street.Turn when boardCardsDealt == 1 => ActionType.DealRiver,
-            _ => null
-        };
     }
 
     private static Street AdvanceStreetForBoardCount(Street currentStreet, int boardCardsDealt)

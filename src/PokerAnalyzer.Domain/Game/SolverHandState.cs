@@ -238,28 +238,6 @@ public sealed record SolverHandState
 
         foreach (var action in ActionHistory)
         {
-            switch (action.ActionType)
-            {
-                case ActionType.DealFlop:
-                case ActionType.DealTurn:
-                case ActionType.DealRiver:
-                    if (action.Amount != ChipAmount.Zero)
-                    {
-                        throw new InvalidOperationException(
-                            $"{action.ActionType} action must have zero amount.");
-                    }
-
-                    foreach (var playerId in stateByPlayer.Keys.ToArray())
-                    {
-                        var priorState = stateByPlayer[playerId];
-                        stateByPlayer[playerId] = priorState with { Contribution = ChipAmount.Zero };
-                    }
-
-                    currentBet = ChipAmount.Zero;
-                    lastRaiseSize = ChipAmount.Zero;
-                    continue;
-            }
-
             if (!stateByPlayer.TryGetValue(action.PlayerId, out var playerState))
                 throw new InvalidOperationException($"Action history contains action from non-seated player {action.PlayerId}.");
 
