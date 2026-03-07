@@ -61,12 +61,12 @@ public sealed class PreflopTrajectoryTraverserTests
     {
         var sbId = new PlayerId(Guid.Parse("11111111-1111-1111-1111-111111111111"));
         var bbId = new PlayerId(Guid.Parse("22222222-2222-2222-2222-222222222222"));
-        var config = new GameConfig(maxPlayers: 2, smallBlind: new ChipAmount(1), bigBlind: new ChipAmount(2), ante: ChipAmount.Zero, startingStack: new ChipAmount(100));
+        var config = new GameConfig(MaxPlayers: 2, SmallBlind: new ChipAmount(1), BigBlind: new ChipAmount(2), Ante: ChipAmount.Zero, StartingStack: new ChipAmount(100));
 
         var players = new[]
         {
-            new SolverPlayerState(sbId, seatIndex: 0, Position.SB, stack: new ChipAmount(99), currentStreetContribution: new ChipAmount(1), totalContribution: new ChipAmount(1), IsFolded: false, IsAllIn: false),
-            new SolverPlayerState(bbId, seatIndex: 1, Position.BB, stack: new ChipAmount(98), currentStreetContribution: new ChipAmount(2), totalContribution: new ChipAmount(2), IsFolded: false, IsAllIn: false)
+            new SolverPlayerState(sbId, SeatIndex: 0, Position.SB, Stack: new ChipAmount(99), CurrentStreetContribution: new ChipAmount(1), TotalContribution: new ChipAmount(1), IsFolded: false, IsAllIn: false),
+            new SolverPlayerState(bbId, SeatIndex: 1, Position.BB, Stack: new ChipAmount(98), CurrentStreetContribution: new ChipAmount(2), TotalContribution: new ChipAmount(2), IsFolded: false, IsAllIn: false)
         };
 
         return new SolverHandState(
@@ -87,12 +87,12 @@ public sealed class PreflopTrajectoryTraverserTests
     {
         var sbId = new PlayerId(Guid.Parse("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"));
         var bbId = new PlayerId(Guid.Parse("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb"));
-        var config = new GameConfig(maxPlayers: 2, smallBlind: new ChipAmount(1), bigBlind: new ChipAmount(2), ante: ChipAmount.Zero, startingStack: new ChipAmount(100));
+        var config = new GameConfig(MaxPlayers: 2, SmallBlind: new ChipAmount(1), BigBlind: new ChipAmount(2), Ante: ChipAmount.Zero, StartingStack: new ChipAmount(100));
 
         var players = new[]
         {
-            new SolverPlayerState(sbId, seatIndex: 0, Position.SB, stack: new ChipAmount(97), currentStreetContribution: ChipAmount.Zero, totalContribution: new ChipAmount(3), IsFolded: false, IsAllIn: false),
-            new SolverPlayerState(bbId, seatIndex: 1, Position.BB, stack: new ChipAmount(97), currentStreetContribution: ChipAmount.Zero, totalContribution: new ChipAmount(3), IsFolded: false, IsAllIn: false)
+            new SolverPlayerState(sbId, SeatIndex: 0, Position.SB, Stack: new ChipAmount(97), CurrentStreetContribution: ChipAmount.Zero, TotalContribution: new ChipAmount(3), IsFolded: false, IsAllIn: false),
+            new SolverPlayerState(bbId, SeatIndex: 1, Position.BB, Stack: new ChipAmount(97), CurrentStreetContribution: ChipAmount.Zero, TotalContribution: new ChipAmount(3), IsFolded: false, IsAllIn: false)
         };
 
         return new SolverHandState(
