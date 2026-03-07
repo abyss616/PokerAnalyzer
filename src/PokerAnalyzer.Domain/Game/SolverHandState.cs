@@ -200,6 +200,10 @@ public sealed record SolverHandState
         if (!player.IsActive)
             throw new InvalidOperationException($"Acting player {ActingPlayerId} is folded and cannot act.");
 
+        var hasActionablePlayers = Players.Any(p => p.IsActive && !p.IsAllIn && p.Stack.Value > 0);
+        if (!hasActionablePlayers)
+            return;
+
         if (player.IsAllIn)
             throw new InvalidOperationException($"Acting player {ActingPlayerId} is all-in and cannot act.");
 
