@@ -42,9 +42,9 @@ public static class SolverLegalActionGenerator
         if (IsUnopenedPreflopSpot(state))
         {
             var unopenedOpenSize = ResolveUnopenedPreflopOpenSize(state.Config.BigBlind);
-            var minTotalBet = state.CurrentBetSize + state.LastRaiseSize;
+            var minTotalBetInUnopened = state.CurrentBetSize + state.LastRaiseSize;
 
-            if (unopenedOpenSize >= minTotalBet && unopenedOpenSize <= maxTotalBet)
+            if (unopenedOpenSize >= minTotalBetInUnopened && unopenedOpenSize <= maxTotalBet)
                 actions.Add(new LegalAction(ActionType.Raise, unopenedOpenSize));
 
             return actions.AsReadOnly();
