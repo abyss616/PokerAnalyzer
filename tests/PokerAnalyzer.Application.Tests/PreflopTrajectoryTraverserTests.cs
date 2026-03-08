@@ -36,6 +36,27 @@ public sealed class PreflopTrajectoryTraverserTests
         Assert.Equal(1, actionSampler.SampleCalls);
     }
 
+
+    [Fact]
+    public void UnopenedRoot_ExpandsDistinctBranchesAfterLimpVsRaiseToTwoPointFiveBb()
+    {
+        var root = CreateHeadsUpPreflopState();
+        var actions = root.GenerateLegalActions();
+
+        var limp = Assert.Single(actions.Where(action => action.ActionType == ActionType.Call));
+        var raise = Assert.Single(actions.Where(action => action.ActionType == ActionType.Raise));
+
+        Assert.Equal(1, limp.Amount!.Value.Value);
+        Assert.Equal(5, raise.Amount!.Value.Value);
+
+        var afterLimp = root.Apply(limp);
+        var afterRaise = root.Apply(raise);
+
+        Assert.NotEqual(afterLimp.ActionHistorySignature, afterRaise.ActionHistorySignature);
+        Assert.Contains(":2:2", afterLimp.ActionHistorySignature, StringComparison.Ordinal);
+        Assert.Contains(":4:5", afterRaise.ActionHistorySignature, StringComparison.Ordinal);
+    }
+
     [Fact]
     public void SampleTrajectory_WhenPreflopRoundAlreadyClosed_SamplesChanceAndStopsAtFlopCutoff()
     {

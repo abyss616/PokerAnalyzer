@@ -2,6 +2,9 @@ namespace PokerAnalyzer.Domain.Game;
 
 public static class SolverLegalActionGenerator
 {
+    private const long UnopenedPreflopOpenNumerator = 5;
+    private const long UnopenedPreflopOpenDenominator = 2;
+
     public static IReadOnlyList<LegalAction> GenerateLegalActions(SolverHandState state, IBetSizeSetProvider? sizeProvider = null)
     {
         var acting = state.Players.FirstOrDefault(p => p.PlayerId == state.ActingPlayerId);
@@ -36,6 +39,17 @@ public static class SolverLegalActionGenerator
         if (callAmount.Value > 0)
             actions.Add(new LegalAction(ActionType.Call, callAmount));
 
+        if (IsUnopenedPreflopSpot(state))
+        {
+            var unopenedOpenSize = ResolveUnopenedPreflopOpenSize(state.Config.BigBlind);
+            var minTotalBet = state.CurrentBetSize + state.LastRaiseSize;
+
+            if (unopenedOpenSize >= minTotalBet && unopenedOpenSize <= maxTotalBet)
+                actions.Add(new LegalAction(ActionType.Raise, unopenedOpenSize));
+
+            return actions.AsReadOnly();
+        }
+
         var minTotalBet = state.CurrentBetSize + state.LastRaiseSize;
         var canFullRaise = maxTotalBet >= minTotalBet;
 
@@ -59,6 +73,35 @@ public static class SolverLegalActionGenerator
         }
 
         return actions.AsReadOnly();
+    }
+
+    private static bool IsUnopenedPreflopSpot(SolverHandState state)
+    {
+        if (state.Street != Street.Preflop)
+            return false;
+
+        if (state.RaisesThisStreet != 0)
+            return false;
+
+        if (state.CurrentBetSize != state.Config.BigBlind)
+            return false;
+
+        if (state.LastRaiseSize != state.Config.BigBlind)
+            return false;
+
+        return state.ActionHistory.All(action => action.ActionType is ActionType.PostSmallBlind or ActionType.PostBigBlind);
+    }
+
+    private static ChipAmount ResolveUnopenedPreflopOpenSize(ChipAmount bigBlind)
+    {
+        var scaled = checked(bigBlind.Value * UnopenedPreflopOpenNumerator);
+        if (scaled % UnopenedPreflopOpenDenominator != 0)
+        {
+            throw new InvalidOperationException(
+                $"Configured big blind {bigBlind.Value} does not support exact 2.5bb sizing in integer-chip representation.");
+        }
+
+        return new ChipAmount(scaled / UnopenedPreflopOpenDenominator);
     }
 
     private static void AddSizedAggressionActions(
