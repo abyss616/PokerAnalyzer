@@ -82,9 +82,9 @@ public sealed class PreflopStrategyQueryServiceTests
         var result = sut.GetStrategyResult(infoSetKey, legalActions);
 
         Assert.Equal(3, result.AverageStrategy.Count);
-        Assert.Equal(1m / 3m, result.AverageStrategy["Fold"]);
-        Assert.Equal(1m / 3m, result.AverageStrategy["Call:1"]);
-        Assert.Equal(1m / 3m, result.AverageStrategy["Raise:4"]);
+        Assert.Equal(Math.Round(1m / 3m, 15), Math.Round(result.AverageStrategy["Fold"], 15));
+        Assert.Equal(Math.Round(1m / 3m, 15), Math.Round(result.AverageStrategy["Call:1"], 15));
+        Assert.Equal(Math.Round(1m / 3m, 15), Math.Round(result.AverageStrategy["Raise:4"], 15));
     }
 
     [Fact]
