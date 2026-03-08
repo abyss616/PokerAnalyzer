@@ -9,7 +9,7 @@ public readonly record struct HoleCards(Card First, Card Second)
         if (string.IsNullOrWhiteSpace(text))
             throw new FormatException("Hole cards text is empty.");
 
-        text = text.Trim();
+        text = string.Concat(text.Where(c => !char.IsWhiteSpace(c)));
         if (text.Length != 4)
             throw new FormatException("Hole cards must be 4 characters like 'AsKh'.");
 
