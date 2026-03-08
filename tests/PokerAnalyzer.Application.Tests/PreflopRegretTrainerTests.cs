@@ -191,7 +191,7 @@ public sealed class PreflopRegretTrainerTests
         var averageStrategy = new InMemoryAverageStrategyStore();
         var fold = new LegalAction(ActionType.Fold);
         var call = new LegalAction(ActionType.Call, new ChipAmount(1));
-        var raise = new LegalAction(ActionType.RaiseTo, new ChipAmount(4));
+        var raise = new LegalAction(ActionType.Raise, new ChipAmount(4));
         var partialPolicy = new Dictionary<LegalAction, double>
         {
             [fold] = 1d

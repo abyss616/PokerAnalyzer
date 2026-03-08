@@ -12,7 +12,7 @@ public sealed class InMemoryAverageStrategyStoreTests
         var store = new InMemoryAverageStrategyStore();
         var fold = new LegalAction(ActionType.Fold);
         var call = new LegalAction(ActionType.Call, new ChipAmount(1));
-        var raise = new LegalAction(ActionType.RaiseTo, new ChipAmount(4));
+        var raise = new LegalAction(ActionType.Raise, new ChipAmount(4));
 
         store.Add("infoset", fold, 3d);
         store.Add("infoset", call, 1d);
