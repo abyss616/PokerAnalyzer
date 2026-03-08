@@ -43,8 +43,10 @@ public sealed class PreflopTrajectoryTraverserTests
         var regrets = new InMemoryRegretStore();
         var mapper = new PreflopInfoSetMapper();
         var infoSetKey = mapper.MapInfoSetKey(state, state.ActingPlayerId);
-        var fold = new LegalAction(ActionType.Fold);
-        var call = new LegalAction(ActionType.Call, new ChipAmount(1));
+
+        var legalActions = state.GenerateLegalActions();
+        var fold = Assert.Single(legalActions.Where(a => a.ActionType == ActionType.Fold));
+        var call = Assert.Single(legalActions.Where(a => a.ActionType == ActionType.Call));
 
         regrets.Add(infoSetKey, fold, 3d);
         regrets.Add(infoSetKey, call, 1d);
