@@ -7,6 +7,69 @@ namespace PokerAnalyzer.Application.Tests;
 
 public sealed class PreflopRegretTrainerTests
 {
+
+    [Fact]
+    public void RunTraining_InIterationMode_RunsRequestedIterationsAndReportsIterationLimit()
+    {
+        var trainer = CreateTrainerWithRegretAwareTraverser(out var regrets, out var averageStrategy, out _, out _);
+
+        var result = trainer.RunTraining(PreflopTrainingOptions.ForIterations(3));
+
+        Assert.Equal(3, result.IterationsCompleted);
+        Assert.Equal(PreflopTrainingMode.Iterations, result.ModeUsed);
+        Assert.True(result.ReachedIterationLimit);
+        Assert.False(result.ReachedTimeLimit);
+        Assert.False(result.StoppedByCancellation);
+        Assert.NotEqual(0d, averageStrategy.Get("traversal_infoset", new LegalAction(ActionType.Fold)));
+        Assert.NotEqual(0d, regrets.Get("traversal_infoset", new LegalAction(ActionType.Fold)));
+    }
+
+    [Fact]
+    public void RunTraining_InTimeMode_StopsOnTimeBudget_AndRunsAtLeastOneIteration()
+    {
+        var trainer = CreateTrainerWithRegretAwareTraverser(out _, out _, out _, out _);
+
+        var result = trainer.RunTraining(PreflopTrainingOptions.ForTime(TimeSpan.FromMilliseconds(30)));
+
+        Assert.Equal(PreflopTrainingMode.Time, result.ModeUsed);
+        Assert.True(result.ReachedTimeLimit);
+        Assert.False(result.ReachedIterationLimit);
+        Assert.False(result.StoppedByCancellation);
+        Assert.True(result.IterationsCompleted >= 1);
+        Assert.True(result.Elapsed >= TimeSpan.FromMilliseconds(20));
+        Assert.True(result.Elapsed < TimeSpan.FromSeconds(2));
+    }
+
+    [Fact]
+    public void RunTraining_DefaultOptions_UsesTimeMode()
+    {
+        Assert.Equal(PreflopTrainingMode.Time, PreflopTrainingOptions.Default.Mode);
+        Assert.Equal(TimeSpan.FromSeconds(20), PreflopTrainingOptions.Default.MaxDuration);
+    }
+
+    [Fact]
+    public void TrainingOptions_InvalidBudgets_AreRejected()
+    {
+        Assert.Throws<ArgumentOutOfRangeException>(() => PreflopTrainingOptions.ForIterations(0));
+        Assert.Throws<ArgumentOutOfRangeException>(() => PreflopTrainingOptions.ForTime(TimeSpan.Zero));
+        Assert.Throws<ArgumentOutOfRangeException>(() => PreflopTrainingOptions.ForTime(TimeSpan.FromMilliseconds(-1)));
+    }
+
+    [Fact]
+    public void RunTraining_Cancellation_StopsPromptly()
+    {
+        var trainer = CreateTrainerWithRegretAwareTraverser(out _, out _, out _, out _);
+        using var cts = new CancellationTokenSource();
+        cts.CancelAfter(TimeSpan.FromMilliseconds(10));
+
+        var result = trainer.RunTraining(PreflopTrainingOptions.ForTime(TimeSpan.FromSeconds(1)), cts.Token);
+
+        Assert.True(result.StoppedByCancellation);
+        Assert.False(result.ReachedIterationLimit);
+        Assert.False(result.ReachedTimeLimit);
+        Assert.True(result.Elapsed < TimeSpan.FromSeconds(1));
+    }
+
     [Fact]
     public void RunIteration_UsesRegretMatchedTraversalPolicy_AndUpdatesRegretAsActionValueMinusNodeValue()
     {
@@ -211,6 +274,41 @@ public sealed class PreflopRegretTrainerTests
         Assert.Equal(1d, averageStrategy.Get("traversal_infoset", fold), 10);
         Assert.Equal(0d, averageStrategy.Get("traversal_infoset", call), 10);
         Assert.Equal(0d, averageStrategy.Get("traversal_infoset", raise), 10);
+    }
+
+
+    private static PreflopRegretTrainer CreateTrainerWithRegretAwareTraverser(
+        out InMemoryRegretStore regrets,
+        out InMemoryAverageStrategyStore averageStrategy,
+        out LegalAction fold,
+        out LegalAction call)
+    {
+        var root = CreateHeadsUpPreflopState();
+        var traversalPlayer = root.Players[0].PlayerId;
+        var opponent = root.Players[1].PlayerId;
+
+        regrets = new InMemoryRegretStore();
+        averageStrategy = new InMemoryAverageStrategyStore();
+        fold = new LegalAction(ActionType.Fold);
+        call = new LegalAction(ActionType.Call, new ChipAmount(1));
+
+        regrets.Add("traversal_infoset", fold, 3d);
+        regrets.Add("traversal_infoset", call, 1d);
+
+        var traverser = new RegretAwareStubTrajectoryTraverser(
+            root,
+            traversalPlayer,
+            opponent,
+            new RegretMatchingPolicyProvider(regrets),
+            fold,
+            call);
+
+        return new PreflopRegretTrainer(
+            new FixedRootStateProvider(root),
+            traverser,
+            new FixedTraversalPlayerSelector(traversalPlayer),
+            regrets,
+            averageStrategy);
     }
 
     private static SolverHandState CreateHeadsUpPreflopState()
