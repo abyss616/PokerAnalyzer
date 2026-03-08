@@ -32,7 +32,8 @@ public sealed class PreflopRegretTrainerTests
             new FixedRootStateProvider(root),
             traverser,
             new FixedTraversalPlayerSelector(traversalPlayer),
-            regrets);
+            regrets,
+            new InMemoryAverageStrategyStore());
 
         trainer.RunIteration(new Random(7));
 
@@ -70,7 +71,8 @@ public sealed class PreflopRegretTrainerTests
             new FixedRootStateProvider(root),
             traverser,
             new FixedTraversalPlayerSelector(traversalPlayer),
-            regrets);
+            regrets,
+            new InMemoryAverageStrategyStore());
 
         trainer.RunIteration(new Random(19));
 
@@ -100,12 +102,115 @@ public sealed class PreflopRegretTrainerTests
             new FixedRootStateProvider(root),
             traverser,
             new FixedTraversalPlayerSelector(traversalPlayer),
-            regrets);
+            regrets,
+            new InMemoryAverageStrategyStore());
 
         trainer.RunIteration(new Random(31));
 
         Assert.NotEmpty(traverser.RolloutRoots);
         Assert.All(traverser.RolloutRoots, state => Assert.Equal(root.ActionHistory.Count + 1, state.ActionHistory.Count));
+    }
+
+
+    [Fact]
+    public void RunIteration_AccumulatesAverageStrategy_ForTraversalPlayerOnly()
+    {
+        var root = CreateHeadsUpPreflopState();
+        var traversalPlayer = root.Players[0].PlayerId;
+        var opponent = root.Players[1].PlayerId;
+
+        var regrets = new InMemoryRegretStore();
+        var averageStrategy = new InMemoryAverageStrategyStore();
+        var fold = new LegalAction(ActionType.Fold);
+        var call = new LegalAction(ActionType.Call, new ChipAmount(1));
+        regrets.Add("traversal_infoset", fold, 3d);
+        regrets.Add("traversal_infoset", call, 1d);
+
+        var traverser = new RegretAwareStubTrajectoryTraverser(
+            root,
+            traversalPlayer,
+            opponent,
+            new RegretMatchingPolicyProvider(regrets),
+            fold,
+            call);
+
+        var trainer = new PreflopRegretTrainer(
+            new FixedRootStateProvider(root),
+            traverser,
+            new FixedTraversalPlayerSelector(traversalPlayer),
+            regrets,
+            averageStrategy);
+
+        trainer.RunIteration(new Random(5));
+
+        Assert.Equal(0.75d, averageStrategy.Get("traversal_infoset", fold), 10);
+        Assert.Equal(0.25d, averageStrategy.Get("traversal_infoset", call), 10);
+        Assert.Equal(0d, averageStrategy.Get("opponent_infoset", fold), 10);
+        Assert.Equal(0d, averageStrategy.Get("opponent_infoset", call), 10);
+    }
+
+    [Fact]
+    public void RunIteration_AccumulatesAverageStrategyAcrossIterations()
+    {
+        var root = CreateHeadsUpPreflopState();
+        var traversalPlayer = root.Players[0].PlayerId;
+
+        var regrets = new InMemoryRegretStore();
+        var averageStrategy = new InMemoryAverageStrategyStore();
+        var fold = new LegalAction(ActionType.Fold);
+        var call = new LegalAction(ActionType.Call, new ChipAmount(1));
+        var policy = new Dictionary<LegalAction, double>
+        {
+            [fold] = 0.6d,
+            [call] = 0.4d
+        };
+
+        var traverser = new StaticPolicyTrajectoryTraverser(root, traversalPlayer, fold, call, policy);
+
+        var trainer = new PreflopRegretTrainer(
+            new FixedRootStateProvider(root),
+            traverser,
+            new FixedTraversalPlayerSelector(traversalPlayer),
+            regrets,
+            averageStrategy);
+
+        trainer.RunIteration(new Random(11));
+        trainer.RunIteration(new Random(12));
+
+        Assert.Equal(1.2d, averageStrategy.Get("traversal_infoset", fold), 10);
+        Assert.Equal(0.8d, averageStrategy.Get("traversal_infoset", call), 10);
+    }
+
+    [Fact]
+    public void RunIteration_WhenPolicyMissingLegalAction_TreatsMissingProbabilityAsZero()
+    {
+        var root = CreateHeadsUpPreflopState();
+        var traversalPlayer = root.Players[0].PlayerId;
+
+        var regrets = new InMemoryRegretStore();
+        var averageStrategy = new InMemoryAverageStrategyStore();
+        var fold = new LegalAction(ActionType.Fold);
+        var call = new LegalAction(ActionType.Call, new ChipAmount(1));
+        var raise = new LegalAction(ActionType.RaiseTo, new ChipAmount(4));
+        var partialPolicy = new Dictionary<LegalAction, double>
+        {
+            [fold] = 1d
+        };
+
+        var traverser = new StaticPolicyTrajectoryTraverser(root, traversalPlayer, fold, call, raise, partialPolicy);
+
+        var trainer = new PreflopRegretTrainer(
+            new FixedRootStateProvider(root),
+            traverser,
+            new FixedTraversalPlayerSelector(traversalPlayer),
+            regrets,
+            averageStrategy);
+
+        trainer.RunIteration(new Random(13));
+
+        Assert.Equal(1d, averageStrategy.Get("traversal_infoset", fold), 10);
+        Assert.Equal(0d, averageStrategy.Get("traversal_infoset", call), 10);
+        Assert.Equal(0d, averageStrategy.Get("traversal_infoset", raise), 10);
     }
 
     private static SolverHandState CreateHeadsUpPreflopState()
@@ -247,4 +352,90 @@ public sealed class PreflopRegretTrainerTests
                 new[] { VisitedNode.CreateLeaf(0, rootState.Street, "rollout leaf") });
         }
     }
+
+
+    private sealed class StaticPolicyTrajectoryTraverser : IPreflopTrajectoryTraverser
+    {
+        private readonly SolverHandState _root;
+        private readonly PlayerId _traversalPlayer;
+        private readonly IReadOnlyList<LegalAction> _legalActions;
+        private readonly IReadOnlyDictionary<LegalAction, double> _policy;
+
+        public StaticPolicyTrajectoryTraverser(
+            SolverHandState root,
+            PlayerId traversalPlayer,
+            LegalAction first,
+            LegalAction second,
+            IReadOnlyDictionary<LegalAction, double> policy)
+            : this(root, traversalPlayer, new[] { first, second }, policy)
+        {
+        }
+
+        public StaticPolicyTrajectoryTraverser(
+            SolverHandState root,
+            PlayerId traversalPlayer,
+            LegalAction first,
+            LegalAction second,
+            LegalAction third,
+            IReadOnlyDictionary<LegalAction, double> policy)
+            : this(root, traversalPlayer, new[] { first, second, third }, policy)
+        {
+        }
+
+        private StaticPolicyTrajectoryTraverser(
+            SolverHandState root,
+            PlayerId traversalPlayer,
+            IReadOnlyList<LegalAction> legalActions,
+            IReadOnlyDictionary<LegalAction, double> policy)
+        {
+            _root = root;
+            _traversalPlayer = traversalPlayer;
+            _legalActions = legalActions;
+            _policy = policy;
+        }
+
+        public TrajectorySample RunIteration(Random rng) => SampleTrajectory(_root, rng);
+
+        public TrajectorySample SampleTrajectory(SolverHandState rootState, Random rng)
+        {
+            if (rootState.ActionHistory.Count > _root.ActionHistory.Count)
+            {
+                return new TrajectorySample(
+                    rootState,
+                    new Dictionary<PlayerId, double> { [_traversalPlayer] = 0d },
+                    new[] { VisitedNode.CreateLeaf(0, rootState.Street, "rollout leaf") });
+            }
+
+            var path = new List<VisitedNode>
+            {
+                VisitedNode.CreateAction(
+                    depth: 0,
+                    street: Street.Preflop,
+                    actingPlayerId: _traversalPlayer,
+                    infoSetKey: "traversal_infoset",
+                    legalActions: _legalActions,
+                    policy: _policy,
+                    sampledAction: _legalActions[0],
+                    stateBeforeAction: rootState),
+
+                VisitedNode.CreateAction(
+                    depth: 1,
+                    street: Street.Preflop,
+                    actingPlayerId: rootState.Players[1].PlayerId,
+                    infoSetKey: "opponent_infoset",
+                    legalActions: _legalActions,
+                    policy: new Dictionary<LegalAction, double> { [_legalActions[0]] = 1d },
+                    sampledAction: _legalActions[0],
+                    stateBeforeAction: rootState.Apply(_legalActions[0])),
+
+                VisitedNode.CreateLeaf(2, Street.Preflop, "leaf")
+            };
+
+            return new TrajectorySample(
+                rootState,
+                new Dictionary<PlayerId, double> { [_traversalPlayer] = 0d },
+                path);
+        }
+    }
+
 }

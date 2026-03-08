@@ -8,6 +8,13 @@ public interface IRegretStore
     double Get(string infoSetKey, LegalAction action);
 }
 
+public interface IAverageStrategyStore
+{
+    void Add(string infoSetKey, LegalAction action, double weight);
+    double Get(string infoSetKey, LegalAction action);
+    IReadOnlyDictionary<LegalAction, double> GetAveragePolicy(string infoSetKey, IReadOnlyList<LegalAction> legalActions);
+}
+
 public sealed class InMemoryRegretStore : IRegretStore
 {
     private readonly Dictionary<string, Dictionary<LegalAction, double>> _values = new(StringComparer.Ordinal);
@@ -33,6 +40,58 @@ public sealed class InMemoryRegretStore : IRegretStore
             return regret;
 
         return 0d;
+    }
+}
+
+public sealed class InMemoryAverageStrategyStore : IAverageStrategyStore
+{
+    private readonly Dictionary<string, Dictionary<LegalAction, double>> _values = new(StringComparer.Ordinal);
+
+    public void Add(string infoSetKey, LegalAction action, double weight)
+    {
+        ArgumentNullException.ThrowIfNull(infoSetKey);
+
+        if (!_values.TryGetValue(infoSetKey, out var byAction))
+        {
+            byAction = new Dictionary<LegalAction, double>();
+            _values[infoSetKey] = byAction;
+        }
+
+        byAction[action] = Get(infoSetKey, action) + weight;
+    }
+
+    public double Get(string infoSetKey, LegalAction action)
+    {
+        ArgumentNullException.ThrowIfNull(infoSetKey);
+
+        if (_values.TryGetValue(infoSetKey, out var byAction) && byAction.TryGetValue(action, out var value))
+            return value;
+
+        return 0d;
+    }
+
+    public IReadOnlyDictionary<LegalAction, double> GetAveragePolicy(string infoSetKey, IReadOnlyList<LegalAction> legalActions)
+    {
+        ArgumentNullException.ThrowIfNull(infoSetKey);
+        ArgumentNullException.ThrowIfNull(legalActions);
+
+        if (legalActions.Count == 0)
+            return new Dictionary<LegalAction, double>();
+
+        var weights = new Dictionary<LegalAction, double>(legalActions.Count);
+        var total = 0d;
+
+        foreach (var action in legalActions)
+        {
+            var weight = Get(infoSetKey, action);
+            weights[action] = weight;
+            total += weight;
+        }
+
+        if (total > 0d)
+            return weights.ToDictionary(kvp => kvp.Key, kvp => kvp.Value / total);
+
+        return UniformPolicyBuilder.Build(legalActions);
     }
 }
 
@@ -120,6 +179,7 @@ public sealed class PreflopRegretTrainer
     private readonly IPreflopTrajectoryTraverser _trajectoryTraverser;
     private readonly ITraversalPlayerSelector _traversalPlayerSelector;
     private readonly IRegretStore _regretStore;
+    private readonly IAverageStrategyStore _averageStrategyStore;
 
 
     public PreflopRegretTrainer(
@@ -130,7 +190,8 @@ public sealed class PreflopRegretTrainer
         IPreflopLeafEvaluator leafEvaluator,
         IPreflopLeafDetector leafDetector,
         ITraversalPlayerSelector traversalPlayerSelector,
-        IRegretStore regretStore)
+        IRegretStore regretStore,
+        IAverageStrategyStore averageStrategyStore)
         : this(
             rootStateProvider,
             new PreflopTrajectoryTraverser(
@@ -142,7 +203,8 @@ public sealed class PreflopRegretTrainer
                 leafEvaluator,
                 leafDetector),
             traversalPlayerSelector,
-            regretStore)
+            regretStore,
+            averageStrategyStore)
     {
     }
 
@@ -150,12 +212,14 @@ public sealed class PreflopRegretTrainer
         IPreflopRootStateProvider rootStateProvider,
         IPreflopTrajectoryTraverser trajectoryTraverser,
         ITraversalPlayerSelector traversalPlayerSelector,
-        IRegretStore regretStore)
+        IRegretStore regretStore,
+        IAverageStrategyStore averageStrategyStore)
     {
         _rootStateProvider = rootStateProvider ?? throw new ArgumentNullException(nameof(rootStateProvider));
         _trajectoryTraverser = trajectoryTraverser ?? throw new ArgumentNullException(nameof(trajectoryTraverser));
         _traversalPlayerSelector = traversalPlayerSelector ?? throw new ArgumentNullException(nameof(traversalPlayerSelector));
         _regretStore = regretStore ?? throw new ArgumentNullException(nameof(regretStore));
+        _averageStrategyStore = averageStrategyStore ?? throw new ArgumentNullException(nameof(averageStrategyStore));
     }
 
     public void RunIteration(Random rng)
@@ -195,7 +259,15 @@ public sealed class PreflopRegretTrainer
                 _regretStore.Add(node.InfoSetKey, action, regretDelta);
             }
 
-            // Future hook: average-strategy accumulation can be added here.
+            foreach (var action in node.LegalActions)
+            {
+                var probability = node.Policy.TryGetValue(action, out var policyProbability)
+                    ? policyProbability
+                    : 0d;
+
+                _averageStrategyStore.Add(node.InfoSetKey, action, probability);
+            }
+
             // Future hook: MCCFR-style weighting can adjust regretDelta before Add.
         }
     }
