@@ -1,4 +1,5 @@
 using PokerAnalyzer.Domain.Game;
+using System.Diagnostics;
 
 namespace PokerAnalyzer.Application.PreflopSolver;
 
@@ -173,6 +174,68 @@ public sealed class FixedTraversalPlayerSelector : ITraversalPlayerSelector
     public PlayerId Select(SolverHandState rootState) => _playerId;
 }
 
+public enum PreflopTrainingMode
+{
+    Time,
+    Iterations
+}
+
+public sealed class PreflopTrainingOptions
+{
+    public const int DefaultIterationBudget = 10_000;
+    public static readonly TimeSpan DefaultTimeBudget = TimeSpan.FromSeconds(20);
+    public static PreflopTrainingOptions Default { get; } = ForTime(DefaultTimeBudget);
+
+    public PreflopTrainingMode Mode { get; }
+    public TimeSpan? MaxDuration { get; }
+    public int? MaxIterations { get; }
+
+    private PreflopTrainingOptions(PreflopTrainingMode mode, TimeSpan? maxDuration, int? maxIterations)
+    {
+        Mode = mode;
+        MaxDuration = maxDuration;
+        MaxIterations = maxIterations;
+    }
+
+    public static PreflopTrainingOptions ForTime(TimeSpan duration)
+    {
+        if (duration <= TimeSpan.Zero)
+            throw new ArgumentOutOfRangeException(nameof(duration), "Duration must be positive.");
+
+        return new PreflopTrainingOptions(PreflopTrainingMode.Time, duration, null);
+    }
+
+    public static PreflopTrainingOptions ForIterations(int maxIterations)
+    {
+        if (maxIterations <= 0)
+            throw new ArgumentOutOfRangeException(nameof(maxIterations), "Max iterations must be positive.");
+
+        return new PreflopTrainingOptions(PreflopTrainingMode.Iterations, null, maxIterations);
+    }
+
+    public void Validate()
+    {
+        switch (Mode)
+        {
+            case PreflopTrainingMode.Time when !MaxDuration.HasValue || MaxDuration.Value <= TimeSpan.Zero:
+                throw new ArgumentOutOfRangeException(nameof(MaxDuration), "MaxDuration must be positive in time mode.");
+
+            case PreflopTrainingMode.Iterations when !MaxIterations.HasValue || MaxIterations.Value <= 0:
+                throw new ArgumentOutOfRangeException(nameof(MaxIterations), "MaxIterations must be positive in iterations mode.");
+        }
+    }
+}
+
+public sealed class PreflopTrainingResult
+{
+    public required int IterationsCompleted { get; init; }
+    public required TimeSpan Elapsed { get; init; }
+    public required PreflopTrainingMode ModeUsed { get; init; }
+    public required bool StoppedByCancellation { get; init; }
+    public required bool ReachedTimeLimit { get; init; }
+    public required bool ReachedIterationLimit { get; init; }
+}
+
 public sealed class PreflopRegretTrainer
 {
     private readonly IPreflopRootStateProvider _rootStateProvider;
@@ -270,6 +333,65 @@ public sealed class PreflopRegretTrainer
 
             // Future hook: MCCFR-style weighting can adjust regretDelta before Add.
         }
+    }
+
+    public PreflopTrainingResult RunTraining(
+        PreflopTrainingOptions? options = null,
+        CancellationToken cancellationToken = default)
+    {
+        options ??= PreflopTrainingOptions.Default;
+        options.Validate();
+
+        var rng = new Random();
+        var stopwatch = Stopwatch.StartNew();
+        var iterationsCompleted = 0;
+
+        var reachedIterationLimit = false;
+        var reachedTimeLimit = false;
+
+        switch (options.Mode)
+        {
+            case PreflopTrainingMode.Iterations:
+            {
+                var maxIterations = options.MaxIterations!.Value;
+                while (!cancellationToken.IsCancellationRequested && iterationsCompleted < maxIterations)
+                {
+                    RunIteration(rng);
+                    iterationsCompleted++;
+                }
+
+                reachedIterationLimit = !cancellationToken.IsCancellationRequested && iterationsCompleted >= maxIterations;
+                break;
+            }
+
+            case PreflopTrainingMode.Time:
+            {
+                var maxDuration = options.MaxDuration!.Value;
+                while (!cancellationToken.IsCancellationRequested && stopwatch.Elapsed < maxDuration)
+                {
+                    RunIteration(rng);
+                    iterationsCompleted++;
+                }
+
+                reachedTimeLimit = !cancellationToken.IsCancellationRequested && stopwatch.Elapsed >= maxDuration;
+                break;
+            }
+
+            default:
+                throw new ArgumentOutOfRangeException(nameof(options.Mode), options.Mode, "Unsupported preflop training mode.");
+        }
+
+        stopwatch.Stop();
+
+        return new PreflopTrainingResult
+        {
+            IterationsCompleted = iterationsCompleted,
+            Elapsed = stopwatch.Elapsed,
+            ModeUsed = options.Mode,
+            StoppedByCancellation = cancellationToken.IsCancellationRequested,
+            ReachedTimeLimit = reachedTimeLimit,
+            ReachedIterationLimit = reachedIterationLimit
+        };
     }
 
     private Dictionary<LegalAction, double> EvaluateActionValues(
