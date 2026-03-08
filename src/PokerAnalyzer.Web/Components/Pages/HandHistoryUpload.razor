@@ -49,10 +49,45 @@
     @if (_preflopAnalysis is not null)
     {
         <div class="mt-3">
-            <div><strong>Canonical preflop solver node:</strong> @_preflopAnalysis.CanonicalPreflopSolverNode</div>
-            <div><strong>Hero legal actions:</strong> @_preflopAnalysis.HeroLegalActions</div>
-            <div><strong>Current mixed strategy:</strong> @_preflopAnalysis.CurrentMixedStrategy</div>
-            <div><strong>Actual action vs solver recommendation:</strong> @_preflopAnalysis.ActualActionVsRecommendation</div>
+            <div><strong>Support status:</strong> @(_preflopAnalysis.IsSupported ? "Supported" : "Unsupported")</div>
+            @if (!_preflopAnalysis.IsSupported && !string.IsNullOrWhiteSpace(_preflopAnalysis.UnsupportedReason))
+            {
+                <div><strong>Unsupported reason:</strong> @_preflopAnalysis.UnsupportedReason</div>
+            }
+            <div><strong>Canonical preflop solver node:</strong> @_preflopAnalysis.CanonicalKey</div>
+            <div><strong>Solver key:</strong> @_preflopAnalysis.SolverKey</div>
+            <div><strong>Spot:</strong> @_preflopAnalysis.Street | @_preflopAnalysis.ActingPosition vs @_preflopAnalysis.FacingPosition</div>
+            <div><strong>History:</strong> @_preflopAnalysis.HistorySignature</div>
+            <div><strong>Pot / ToCall / Effective:</strong> @_preflopAnalysis.PotBb bb / @_preflopAnalysis.ToCallBb bb / @_preflopAnalysis.EffectiveStackBb bb</div>
+            <div><strong>Raise depth:</strong> @_preflopAnalysis.RaiseDepth</div>
+            <div><strong>Sizing buckets:</strong> @_preflopAnalysis.SizingBucketSummary</div>
+
+            <div class="mt-2"><strong>Legal actions</strong></div>
+            <ul>
+                @foreach (var action in _preflopAnalysis.LegalActions)
+                {
+                    <li>@action.ActionKey (@action.ActionType@(action.SizeBb.HasValue ? $", {action.SizeBb:0.##}bb" : ""))</li>
+                }
+            </ul>
+
+            <div class="mt-2"><strong>Mixed strategy</strong></div>
+            <ul>
+                @foreach (var mix in _preflopAnalysis.Strategy)
+                {
+                    <li>@mix.ActionKey: @mix.Frequency%</li>
+                }
+            </ul>
+
+            <details class="mt-2">
+                <summary><strong>Mapping trace</strong></summary>
+                <div>history=@_preflopAnalysis.Trace.HistorySignature, toCall=@_preflopAnalysis.Trace.ToCallBb, currentBet=@_preflopAnalysis.Trace.CurrentBetBb, pot=@_preflopAnalysis.Trace.PotBb</div>
+                <ul>
+                    @foreach (var raw in _preflopAnalysis.Trace.RawActionHistory)
+                    {
+                        <li>@raw.Position @raw.ActionType @raw.AmountBb bb</li>
+                    }
+                </ul>
+            </details>
         </div>
     }
 </div>

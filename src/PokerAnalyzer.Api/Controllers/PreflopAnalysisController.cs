@@ -4,7 +4,7 @@ using PokerAnalyzer.Application.PreflopAnalysis;
 namespace PokerAnalyzer.Api.Controllers;
 
 [ApiController]
-[Route("api/preflop-analysis")]
+[Route("api")]
 public sealed class PreflopAnalysisController : ControllerBase
 {
     private readonly IPreflopHandAnalysisService _service;
@@ -14,13 +14,20 @@ public sealed class PreflopAnalysisController : ControllerBase
         _service = service;
     }
 
-    [HttpGet("hand-number/{handNumber:long}")]
-    public async Task<ActionResult<PreflopHandAnalysisResultDto>> AnalyzeByHandNumber(long handNumber, CancellationToken ct)
+    [HttpGet("preflop-analysis/hand-number/{handNumber:long}")]
+    public async Task<ActionResult<PreflopNodeQueryResultDto>> AnalyzeByHandNumber(long handNumber, CancellationToken ct)
     {
-        var result = await _service.AnalyzePreflopByHandNumberAsync(handNumber, ct);
+        var result = await _service.QueryPreflopNodeByHandNumberAsync(handNumber, ct);
         if (result is null)
             return NotFound();
 
+        return Ok(result);
+    }
+
+    [HttpPost("solver/preflop/node")]
+    public async Task<ActionResult<PreflopNodeQueryResultDto>> QueryPreflopNode([FromBody] PreflopNodeQueryRequestDto request, CancellationToken ct)
+    {
+        var result = await _service.QueryPreflopNodeAsync(request, ct);
         return Ok(result);
     }
 }
