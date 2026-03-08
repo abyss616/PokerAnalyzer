@@ -88,6 +88,21 @@ public sealed class PreflopHandAnalysisServiceTests
         Assert.NotNull(result.UnsupportedReason);
     }
 
+    [Fact]
+    public async Task QueryPreflopNodeByHandNumberAsync_UnopenedSpot_UsesSolverUnopenedLegalActions()
+    {
+        var hand = BuildUnopenedHeroDecisionHand();
+
+        var result = await BuildService(hand).QueryPreflopNodeByHandNumberAsync(1, CancellationToken.None);
+
+        Assert.NotNull(result);
+        Assert.True(result!.IsSupported);
+        Assert.Equal("UNOPENED", result.HistorySignature);
+        Assert.Equal(
+            ["Fold", "Call:1", "Raise:2.5"],
+            result.LegalActions.Select(a => a.ActionKey).ToArray());
+    }
+
     private static PreflopHandAnalysisService BuildService(Hand? hand, IPreflopStrategyProvider? strategyProvider = null)
     {
         var repo = new TestRepo(hand);
@@ -153,6 +168,27 @@ public sealed class PreflopHandAnalysisServiceTests
                 new HandAction { Street = Street.Preflop, Player = "BB", Type = ActionType.PostBigBlind, Amount = 1m },
                 new HandAction { Street = Street.Preflop, Player = "Villain", Type = ActionType.Call, Amount = 1m },
                 new HandAction { Street = Street.Preflop, Player = "Hero", Type = ActionType.Check, Amount = 0m }
+            ]
+        };
+    }
+
+    private static Hand BuildUnopenedHeroDecisionHand()
+    {
+        return new Hand
+        {
+            GameCode = 9004,
+            Players =
+            [
+                new HandPlayer { Id = Guid.NewGuid(), Name = "Hero", Seat = 1, StackStart = 100m, IsHero = true },
+                new HandPlayer { Id = Guid.NewGuid(), Name = "Villain1", Seat = 2, StackStart = 100m, IsHero = false },
+                new HandPlayer { Id = Guid.NewGuid(), Name = "SB", Seat = 3, StackStart = 100m, IsHero = false },
+                new HandPlayer { Id = Guid.NewGuid(), Name = "BB", Seat = 4, StackStart = 100m, IsHero = false }
+            ],
+            Actions =
+            [
+                new HandAction { Street = Street.Preflop, Player = "SB", Type = ActionType.PostSmallBlind, Amount = 0.5m },
+                new HandAction { Street = Street.Preflop, Player = "BB", Type = ActionType.PostBigBlind, Amount = 1m },
+                new HandAction { Street = Street.Preflop, Player = "Hero", Type = ActionType.Call, Amount = 1m }
             ]
         };
     }
