@@ -36,6 +36,50 @@ public sealed class InMemoryRegretStore : IRegretStore
     }
 }
 
+public sealed class RegretMatchingPolicyProvider : IPreflopPolicyProvider
+{
+    private readonly IRegretStore _regretStore;
+
+    public RegretMatchingPolicyProvider(IRegretStore regretStore)
+    {
+        _regretStore = regretStore ?? throw new ArgumentNullException(nameof(regretStore));
+    }
+
+    public bool TryGetPolicy(string infoSetKey, IReadOnlyList<LegalAction> legalActions, out IReadOnlyDictionary<LegalAction, double> policy)
+    {
+        ArgumentNullException.ThrowIfNull(infoSetKey);
+        ArgumentNullException.ThrowIfNull(legalActions);
+
+        if (legalActions.Count == 0)
+        {
+            policy = new Dictionary<LegalAction, double>();
+            return false;
+        }
+
+        var positiveRegrets = new Dictionary<LegalAction, double>(legalActions.Count);
+        var totalPositiveRegret = 0d;
+
+        foreach (var legalAction in legalActions)
+        {
+            var regret = _regretStore.Get(infoSetKey, legalAction);
+            if (regret <= 0d)
+                continue;
+
+            positiveRegrets[legalAction] = regret;
+            totalPositiveRegret += regret;
+        }
+
+        if (totalPositiveRegret > 0d)
+        {
+            policy = positiveRegrets.ToDictionary(kvp => kvp.Key, kvp => kvp.Value / totalPositiveRegret);
+            return true;
+        }
+
+        policy = UniformPolicyBuilder.Build(legalActions);
+        return true;
+    }
+}
+
 public interface ITraversalPlayerSelector
 {
     PlayerId Select(SolverHandState rootState);
@@ -76,6 +120,31 @@ public sealed class PreflopRegretTrainer
     private readonly IPreflopTrajectoryTraverser _trajectoryTraverser;
     private readonly ITraversalPlayerSelector _traversalPlayerSelector;
     private readonly IRegretStore _regretStore;
+
+
+    public PreflopRegretTrainer(
+        IPreflopRootStateProvider rootStateProvider,
+        IChanceSampler chanceSampler,
+        IPreflopInfoSetMapper infoSetMapper,
+        IActionSampler actionSampler,
+        IPreflopLeafEvaluator leafEvaluator,
+        IPreflopLeafDetector leafDetector,
+        ITraversalPlayerSelector traversalPlayerSelector,
+        IRegretStore regretStore)
+        : this(
+            rootStateProvider,
+            new PreflopTrajectoryTraverser(
+                rootStateProvider,
+                chanceSampler,
+                infoSetMapper,
+                new RegretMatchingPolicyProvider(regretStore),
+                actionSampler,
+                leafEvaluator,
+                leafDetector),
+            traversalPlayerSelector,
+            regretStore)
+    {
+    }
 
     public PreflopRegretTrainer(
         IPreflopRootStateProvider rootStateProvider,
