@@ -362,13 +362,6 @@ public sealed class InMemoryPolicyProvider : IPreflopPolicyProvider
         policy = normalized;
         return true;
     }
-
-    public void Store(string infoSetKey, IReadOnlyDictionary<LegalAction, double> policy)
-    {
-        ArgumentNullException.ThrowIfNull(infoSetKey);
-        ArgumentNullException.ThrowIfNull(policy);
-        _policyByInfoSet[infoSetKey] = new Dictionary<LegalAction, double>(policy);
-    }
 }
 
 public sealed class FixedRootStateProvider : IPreflopRootStateProvider
