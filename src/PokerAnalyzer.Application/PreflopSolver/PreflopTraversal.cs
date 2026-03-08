@@ -354,7 +354,7 @@ public sealed class RegretMatchingPolicyProvider : IPreflopPolicyProvider
 
         if (positiveSum > 0d)
         {
-            policy = NormalizePolicy(positiveRegrets, positiveSum);
+            policy = NormalizePolicy(legalActions, positiveRegrets, positiveSum);
             return true;
         }
 
@@ -363,12 +363,21 @@ public sealed class RegretMatchingPolicyProvider : IPreflopPolicyProvider
     }
 
     private static IReadOnlyDictionary<LegalAction, double> NormalizePolicy(
+        IReadOnlyList<LegalAction> legalActions,
         IReadOnlyDictionary<LegalAction, double> positiveRegrets,
         double positiveSum)
     {
-        var normalized = new Dictionary<LegalAction, double>(positiveRegrets.Count);
-        foreach (var (action, regret) in positiveRegrets)
+        var normalized = new Dictionary<LegalAction, double>(legalActions.Count);
+        foreach (var action in legalActions)
+        {
+            if (!positiveRegrets.TryGetValue(action, out var regret))
+            {
+                normalized[action] = 0d;
+                continue;
+            }
+
             normalized[action] = regret / positiveSum;
+        }
 
         return normalized;
     }

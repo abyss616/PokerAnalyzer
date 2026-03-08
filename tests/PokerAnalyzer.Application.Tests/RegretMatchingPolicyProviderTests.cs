@@ -25,7 +25,7 @@ public sealed class RegretMatchingPolicyProviderTests
         Assert.True(found);
         Assert.Equal(3d / 4d, policy[fold], 10);
         Assert.Equal(1d / 4d, policy[call], 10);
-        Assert.False(policy.ContainsKey(raise));
+        Assert.Equal(0d, policy[raise], 10);
         Assert.Equal(1d, policy.Values.Sum(), 10);
     }
 
@@ -48,6 +48,41 @@ public sealed class RegretMatchingPolicyProviderTests
         Assert.Equal(0.5d, policy[call], 10);
     }
 
+
+    [Fact]
+    public void TryGetPolicy_MissingRegretEntries_AreTreatedAsZero()
+    {
+        var regrets = new InMemoryRegretStore();
+        var provider = new RegretMatchingPolicyProvider(regrets);
+        var infoSetKey = "street=Preflop|position=SB|hero=AKo|history=|pot=3|bet=2|toCall=1";
+        var fold = new LegalAction(ActionType.Fold);
+        var call = new LegalAction(ActionType.Call, new ChipAmount(1));
+        var raise = new LegalAction(ActionType.Raise, new ChipAmount(6));
+
+        regrets.Add(infoSetKey, fold, 3d);
+
+        var found = provider.TryGetPolicy(infoSetKey, new[] { fold, call, raise }, out var policy);
+
+        Assert.True(found);
+        Assert.Equal(1d, policy[fold], 10);
+        Assert.Equal(0d, policy[call], 10);
+        Assert.Equal(0d, policy[raise], 10);
+    }
+
+    [Fact]
+    public void TryGetPolicy_WithNonEmptyLegalActions_ReturnsTrue()
+    {
+        var regrets = new InMemoryRegretStore();
+        var provider = new RegretMatchingPolicyProvider(regrets);
+        var infoSetKey = "street=Preflop|position=SB|hero=AKo|history=|pot=3|bet=2|toCall=1";
+        var fold = new LegalAction(ActionType.Fold);
+
+        var found = provider.TryGetPolicy(infoSetKey, new[] { fold }, out var policy);
+
+        Assert.True(found);
+        Assert.Single(policy);
+        Assert.Equal(1d, policy[fold], 10);
+    }
     [Fact]
     public void TryGetPolicy_IncludesOnlyLegalActions()
     {
