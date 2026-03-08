@@ -320,59 +320,6 @@ public sealed class PreflopInfoSetMapper : IPreflopInfoSetMapper
     };
 }
 
-public sealed class RegretMatchingPolicyProvider : IPreflopPolicyProvider
-{
-    private readonly IRegretStore _regretStore;
-
-    public RegretMatchingPolicyProvider(IRegretStore regretStore)
-    {
-        _regretStore = regretStore ?? throw new ArgumentNullException(nameof(regretStore));
-    }
-
-    public bool TryGetPolicy(string infoSetKey, IReadOnlyList<LegalAction> legalActions, out IReadOnlyDictionary<LegalAction, double> policy)
-    {
-        ArgumentNullException.ThrowIfNull(infoSetKey);
-        ArgumentNullException.ThrowIfNull(legalActions);
-
-        if (legalActions.Count == 0)
-        {
-            policy = new Dictionary<LegalAction, double>();
-            return false;
-        }
-
-        var positiveRegrets = new Dictionary<LegalAction, double>(legalActions.Count);
-        var positiveRegretSum = 0d;
-
-        foreach (var legalAction in legalActions)
-        {
-            var regret = _regretStore.Get(infoSetKey, legalAction);
-            var positiveRegret = Math.Max(regret, 0d);
-            positiveRegrets[legalAction] = positiveRegret;
-            positiveRegretSum += positiveRegret;
-        }
-
-        policy = positiveRegretSum > 0d
-            ? BuildNormalizedPolicy(positiveRegrets, positiveRegretSum)
-            : UniformPolicyBuilder.Build(legalActions);
-
-        return true;
-    }
-
-    private static IReadOnlyDictionary<LegalAction, double> BuildNormalizedPolicy(
-        IReadOnlyDictionary<LegalAction, double> positiveRegrets,
-        double positiveRegretSum)
-    {
-        if (positiveRegretSum <= 0d)
-            throw new ArgumentOutOfRangeException(nameof(positiveRegretSum), "Positive regret sum must be greater than zero.");
-
-        var normalizedPolicy = new Dictionary<LegalAction, double>(positiveRegrets.Count);
-        foreach (var (action, positiveRegret) in positiveRegrets)
-            normalizedPolicy[action] = positiveRegret / positiveRegretSum;
-
-        return normalizedPolicy;
-    }
-}
-
 public sealed class InMemoryPolicyProvider : IPreflopPolicyProvider
 {
     private readonly IRegretStore _regretStore;
