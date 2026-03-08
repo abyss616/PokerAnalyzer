@@ -80,7 +80,7 @@ public sealed class PreflopHandAnalysisService : IPreflopHandAnalysisService
         if (!extraction.IsSupported || extraction.Key is null)
             return BuildUnsupported(extraction.UnsupportedReason ?? "Preflop extraction was unsupported.", extraction.Trace);
 
-        var legalActions = BuildLegalActions(extraction.Trace);
+        var legalActions = BuildLegalActions(request, extraction.Trace);
         var strategy = await ResolveStrategyAsync(extraction.Key.SolverKey, legalActions, ct);
 
         var canonicalKey = BuildCanonicalKey(extraction.Key, request.HeroHoleCards);
@@ -161,40 +161,172 @@ public sealed class PreflopHandAnalysisService : IPreflopHandAnalysisService
     private static string BuildSizingSummary(PreflopQueryTrace trace)
         => $"open={trace.OpenSizeBucket}, iso={trace.IsoSizeBucket}, 3bet={trace.ThreeBetBucket}, squeeze={trace.SqueezeBucket}, 4bet={trace.FourBetBucket}, jam={trace.JamThreshold:0.##}";
 
-    private static IReadOnlyList<PreflopNodeLegalActionDto> BuildLegalActions(PreflopQueryTrace trace)
+    private static IReadOnlyList<PreflopNodeLegalActionDto> BuildLegalActions(PreflopNodeQueryRequestDto request, PreflopQueryTrace trace)
     {
-        var actions = new List<PreflopNodeLegalActionDto>();
+        var state = BuildSnapshotState(request, trace);
+        var actions = state.GenerateLegalActions(new TraceBetSizeSetProvider(trace));
+        return actions.Select(ToLegalActionDto).ToList();
+    }
 
-        if (trace.ToCallBb > 0)
-            actions.Add(new PreflopNodeLegalActionDto("Fold", ActionType.Fold, null, false));
+    private static PreflopNodeLegalActionDto ToLegalActionDto(LegalAction action)
+    {
+        var amountBb = action.Amount is null
+            ? null
+            : decimal.Round(action.Amount.Value.Value / 100m, 2);
 
-        if (trace.ToCallBb > 0)
-            actions.Add(new PreflopNodeLegalActionDto($"Call:{trace.ToCallBb:0.##}", ActionType.Call, trace.ToCallBb, false));
-        else
-            actions.Add(new PreflopNodeLegalActionDto("Check", ActionType.Check, null, false));
-
-        var raiseSizes = new HashSet<decimal>();
-        AddIfPositive(raiseSizes, ParseBucket(trace.OpenSizeBucket));
-        AddIfPositive(raiseSizes, ParseBucket(trace.ThreeBetBucket));
-        AddIfPositive(raiseSizes, ParseBucket(trace.FourBetBucket));
-
-        if (trace.ToCallBb > 0)
+        var actionKey = action.ActionType switch
         {
-            raiseSizes.Add(4m);
-            raiseSizes.Add(9m);
-        }
-        else
+            ActionType.Fold => "Fold",
+            ActionType.Check => "Check",
+            ActionType.Call => $"Call:{amountBb:0.##}",
+            ActionType.Raise => action.Amount is null ? "Raise" : $"Raise:{amountBb:0.##}",
+            ActionType.Bet => action.Amount is null ? "Bet" : $"Bet:{amountBb:0.##}",
+            _ => action.ActionType.ToString()
+        };
+
+        return new PreflopNodeLegalActionDto(actionKey, action.ActionType, amountBb, false);
+    }
+
+    private static SolverHandState BuildSnapshotState(PreflopNodeQueryRequestDto request, PreflopQueryTrace trace)
+    {
+        var seatsByPlayer = request.Seats
+            .OrderBy(s => s.Seat)
+            .Select((seat, index) => new { Seat = seat, SeatIndex = index })
+            .ToDictionary(x => new PlayerId(x.Seat.PlayerId));
+
+        var contributions = seatsByPlayer.Keys.ToDictionary(id => id, _ => 0L);
+        var stacks = seatsByPlayer.ToDictionary(
+            kvp => kvp.Key,
+            kvp => BbToSolverChips(kvp.Value.Seat.StartingStackBb));
+        var folded = seatsByPlayer.Keys.ToDictionary(id => id, _ => false);
+
+        var actionHistory = new List<SolverActionEntry>();
+        long pot = 0;
+        long currentBet = 0;
+        long lastRaise = BbToSolverChips(1m);
+        var raisesThisStreet = 0;
+
+        void ApplyToContribution(PlayerId playerId, long targetContribution)
         {
-            raiseSizes.Add(2.5m);
+            var delta = targetContribution - contributions[playerId];
+            if (delta <= 0)
+                return;
+
+            contributions[playerId] = targetContribution;
+            stacks[playerId] -= delta;
+            pot += delta;
         }
 
-        foreach (var size in raiseSizes.Where(x => x > trace.CurrentBetBb).OrderBy(x => x))
+        foreach (var action in trace.RawActionHistory)
         {
-            var isFacingAllIn = trace.EffectiveStackBb > 0 && size >= trace.EffectiveStackBb;
-            actions.Add(new PreflopNodeLegalActionDto($"Raise:{size:0.##}", ActionType.Raise, size, isFacingAllIn));
+            var playerId = action.PlayerId;
+            if (!seatsByPlayer.ContainsKey(playerId))
+                continue;
+
+            var targetContribution = BbToSolverChips(action.AmountBb);
+            switch (action.ActionType)
+            {
+                case "POST_SB":
+                    ApplyToContribution(playerId, targetContribution);
+                    currentBet = Math.Max(currentBet, contributions[playerId]);
+                    actionHistory.Add(new SolverActionEntry(playerId, ActionType.PostSmallBlind, new ChipAmount(targetContribution)));
+                    break;
+                case "POST_BB":
+                    ApplyToContribution(playerId, targetContribution);
+                    currentBet = Math.Max(currentBet, contributions[playerId]);
+                    actionHistory.Add(new SolverActionEntry(playerId, ActionType.PostBigBlind, new ChipAmount(targetContribution)));
+                    break;
+                case "RAISE_TO":
+                case "ALL_IN":
+                    ApplyToContribution(playerId, targetContribution);
+                    if (targetContribution > currentBet)
+                    {
+                        lastRaise = targetContribution - currentBet;
+                        currentBet = targetContribution;
+                        raisesThisStreet++;
+                    }
+
+                    actionHistory.Add(new SolverActionEntry(playerId, action.ActionType == "ALL_IN" ? ActionType.AllIn : ActionType.Raise, new ChipAmount(targetContribution)));
+                    break;
+                case "CALL":
+                    ApplyToContribution(playerId, targetContribution);
+                    actionHistory.Add(new SolverActionEntry(playerId, ActionType.Call, new ChipAmount(targetContribution)));
+                    break;
+                case "FOLD":
+                    folded[playerId] = true;
+                    actionHistory.Add(new SolverActionEntry(playerId, ActionType.Fold, ChipAmount.Zero));
+                    break;
+                case "CHECK":
+                    actionHistory.Add(new SolverActionEntry(playerId, ActionType.Check, ChipAmount.Zero));
+                    break;
+            }
         }
 
-        return actions;
+        var players = seatsByPlayer
+            .Select(kvp => new SolverPlayerState(
+                kvp.Key,
+                kvp.Value.SeatIndex,
+                kvp.Value.Seat.Position,
+                new ChipAmount(stacks[kvp.Key]),
+                new ChipAmount(contributions[kvp.Key]),
+                new ChipAmount(contributions[kvp.Key]),
+                folded[kvp.Key],
+                stacks[kvp.Key] == 0 && !folded[kvp.Key]))
+            .ToList();
+
+        var button = players.FirstOrDefault(p => p.Position == Position.BTN)?.SeatIndex ?? 0;
+        var maxStartingStack = seatsByPlayer.Max(x => BbToSolverChips(x.Value.Seat.StartingStackBb));
+
+        return new SolverHandState(
+            new GameConfig(
+                request.Seats.Count,
+                new ChipAmount(BbToSolverChips(request.SmallBlind / request.BigBlind)),
+                new ChipAmount(BbToSolverChips(1m)),
+                ChipAmount.Zero,
+                new ChipAmount(maxStartingStack)),
+            Street.Preflop,
+            button,
+            new PlayerId(request.ActingPlayerId),
+            new ChipAmount(pot),
+            new ChipAmount(currentBet),
+            new ChipAmount(lastRaise),
+            raisesThisStreet,
+            players,
+            actionHistory);
+    }
+
+    private static long BbToSolverChips(decimal amountBb)
+        => (long)Math.Round(amountBb * 100m, MidpointRounding.AwayFromZero);
+
+    private sealed class TraceBetSizeSetProvider : IBetSizeSetProvider
+    {
+        private readonly IReadOnlyList<ChipAmount> _raiseSizes;
+
+        public TraceBetSizeSetProvider(PreflopQueryTrace trace)
+        {
+            var sizes = new HashSet<decimal>();
+            AddIfPositive(sizes, ParseBucket(trace.OpenSizeBucket));
+            AddIfPositive(sizes, ParseBucket(trace.ThreeBetBucket));
+            AddIfPositive(sizes, ParseBucket(trace.FourBetBucket));
+
+            if (trace.ToCallBb > 0)
+            {
+                sizes.Add(4m);
+                sizes.Add(9m);
+            }
+
+            _raiseSizes = sizes
+                .OrderBy(x => x)
+                .Select(BbToSolverChips)
+                .Select(x => new ChipAmount(x))
+                .ToArray();
+        }
+
+        public IReadOnlyList<ChipAmount> GetBetSizes(SolverHandState state)
+            => Array.Empty<ChipAmount>();
+
+        public IReadOnlyList<ChipAmount> GetRaiseSizes(SolverHandState state)
+            => _raiseSizes;
     }
 
     private static decimal? ParseBucket(string value)
@@ -304,14 +436,14 @@ public sealed class PreflopHandAnalysisService : IPreflopHandAnalysisService
                 _ => "TYPE_4"
             };
 
-            var amountBb = bb > 0 ? decimal.Round((action.Amount ?? 0m) / bb, 2) : 0m;
-            actions.Add(new PreflopInputAction(new PlayerId(player.Id), type, amountBb));
-
             if (string.Equals(action.Player, heroName, StringComparison.Ordinal)
                 && action.Type is not ActionType.PostSmallBlind and not ActionType.PostBigBlind)
             {
                 break;
             }
+
+            var amountBb = bb > 0 ? decimal.Round((action.Amount ?? 0m) / bb, 2) : 0m;
+            actions.Add(new PreflopInputAction(new PlayerId(player.Id), type, amountBb));
         }
 
         return actions;
