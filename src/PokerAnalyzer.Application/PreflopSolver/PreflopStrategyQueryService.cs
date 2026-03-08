@@ -51,8 +51,8 @@ public sealed class PreflopStrategyQueryService : IPreflopStrategyQueryService
 
     private static string ToActionKey(LegalAction action)
     {
-        if (action.Amount.Value > 0m)
-            return $"{action.ActionType}:{action.Amount.Value:0.##}";
+        if (action.Amount?.Value > 0L)
+            return $"{action.ActionType}:{action.Amount.Value.Value:0.##}";
 
         return action.ActionType.ToString();
     }
