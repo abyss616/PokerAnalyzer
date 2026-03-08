@@ -375,52 +375,72 @@ public sealed class RegretMatchingPolicyProvider : IPreflopPolicyProvider
 
 public sealed class InMemoryPolicyProvider : IPreflopPolicyProvider
 {
-    private readonly Dictionary<string, IReadOnlyDictionary<LegalAction, double>> _policyByInfoSet = new(StringComparer.Ordinal);
+    private readonly IRegretStore _regretStore;
+
+    public RegretMatchingPolicyProvider(IRegretStore regretStore)
+    {
+        _regretStore = regretStore ?? throw new ArgumentNullException(nameof(regretStore));
+    }
 
     public bool TryGetPolicy(string infoSetKey, IReadOnlyList<LegalAction> legalActions, out IReadOnlyDictionary<LegalAction, double> policy)
     {
         ArgumentNullException.ThrowIfNull(infoSetKey);
         ArgumentNullException.ThrowIfNull(legalActions);
 
-        if (!_policyByInfoSet.TryGetValue(infoSetKey, out var storedPolicy))
+        if (legalActions.Count == 0)
         {
             policy = new Dictionary<LegalAction, double>();
             return false;
         }
 
-        var filtered = new Dictionary<LegalAction, double>(legalActions.Count);
+        var positiveRegrets = new Dictionary<LegalAction, double>(legalActions.Count);
+        var positiveRegretSum = 0d;
+
         foreach (var legalAction in legalActions)
         {
-            if (storedPolicy.TryGetValue(legalAction, out var probability) && probability > 0d)
-                filtered[legalAction] = probability;
+            var regret = _regretStore.Get(infoSetKey, legalAction);
+            var positiveRegret = Math.Max(regret, 0d);
+            positiveRegrets[legalAction] = positiveRegret;
+            positiveRegretSum += positiveRegret;
         }
 
-        if (filtered.Count == 0)
-        {
-            policy = new Dictionary<LegalAction, double>();
-            return false;
-        }
+        policy = positiveRegretSum > 0d
+            ? BuildNormalizedPolicy(positiveRegrets, positiveRegretSum)
+            : UniformPolicyBuilder.Build(legalActions);
 
-        var filteredTotal = filtered.Values.Sum();
-        if (filteredTotal <= 0d)
-        {
-            policy = new Dictionary<LegalAction, double>();
-            return false;
-        }
-
-        var normalized = new Dictionary<LegalAction, double>(filtered.Count);
-        foreach (var (action, probability) in filtered)
-            normalized[action] = probability / filteredTotal;
-
-        policy = normalized;
         return true;
     }
 
-    public void Store(string infoSetKey, IReadOnlyDictionary<LegalAction, double> policy)
+    private static IReadOnlyDictionary<LegalAction, double> BuildNormalizedPolicy(
+        IReadOnlyDictionary<LegalAction, double> positiveRegrets,
+        double positiveRegretSum)
+    {
+        if (positiveRegretSum <= 0d)
+            throw new ArgumentOutOfRangeException(nameof(positiveRegretSum), "Positive regret sum must be greater than zero.");
+
+        var normalizedPolicy = new Dictionary<LegalAction, double>(positiveRegrets.Count);
+        foreach (var (action, positiveRegret) in positiveRegrets)
+            normalizedPolicy[action] = positiveRegret / positiveRegretSum;
+
+        return normalizedPolicy;
+    }
+}
+
+public sealed class InMemoryPolicyProvider : IPreflopPolicyProvider
+{
+    public bool TryGetPolicy(string infoSetKey, IReadOnlyList<LegalAction> legalActions, out IReadOnlyDictionary<LegalAction, double> policy)
     {
         ArgumentNullException.ThrowIfNull(infoSetKey);
-        ArgumentNullException.ThrowIfNull(policy);
-        _policyByInfoSet[infoSetKey] = new Dictionary<LegalAction, double>(policy);
+        ArgumentNullException.ThrowIfNull(legalActions);
+
+        if (legalActions.Count == 0)
+        {
+            policy = new Dictionary<LegalAction, double>();
+            return false;
+        }
+
+        policy = UniformPolicyBuilder.Build(legalActions);
+        return true;
     }
 }
 
