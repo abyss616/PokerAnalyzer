@@ -10,65 +10,82 @@ namespace PokerAnalyzer.Infrastructure.Tests;
 public sealed class PreflopHandAnalysisServiceTests
 {
     [Fact]
-    public async Task AnalyzePreflopByHandNumberAsync_ReturnsNull_WhenHandNotFound()
+    public async Task QueryPreflopNodeByHandNumberAsync_ReturnsNull_WhenHandNotFound()
     {
         var svc = BuildService(hand: null);
 
-        var result = await svc.AnalyzePreflopByHandNumberAsync(123, CancellationToken.None);
+        var result = await svc.QueryPreflopNodeByHandNumberAsync(123, CancellationToken.None);
 
         Assert.Null(result);
     }
 
     [Fact]
-    public async Task AnalyzePreflopByHandNumberAsync_ReturnsNotYetImplemented_WhenMappingUnsupported()
+    public async Task QueryPreflopNodeByHandNumberAsync_MapsExactState_ToExpectedCanonicalKey()
+    {
+        var hand = BuildStandardHeroFacingOpenHand();
+        var svc = BuildService(hand, strategyProvider: new TestStrategyProvider(new Dictionary<string, decimal>
+        {
+            ["Fold"] = 0.20m,
+            ["Call:1.5"] = 0.30m,
+            ["Raise:4"] = 0.50m
+        }));
+
+        var result = await svc.QueryPreflopNodeByHandNumberAsync(1, CancellationToken.None);
+
+        Assert.NotNull(result);
+        Assert.True(result!.IsSupported);
+        Assert.Equal("preflop/v2/VS_OPEN/UTG/eff=100/open=2.5/jam=18", result.CanonicalKey);
+        Assert.Equal("VS_OPEN", result.HistorySignature);
+    }
+
+    [Fact]
+    public async Task QueryPreflopNodeByHandNumberAsync_DifferentHistories_DoNotCollapseToFallbackNode()
+    {
+        var openResult = await BuildService(BuildStandardHeroFacingOpenHand())
+            .QueryPreflopNodeByHandNumberAsync(1, CancellationToken.None);
+
+        var limpedResult = await BuildService(BuildLimpedPotHand())
+            .QueryPreflopNodeByHandNumberAsync(1, CancellationToken.None);
+
+        Assert.NotNull(openResult);
+        Assert.NotNull(limpedResult);
+        Assert.True(openResult!.IsSupported);
+        Assert.True(limpedResult!.IsSupported);
+        Assert.NotEqual(openResult.SolverKey, limpedResult.SolverKey);
+        Assert.NotEqual(openResult.HistorySignature, limpedResult.HistorySignature);
+    }
+
+    [Fact]
+    public async Task QueryPreflopNodeByHandNumberAsync_PreservesSizedRaiseActions_EndToEnd()
+    {
+        var hand = BuildStandardHeroFacingOpenHand();
+        var strategyProvider = new TestStrategyProvider(new Dictionary<string, decimal>
+        {
+            ["Fold"] = 0.10m,
+            ["Call:1.5"] = 0.20m,
+            ["Raise:4"] = 0.30m,
+            ["Raise:9"] = 0.40m
+        });
+
+        var result = await BuildService(hand, strategyProvider).QueryPreflopNodeByHandNumberAsync(1, CancellationToken.None);
+
+        Assert.NotNull(result);
+        Assert.Contains(result!.LegalActions, x => x.ActionKey == "Raise:4");
+        Assert.Contains(result.LegalActions, x => x.ActionKey == "Raise:9");
+        Assert.Contains(result.Strategy, x => x.ActionKey == "Raise:4");
+        Assert.Contains(result.Strategy, x => x.ActionKey == "Raise:9");
+    }
+
+    [Fact]
+    public async Task QueryPreflopNodeByHandNumberAsync_ReturnsUnsupportedSpot_WithReason()
     {
         var hand = BuildHandWithoutHero();
-        var svc = BuildService(hand);
 
-        var result = await svc.AnalyzePreflopByHandNumberAsync(1, CancellationToken.None);
-
-        Assert.NotNull(result);
-        Assert.Equal(PreflopHandAnalysisResultDto.NotYetImplemented, result!.CanonicalPreflopSolverNode);
-        Assert.Equal(PreflopHandAnalysisResultDto.NotYetImplemented, result.HeroLegalActions);
-    }
-
-    [Fact]
-    public async Task AnalyzePreflopByHandNumberAsync_ReturnsLegalActions_WhenExtractionWorks()
-    {
-        var hand = BuildStandardHeroFacingOpenHand();
-        var svc = BuildService(hand);
-
-        var result = await svc.AnalyzePreflopByHandNumberAsync(1, CancellationToken.None);
+        var result = await BuildService(hand).QueryPreflopNodeByHandNumberAsync(1, CancellationToken.None);
 
         Assert.NotNull(result);
-        Assert.Contains("Fold", result!.HeroLegalActions);
-        Assert.Contains("Call", result.HeroLegalActions);
-        Assert.Contains("Raise", result.HeroLegalActions);
-    }
-
-    [Fact]
-    public async Task AnalyzePreflopByHandNumberAsync_ReturnsNotYetImplementedMixedStrategy_WhenNoPolicyExists()
-    {
-        var hand = BuildStandardHeroFacingOpenHand();
-        var svc = BuildService(hand, strategyProvider: new TestStrategyProvider(null));
-
-        var result = await svc.AnalyzePreflopByHandNumberAsync(1, CancellationToken.None);
-
-        Assert.NotNull(result);
-        Assert.Equal(PreflopHandAnalysisResultDto.NotYetImplemented, result!.CurrentMixedStrategy);
-    }
-
-    [Fact]
-    public async Task AnalyzePreflopByHandNumberAsync_ReturnsSensibleFallbackComparison_WhenNoPolicyExists()
-    {
-        var hand = BuildStandardHeroFacingOpenHand();
-        var svc = BuildService(hand, strategyProvider: new TestStrategyProvider(null));
-
-        var result = await svc.AnalyzePreflopByHandNumberAsync(1, CancellationToken.None);
-
-        Assert.NotNull(result);
-        Assert.Contains("Hero Call", result!.ActualActionVsRecommendation);
-        Assert.Contains(PreflopHandAnalysisResultDto.NotYetImplemented, result.ActualActionVsRecommendation);
+        Assert.False(result!.IsSupported);
+        Assert.NotNull(result.UnsupportedReason);
     }
 
     private static PreflopHandAnalysisService BuildService(Hand? hand, IPreflopStrategyProvider? strategyProvider = null)
@@ -103,10 +120,10 @@ public sealed class PreflopHandAnalysisServiceTests
             GameCode = 9002,
             Players =
             [
-                new HandPlayer { Id = Guid.NewGuid(), Name = "Hero", Seat = 6, StackStart = 100m, IsHero = true },
-                new HandPlayer { Id = Guid.NewGuid(), Name = "Villain", Seat = 5, StackStart = 100m, IsHero = false },
                 new HandPlayer { Id = Guid.NewGuid(), Name = "SB", Seat = 1, StackStart = 100m, IsHero = false },
-                new HandPlayer { Id = Guid.NewGuid(), Name = "BB", Seat = 2, StackStart = 100m, IsHero = false }
+                new HandPlayer { Id = Guid.NewGuid(), Name = "BB", Seat = 2, StackStart = 100m, IsHero = false },
+                new HandPlayer { Id = Guid.NewGuid(), Name = "Villain", Seat = 5, StackStart = 100m, IsHero = false },
+                new HandPlayer { Id = Guid.NewGuid(), Name = "Hero", Seat = 6, StackStart = 100m, IsHero = true }
             ],
             Actions =
             [
@@ -114,6 +131,28 @@ public sealed class PreflopHandAnalysisServiceTests
                 new HandAction { Street = Street.Preflop, Player = "BB", Type = ActionType.PostBigBlind, Amount = 1m },
                 new HandAction { Street = Street.Preflop, Player = "Villain", Type = ActionType.Raise, Amount = 2.5m },
                 new HandAction { Street = Street.Preflop, Player = "Hero", Type = ActionType.Call, Amount = 2.5m }
+            ]
+        };
+    }
+
+    private static Hand BuildLimpedPotHand()
+    {
+        return new Hand
+        {
+            GameCode = 9003,
+            Players =
+            [
+                new HandPlayer { Id = Guid.NewGuid(), Name = "SB", Seat = 1, StackStart = 100m, IsHero = false },
+                new HandPlayer { Id = Guid.NewGuid(), Name = "BB", Seat = 2, StackStart = 100m, IsHero = false },
+                new HandPlayer { Id = Guid.NewGuid(), Name = "Villain", Seat = 5, StackStart = 100m, IsHero = false },
+                new HandPlayer { Id = Guid.NewGuid(), Name = "Hero", Seat = 6, StackStart = 100m, IsHero = true }
+            ],
+            Actions =
+            [
+                new HandAction { Street = Street.Preflop, Player = "SB", Type = ActionType.PostSmallBlind, Amount = 0.5m },
+                new HandAction { Street = Street.Preflop, Player = "BB", Type = ActionType.PostBigBlind, Amount = 1m },
+                new HandAction { Street = Street.Preflop, Player = "Villain", Type = ActionType.Call, Amount = 1m },
+                new HandAction { Street = Street.Preflop, Player = "Hero", Type = ActionType.Check, Amount = 0m }
             ]
         };
     }
@@ -147,8 +186,15 @@ public sealed class PreflopHandAnalysisServiceTests
         }
 
         public Task<PreflopStrategyResultDto?> GetStrategyResultAsync(string solverKey, IReadOnlyList<string> legalActions, CancellationToken ct)
-            => Task.FromResult(_strategy is null
-                ? null
-                : new PreflopStrategyResultDto(solverKey, _strategy, 0, 0d));
+        {
+            if (_strategy is null)
+                return Task.FromResult<PreflopStrategyResultDto?>(null);
+
+            var selected = _strategy
+                .Where(kv => legalActions.Contains(kv.Key, StringComparer.Ordinal))
+                .ToDictionary(kv => kv.Key, kv => kv.Value, StringComparer.Ordinal);
+
+            return Task.FromResult<PreflopStrategyResultDto?>(new PreflopStrategyResultDto(solverKey, selected, 0, 0d));
+        }
     }
 }

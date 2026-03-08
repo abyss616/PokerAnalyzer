@@ -1,3 +1,4 @@
+using System.Globalization;
 using PokerAnalyzer.Application.PreflopAnalysis;
 using PokerAnalyzer.Application.PreflopSolver;
 using PokerAnalyzer.Domain.Game;
@@ -32,12 +33,36 @@ public sealed class StoreBackedPreflopStrategyProvider : IPreflopStrategyProvide
     }
 
     private static LegalAction? MapAction(string action)
-        => action.Trim().ToUpperInvariant() switch
+    {
+        if (string.IsNullOrWhiteSpace(action))
+            return null;
+
+        var value = action.Trim();
+        if (!value.Contains(':', StringComparison.Ordinal))
         {
-            "FOLD" => new LegalAction(ActionType.Fold),
-            "CHECK" => new LegalAction(ActionType.Check),
-            "CALL" => new LegalAction(ActionType.Call),
-            "RAISE" => new LegalAction(ActionType.Raise),
+            return value.ToUpperInvariant() switch
+            {
+                "FOLD" => new LegalAction(ActionType.Fold),
+                "CHECK" => new LegalAction(ActionType.Check),
+                "CALL" => new LegalAction(ActionType.Call),
+                "RAISE" => new LegalAction(ActionType.Raise),
+                _ => null
+            };
+        }
+
+        var parts = value.Split(':', 2, StringSplitOptions.TrimEntries);
+        if (parts.Length != 2)
+            return null;
+
+        if (!decimal.TryParse(parts[1], NumberStyles.Number, CultureInfo.InvariantCulture, out var sizeBb))
+            return null;
+
+        var size = new ChipAmount((long)Math.Round(sizeBb, MidpointRounding.AwayFromZero));
+        return parts[0].ToUpperInvariant() switch
+        {
+            "CALL" => new LegalAction(ActionType.Call, size),
+            "RAISE" => new LegalAction(ActionType.Raise, size),
             _ => null
         };
+    }
 }

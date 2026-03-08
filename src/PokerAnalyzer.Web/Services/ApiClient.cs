@@ -18,11 +18,42 @@ public sealed class ApiClient
     public sealed record PlayerStatsResult(string Player, int Hands, IReadOnlyList<PlayerStatPercent> Stats);
 
     public sealed record PreflopHandAnalysisResult(
-        string HandNumber,
-        string CanonicalPreflopSolverNode,
-        string HeroLegalActions,
-        string CurrentMixedStrategy,
-        string ActualActionVsRecommendation);
+        bool IsSupported,
+        string? UnsupportedReason,
+        string CanonicalKey,
+        string SolverKey,
+        string Street,
+        string ActingPosition,
+        string? FacingPosition,
+        string HistorySignature,
+        decimal PotBb,
+        decimal ToCallBb,
+        decimal EffectiveStackBb,
+        int RaiseDepth,
+        string SizingBucketSummary,
+        IReadOnlyList<PreflopLegalAction> LegalActions,
+        IReadOnlyList<PreflopStrategyItem> Strategy,
+        PreflopTrace Trace);
+
+    public sealed record PreflopLegalAction(string ActionKey, string ActionType, decimal? SizeBb, bool IsFacingAllIn);
+    public sealed record PreflopStrategyItem(string ActionKey, decimal Frequency);
+    public sealed record PreflopTrace(
+        string SolverKey,
+        string HistorySignature,
+        int RaiseDepth,
+        decimal ToCallBb,
+        decimal CurrentBetBb,
+        decimal PotBb,
+        decimal EffectiveStackBb,
+        string OpenSizeBucket,
+        string IsoSizeBucket,
+        string ThreeBetBucket,
+        string SqueezeBucket,
+        string FourBetBucket,
+        decimal JamThreshold,
+        IReadOnlyList<PreflopTraceAction> RawActionHistory);
+
+    public sealed record PreflopTraceAction(Guid PlayerId, string? Position, string ActionType, decimal AmountBb);
 
     public async Task<UploadHandHistoryResult> UploadHandHistoryXmlAsync(
         IBrowserFile file,

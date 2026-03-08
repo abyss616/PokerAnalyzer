@@ -1,4 +1,6 @@
+using System.Globalization;
 using PokerAnalyzer.Application.PreflopAnalysis;
+using PokerAnalyzer.Domain.Cards;
 using PokerAnalyzer.Domain.Game;
 using PokerAnalyzer.Infrastructure.Engines;
 using PokerAnalyzer.Infrastructure.HandHistories;
@@ -25,163 +27,262 @@ public sealed class PreflopHandAnalysisService : IPreflopHandAnalysisService
 
     public async Task<PreflopHandAnalysisResultDto?> AnalyzePreflopByHandNumberAsync(long handNumber, CancellationToken ct)
     {
+        var result = await QueryPreflopNodeByHandNumberAsync(handNumber, ct);
+        if (result is null)
+            return null;
+
+        return new PreflopHandAnalysisResultDto(
+            handNumber.ToString(CultureInfo.InvariantCulture),
+            result.CanonicalKey,
+            result.LegalActions.Count == 0 ? NotYetImplemented : string.Join(", ", result.LegalActions.Select(x => x.ActionKey)),
+            result.Strategy.Count == 0 ? NotYetImplemented : string.Join(", ", result.Strategy.Select(x => $"{x.ActionKey} {x.Frequency:0.##}%")),
+            result.IsSupported ? "See structured solver node details." : result.UnsupportedReason ?? NotYetImplemented);
+    }
+
+    public async Task<PreflopNodeQueryResultDto?> QueryPreflopNodeByHandNumberAsync(long handNumber, CancellationToken ct)
+    {
         var hand = await _hands.GetHandByGameCodeAsync(handNumber, ct);
         if (hand is null)
             return null;
 
-        var hero = hand.Players.FirstOrDefault(p => p.IsHero);
-        if (hero is null)
-            return CreateFallback(handNumber);
+        var request = BuildRequestFromHand(hand);
+        if (request is null)
+            return BuildUnsupported("Could not construct preflop query from hand history.");
 
-        var blindInfo = TryResolveBlinds(hand);
-        if (!blindInfo.HasValue)
-            return CreateFallback(handNumber);
+        return await QueryPreflopNodeAsync(request, ct);
+    }
 
-        var seatMap = hand.Players.ToDictionary(p => p.Name, p => p);
-        var seats = hand.Players
-            .OrderBy(p => p.Seat)
-            .Select((p, i) => new PlayerSeat(
-                new PlayerId(p.Id),
-                p.Name,
-                p.Seat,
-                ResolvePosition(i, hand.Players.Count),
-                new ChipAmount(ToChips(p.StackStart ?? 0m, blindInfo.Value.BigBlind))))
+    public async Task<PreflopNodeQueryResultDto> QueryPreflopNodeAsync(PreflopNodeQueryRequestDto request, CancellationToken ct)
+    {
+        if (request.Street != Street.Preflop)
+            return BuildUnsupported($"Street '{request.Street}' is unsupported. Only preflop is currently queryable.");
+
+        var seatById = request.Seats.ToDictionary(x => new PlayerId(x.PlayerId));
+        var actingPlayerId = new PlayerId(request.ActingPlayerId);
+        if (!seatById.ContainsKey(actingPlayerId))
+            return BuildUnsupported("Acting player was not found in seat map.");
+
+        var seats = request.Seats
+            .OrderBy(s => s.Seat)
+            .Select(s => new PlayerSeat(
+                new PlayerId(s.PlayerId),
+                s.Name,
+                s.Seat,
+                s.Position,
+                new ChipAmount((long)Math.Round(s.StartingStackBb * 100m, MidpointRounding.AwayFromZero))))
             .ToList();
 
-        var heroSeat = seats.FirstOrDefault(s => s.Name == hero.Name);
-        if (heroSeat is null)
-            return CreateFallback(handNumber);
+        var actions = request.PublicActionHistory
+            .Select(a => new PreflopInputAction(new PlayerId(a.PlayerId), a.ActionType, a.AmountBb))
+            .ToList();
 
-        var actionsBeforeHero = BuildExtractorActions(hand, seatMap, blindInfo.Value.BigBlind, hero.Name);
+        var extraction = _extractor.TryExtract(seats, actions, actingPlayerId, request.SmallBlind, request.BigBlind);
+        if (!extraction.IsSupported || extraction.Key is null)
+            return BuildUnsupported(extraction.UnsupportedReason ?? "Preflop extraction was unsupported.", extraction.Trace);
 
-        var extraction = _extractor.TryExtract(
-            seats,
-            actionsBeforeHero,
-            heroSeat.Id,
-            blindInfo.Value.SmallBlind,
-            blindInfo.Value.BigBlind);
+        var legalActions = BuildLegalActions(extraction.Trace);
+        var strategy = await ResolveStrategyAsync(extraction.Key.SolverKey, legalActions, ct);
 
-        var canonicalNode = extraction.IsSupported
-            ? BuildCanonicalNode(extraction.Trace)
-            : NotYetImplemented;
+        var canonicalKey = BuildCanonicalKey(extraction.Key, request.HeroHoleCards);
+        return new PreflopNodeQueryResultDto(
+            true,
+            null,
+            canonicalKey,
+            extraction.Key.SolverKey,
+            Street.Preflop,
+            extraction.Key.ActingPosition,
+            extraction.Key.FacingPosition,
+            extraction.Key.HistorySignature,
+            extraction.Trace.PotBb,
+            extraction.Trace.ToCallBb,
+            extraction.Trace.EffectiveStackBb,
+            extraction.Key.RaiseDepth,
+            BuildSizingSummary(extraction.Trace),
+            legalActions,
+            strategy,
+            ToTraceDto(extraction.Trace));
+    }
 
-        var legalActionKeys = extraction.IsSupported
-            ? BuildLegalActionKeys(extraction.Trace)
-            : new List<string>();
+    private async Task<IReadOnlyList<PreflopNodeStrategyItemDto>> ResolveStrategyAsync(
+        string solverKey,
+        IReadOnlyList<PreflopNodeLegalActionDto> legalActions,
+        CancellationToken ct)
+    {
+        var actionKeys = legalActions.Select(x => x.ActionKey).ToList();
+        var strategyResult = await _strategyProvider.GetStrategyResultAsync(solverKey, actionKeys, ct);
+        if (strategyResult?.AverageStrategy is not { Count: > 0 } strategy)
+            return Array.Empty<PreflopNodeStrategyItemDto>();
 
-        var legalActions = extraction.IsSupported
-            ? BuildLegalActionsText(legalActionKeys)
-            : NotYetImplemented;
+        return strategy
+            .Select(kv => new PreflopNodeStrategyItemDto(kv.Key, decimal.Round(kv.Value * 100m, 2)))
+            .OrderByDescending(x => x.Frequency)
+            .ToList();
+    }
 
-        var mixedStrategy = NotYetImplemented;
-        var actualVsRecommendation = NotYetImplemented;
-
-        if (extraction.IsSupported && extraction.Key is not null)
+    private static string BuildCanonicalKey(PreflopInfoSetKey key, string? heroHoleCards)
+    {
+        if (!string.IsNullOrWhiteSpace(heroHoleCards))
         {
-            var strategyResult = await _strategyProvider.GetStrategyResultAsync(extraction.Key.SolverKey, legalActionKeys, ct);
-            if (strategyResult?.AverageStrategy is { Count: > 0 } strategy)
+            try
             {
-                mixedStrategy = FormatStrategy(strategy);
-                actualVsRecommendation = BuildActualVsRecommendation(hand, hero.Name, strategy);
+                var cards = HoleCards.Parse(heroHoleCards);
+                return SolverInfoSetKey.CreatePreflop(key, cards).CanonicalKey;
             }
-            else
+            catch
             {
-                actualVsRecommendation = BuildActualVsRecommendationFallback(hand, hero.Name);
+                // keep key without private cards when hero cards cannot be parsed.
             }
         }
 
-        return new PreflopHandAnalysisResultDto(
-            handNumber.ToString(),
-            canonicalNode,
-            legalActions,
-            mixedStrategy,
-            actualVsRecommendation);
+        return $"preflop/{key.SolverKey}";
     }
 
-    private static PreflopHandAnalysisResultDto CreateFallback(long handNumber) =>
-        new(
-            handNumber.ToString(),
-            NotYetImplemented,
-            NotYetImplemented,
-            NotYetImplemented,
-            NotYetImplemented);
+    private static PreflopNodeTraceDto ToTraceDto(PreflopQueryTrace trace)
+        => new(
+            trace.SolverKey,
+            trace.HistorySignature,
+            trace.RaiseDepth,
+            trace.ToCallBb,
+            trace.CurrentBetBb,
+            trace.PotBb,
+            trace.EffectiveStackBb,
+            trace.OpenSizeBucket,
+            trace.IsoSizeBucket,
+            trace.ThreeBetBucket,
+            trace.SqueezeBucket,
+            trace.FourBetBucket,
+            trace.JamThreshold,
+            trace.RawActionHistory.Select(a => new PreflopNodeTraceActionDto(
+                a.PlayerId.Value,
+                a.Position,
+                a.ActionType,
+                a.AmountBb)).ToList());
 
-    private static string BuildCanonicalNode(PreflopQueryTrace trace)
+    private static string BuildSizingSummary(PreflopQueryTrace trace)
+        => $"open={trace.OpenSizeBucket}, iso={trace.IsoSizeBucket}, 3bet={trace.ThreeBetBucket}, squeeze={trace.SqueezeBucket}, 4bet={trace.FourBetBucket}, jam={trace.JamThreshold:0.##}";
+
+    private static IReadOnlyList<PreflopNodeLegalActionDto> BuildLegalActions(PreflopQueryTrace trace)
     {
-        if (trace.HistorySignature is "UNSUPPORTED")
-            return NotYetImplemented;
+        var actions = new List<PreflopNodeLegalActionDto>();
 
-        var eff = trace.EffectiveStackBb > 0 ? $", {trace.EffectiveStackBb:0.##}bb" : string.Empty;
-        return trace.HistorySignature switch
-        {
-            "VS_OPEN" when trace.ActingPosition == Position.BB && trace.FacingPosition.HasValue
-                => $"BB vs {trace.FacingPosition.Value} Open{eff}, facing {trace.CurrentBetBb:0.##}bb open",
-            "OPEN" => $"{trace.ActingPosition} Open{eff}",
-            "LIMP" => $"{trace.ActingPosition} Limp{eff}",
-            "VS_3BET" => $"Facing 3Bet, {(IsInPosition(trace) ? "IP" : "OOP")}{eff}",
-            _ => NotYetImplemented
-        };
-    }
-
-    private static bool IsInPosition(PreflopQueryTrace trace)
-        => trace.ActingPosition switch
-        {
-            Position.BTN => true,
-            Position.CO when trace.FacingPosition is Position.HJ or Position.UTG => true,
-            _ => false
-        };
-
-    private static string BuildLegalActionsText(IReadOnlyList<string> actions)
-        => string.Join(", ", actions.Distinct());
-
-    private static List<string> BuildLegalActionKeys(PreflopQueryTrace trace)
-    {
-        var actions = new List<string>();
         if (trace.ToCallBb > 0)
-            actions.Add("Fold");
+            actions.Add(new PreflopNodeLegalActionDto("Fold", ActionType.Fold, null, false));
+
+        if (trace.ToCallBb > 0)
+            actions.Add(new PreflopNodeLegalActionDto($"Call:{trace.ToCallBb:0.##}", ActionType.Call, trace.ToCallBb, false));
         else
-            actions.Add("Check");
+            actions.Add(new PreflopNodeLegalActionDto("Check", ActionType.Check, null, false));
+
+        var raiseSizes = new HashSet<decimal>();
+        AddIfPositive(raiseSizes, ParseBucket(trace.OpenSizeBucket));
+        AddIfPositive(raiseSizes, ParseBucket(trace.ThreeBetBucket));
+        AddIfPositive(raiseSizes, ParseBucket(trace.FourBetBucket));
 
         if (trace.ToCallBb > 0)
-            actions.Add("Call");
+        {
+            raiseSizes.Add(4m);
+            raiseSizes.Add(9m);
+        }
+        else
+        {
+            raiseSizes.Add(2.5m);
+        }
 
-        actions.Add("Raise");
+        foreach (var size in raiseSizes.Where(x => x > trace.CurrentBetBb).OrderBy(x => x))
+        {
+            var isFacingAllIn = trace.EffectiveStackBb > 0 && size >= trace.EffectiveStackBb;
+            actions.Add(new PreflopNodeLegalActionDto($"Raise:{size:0.##}", ActionType.Raise, size, isFacingAllIn));
+        }
 
         return actions;
     }
 
-    private static string BuildActualVsRecommendationFallback(Hand hand, string heroName)
+    private static decimal? ParseBucket(string value)
+        => decimal.TryParse(value, NumberStyles.Number, CultureInfo.InvariantCulture, out var parsed)
+            ? parsed
+            : null;
+
+    private static void AddIfPositive(HashSet<decimal> target, decimal? value)
     {
-        var heroAction = hand.Actions
-            .FirstOrDefault(a => a.Street == Street.Preflop
-                && string.Equals(a.Player, heroName, StringComparison.Ordinal)
-                && a.Type is not ActionType.PostSmallBlind and not ActionType.PostBigBlind);
-
-        if (heroAction is null)
-            return NotYetImplemented;
-
-        return $"Hero {heroAction.Type}. Solver recommendation: {NotYetImplemented}.";
+        if (value.HasValue && value.Value > 0)
+            target.Add(value.Value);
     }
 
-    private static string BuildActualVsRecommendation(Hand hand, string heroName, IReadOnlyDictionary<string, decimal> strategy)
+    private static PreflopNodeQueryRequestDto? BuildRequestFromHand(Hand hand)
     {
-        var heroAction = hand.Actions
-            .FirstOrDefault(a => a.Street == Street.Preflop
-                && string.Equals(a.Player, heroName, StringComparison.Ordinal)
-                && a.Type is not ActionType.PostSmallBlind and not ActionType.PostBigBlind);
+        var hero = hand.Players.FirstOrDefault(p => p.IsHero);
+        if (hero is null)
+            return null;
 
-        if (heroAction is null)
-            return NotYetImplemented;
+        var blindInfo = TryResolveBlinds(hand);
+        if (!blindInfo.HasValue)
+            return null;
 
-        var actionKey = heroAction.Type.ToString();
-        var inStrategy = strategy.ContainsKey(actionKey);
-        return inStrategy
-            ? $"Hero {heroAction.Type}. Solver mix: {FormatStrategy(strategy)}. Actual action is in-strategy."
-            : $"Hero {heroAction.Type}. Solver mix: {FormatStrategy(strategy)}. Solver prefers other actions.";
+        var seatMap = hand.Players.ToDictionary(p => p.Name, p => p);
+        var seats = hand.Players
+            .OrderBy(p => p.Seat)
+            .Select((p, i) => new PreflopNodeSeatDto(
+                p.Id,
+                p.Name,
+                p.Seat,
+                ResolvePosition(i, hand.Players.Count),
+                blindInfo.Value.BigBlind > 0 ? decimal.Round((p.StackStart ?? 0m) / blindInfo.Value.BigBlind, 2) : 0m))
+            .ToList();
+
+        var actions = BuildExtractorActions(hand, seatMap, blindInfo.Value.BigBlind, hero.Name)
+            .Select(a => new PreflopNodeActionDto(a.PlayerId.Value, a.Type, a.AmountBb))
+            .ToList();
+
+        return new PreflopNodeQueryRequestDto(
+            Street.Preflop,
+            hero.Id,
+            hand.HeroHoleCards,
+            blindInfo.Value.SmallBlind,
+            blindInfo.Value.BigBlind,
+            seats,
+            actions);
     }
 
-    private static string FormatStrategy(IReadOnlyDictionary<string, decimal> strategy)
-        => string.Join(", ", strategy.Select(kv => $"{kv.Key} {kv.Value:0.##}%"));
+    private static PreflopNodeQueryResultDto BuildUnsupported(string reason, PreflopQueryTrace? trace = null)
+        => new(
+            false,
+            reason,
+            NotYetImplemented,
+            trace?.SolverKey ?? NotYetImplemented,
+            Street.Preflop,
+            trace?.ActingPosition ?? Position.Unknown,
+            trace?.FacingPosition,
+            trace?.HistorySignature ?? "UNSUPPORTED",
+            trace?.PotBb ?? 0,
+            trace?.ToCallBb ?? 0,
+            trace?.EffectiveStackBb ?? 0,
+            trace?.RaiseDepth ?? 0,
+            trace is null ? "NA" : BuildSizingSummary(trace),
+            Array.Empty<PreflopNodeLegalActionDto>(),
+            Array.Empty<PreflopNodeStrategyItemDto>(),
+            ToTraceDto(trace ?? EmptyTrace()));
+
+    private static PreflopQueryTrace EmptyTrace()
+        => new()
+        {
+            ActingPlayerId = new PlayerId(Guid.Empty),
+            ActingPosition = Position.Unknown,
+            HistorySignature = "UNSUPPORTED",
+            RaiseDepth = 0,
+            ToCallBb = 0,
+            CurrentBetBb = 0,
+            ActingContribBb = 0,
+            PotBb = 0,
+            EffectiveStackBb = 0,
+            OpenSizeBucket = "NA",
+            IsoSizeBucket = "NA",
+            ThreeBetBucket = "NA",
+            SqueezeBucket = "NA",
+            FourBetBucket = "NA",
+            JamThreshold = 0,
+            SolverKey = "UNSUPPORTED",
+            RawActionHistory = Array.Empty<PreflopRawActionTrace>()
+        };
 
     private static List<PreflopInputAction> BuildExtractorActions(Hand hand, Dictionary<string, HandPlayer> playersByName, decimal bb, string heroName)
     {
@@ -224,14 +325,6 @@ public sealed class PreflopHandAnalysisService : IPreflopHandAnalysisService
             return null;
 
         return (sb.Value, bb.Value);
-    }
-
-    private static long ToChips(decimal stack, decimal bb)
-    {
-        if (bb <= 0)
-            return 0;
-
-        return (long)Math.Round(stack / bb * 100m, MidpointRounding.AwayFromZero);
     }
 
     private static Position ResolvePosition(int index, int playerCount)
