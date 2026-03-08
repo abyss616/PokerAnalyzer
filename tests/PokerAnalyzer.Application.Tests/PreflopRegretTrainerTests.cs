@@ -70,6 +70,40 @@ public sealed class PreflopRegretTrainerTests
         Assert.True(result.Elapsed < TimeSpan.FromSeconds(1));
     }
 
+
+    [Fact]
+    public void RunIteration_IncrementsTrainingProgressStore()
+    {
+        var progress = new InMemoryPreflopTrainingProgressStore();
+
+        var root = CreateHeadsUpPreflopState();
+        var traversalPlayer = root.Players[0].PlayerId;
+        var opponent = root.Players[1].PlayerId;
+        var regrets = new InMemoryRegretStore();
+        var fold = new LegalAction(ActionType.Fold);
+        var call = new LegalAction(ActionType.Call, new ChipAmount(1));
+        var traverser = new RegretAwareStubTrajectoryTraverser(
+            root,
+            traversalPlayer,
+            opponent,
+            new RegretMatchingPolicyProvider(regrets),
+            fold,
+            call);
+
+        var trainer = new PreflopRegretTrainer(
+            new FixedRootStateProvider(root),
+            traverser,
+            new FixedTraversalPlayerSelector(traversalPlayer),
+            regrets,
+            new InMemoryAverageStrategyStore(),
+            progress);
+
+        trainer.RunIteration(new Random(21));
+        trainer.RunIteration(new Random(22));
+
+        Assert.Equal(2, progress.TotalIterationsCompleted);
+    }
+
     [Fact]
     public void RunIteration_UsesRegretMatchedTraversalPolicy_AndUpdatesRegretAsActionValueMinusNodeValue()
     {

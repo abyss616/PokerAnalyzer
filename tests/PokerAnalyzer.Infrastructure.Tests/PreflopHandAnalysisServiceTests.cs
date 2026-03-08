@@ -146,7 +146,9 @@ public sealed class PreflopHandAnalysisServiceTests
             _strategy = strategy;
         }
 
-        public Task<IReadOnlyDictionary<string, decimal>?> GetMixedStrategyAsync(string solverKey, CancellationToken ct) =>
-            Task.FromResult(_strategy);
+        public Task<PreflopStrategyResultDto?> GetStrategyResultAsync(string solverKey, IReadOnlyList<string> legalActions, CancellationToken ct)
+            => Task.FromResult(_strategy is null
+                ? null
+                : new PreflopStrategyResultDto(solverKey, _strategy, 0, 0d));
     }
 }

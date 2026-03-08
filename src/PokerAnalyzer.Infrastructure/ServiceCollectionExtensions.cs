@@ -3,6 +3,7 @@ using Microsoft.Extensions.DependencyInjection;
 using PokerAnalyzer.Application.Analysis;
 using PokerAnalyzer.Application.Engines;
 using PokerAnalyzer.Application.PreflopAnalysis;
+using PokerAnalyzer.Application.PreflopSolver;
 using PokerAnalyzer.Infrastructure.Engines;
 using PokerAnalyzer.Infrastructure.HandHistories;
 using PokerAnalyzer.Infrastructure.Persistence;
@@ -23,7 +24,11 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<IHandHistoryParser, XmlHandHistoryParser>();
         services.AddSingleton<PreflopStateExtractor>();
         services.AddScoped<IPreflopHandAnalysisService, PreflopHandAnalysisService>();
-        services.AddSingleton<IPreflopStrategyProvider, NullPreflopStrategyProvider>();
+        services.AddSingleton<IRegretStore, InMemoryRegretStore>();
+        services.AddSingleton<IAverageStrategyStore, InMemoryAverageStrategyStore>();
+        services.AddSingleton<IPreflopTrainingProgressStore, InMemoryPreflopTrainingProgressStore>();
+        services.AddSingleton<IPreflopStrategyQueryService, PreflopStrategyQueryService>();
+        services.AddSingleton<IPreflopStrategyProvider, StoreBackedPreflopStrategyProvider>();
         return services;
     }
 
