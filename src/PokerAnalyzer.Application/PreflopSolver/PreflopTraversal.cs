@@ -113,9 +113,8 @@ public sealed class PreflopTrajectoryTraverser : IPreflopTrajectoryTraverser
 
             var actingPlayerId = current.ActingPlayerId;
             var infoSetKey = _infoSetMapper.MapInfoSetKey(current, actingPlayerId);
-            var policy = _policyProvider.TryGetPolicy(infoSetKey, legalActions, out var learnedPolicy)
-                ? learnedPolicy
-                : UniformPolicyBuilder.Build(legalActions);
+            if (!_policyProvider.TryGetPolicy(infoSetKey, legalActions, out var policy))
+                throw new InvalidOperationException($"Policy provider could not produce a policy for infoset '{infoSetKey}'.");
 
             var sampledAction = _actionSampler.Sample(legalActions, policy, rng);
             visited.Add(VisitedNode.CreateAction(visited.Count, current.Street, actingPlayerId, infoSetKey, legalActions, policy, sampledAction, current));
@@ -320,54 +319,58 @@ public sealed class PreflopInfoSetMapper : IPreflopInfoSetMapper
     };
 }
 
-public sealed class InMemoryPolicyProvider : IPreflopPolicyProvider
+public sealed class RegretMatchingPolicyProvider : IPreflopPolicyProvider
 {
-    private readonly Dictionary<string, IReadOnlyDictionary<LegalAction, double>> _policyByInfoSet = new(StringComparer.Ordinal);
+    private readonly IRegretStore _regretStore;
+
+    public RegretMatchingPolicyProvider(IRegretStore regretStore)
+    {
+        _regretStore = regretStore ?? throw new ArgumentNullException(nameof(regretStore));
+    }
 
     public bool TryGetPolicy(string infoSetKey, IReadOnlyList<LegalAction> legalActions, out IReadOnlyDictionary<LegalAction, double> policy)
     {
         ArgumentNullException.ThrowIfNull(infoSetKey);
         ArgumentNullException.ThrowIfNull(legalActions);
 
-        if (!_policyByInfoSet.TryGetValue(infoSetKey, out var storedPolicy))
+        if (legalActions.Count == 0)
         {
             policy = new Dictionary<LegalAction, double>();
             return false;
         }
 
-        var filtered = new Dictionary<LegalAction, double>(legalActions.Count);
+        var positiveRegrets = new Dictionary<LegalAction, double>(legalActions.Count);
+        var positiveSum = 0d;
+
         foreach (var legalAction in legalActions)
         {
-            if (storedPolicy.TryGetValue(legalAction, out var probability) && probability > 0d)
-                filtered[legalAction] = probability;
+            var positiveRegret = Math.Max(_regretStore.Get(infoSetKey, legalAction), 0d);
+            if (positiveRegret <= 0d)
+                continue;
+
+            positiveRegrets[legalAction] = positiveRegret;
+            positiveSum += positiveRegret;
         }
 
-        if (filtered.Count == 0)
+        if (positiveSum > 0d)
         {
-            policy = new Dictionary<LegalAction, double>();
-            return false;
+            policy = NormalizePolicy(positiveRegrets, positiveSum);
+            return true;
         }
 
-        var filteredTotal = filtered.Values.Sum();
-        if (filteredTotal <= 0d)
-        {
-            policy = new Dictionary<LegalAction, double>();
-            return false;
-        }
-
-        var normalized = new Dictionary<LegalAction, double>(filtered.Count);
-        foreach (var (action, probability) in filtered)
-            normalized[action] = probability / filteredTotal;
-
-        policy = normalized;
+        policy = UniformPolicyBuilder.Build(legalActions);
         return true;
     }
 
-    public void Store(string infoSetKey, IReadOnlyDictionary<LegalAction, double> policy)
+    private static IReadOnlyDictionary<LegalAction, double> NormalizePolicy(
+        IReadOnlyDictionary<LegalAction, double> positiveRegrets,
+        double positiveSum)
     {
-        ArgumentNullException.ThrowIfNull(infoSetKey);
-        ArgumentNullException.ThrowIfNull(policy);
-        _policyByInfoSet[infoSetKey] = new Dictionary<LegalAction, double>(policy);
+        var normalized = new Dictionary<LegalAction, double>(positiveRegrets.Count);
+        foreach (var (action, regret) in positiveRegrets)
+            normalized[action] = regret / positiveSum;
+
+        return normalized;
     }
 }
 

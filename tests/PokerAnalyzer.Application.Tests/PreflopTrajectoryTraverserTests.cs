@@ -7,7 +7,7 @@ namespace PokerAnalyzer.Application.Tests;
 public sealed class PreflopTrajectoryTraverserTests
 {
     [Fact]
-    public void SampleTrajectory_WhenNoPolicyExists_FallsBackToUniformPolicyAndReturnsLeafSample()
+    public void SampleTrajectory_WhenNoPositiveRegrets_UsesUniformPolicyAndReturnsLeafSample()
     {
         var state = CreateHeadsUpPreflopState();
         var actionSampler = new CapturingActionSampler();
@@ -15,7 +15,7 @@ public sealed class PreflopTrajectoryTraverserTests
             new FixedRootStateProvider(state),
             new SolverChanceSampler(),
             new PreflopInfoSetMapper(),
-            new InMemoryPolicyProvider(),
+            new RegretMatchingPolicyProvider(new InMemoryRegretStore()),
             actionSampler,
             new PlaceholderPreflopLeafEvaluator(),
             new DefaultPreflopLeafDetector());
@@ -37,6 +37,37 @@ public sealed class PreflopTrajectoryTraverserTests
     }
 
     [Fact]
+    public void SampleTrajectory_WhenPositiveRegretsExist_UsesRegretMatchedPolicy()
+    {
+        var state = CreateHeadsUpPreflopState();
+        var regrets = new InMemoryRegretStore();
+        var mapper = new PreflopInfoSetMapper();
+        var infoSetKey = mapper.MapInfoSetKey(state, state.ActingPlayerId);
+        var fold = new LegalAction(ActionType.Fold);
+        var call = new LegalAction(ActionType.Call, new ChipAmount(1));
+
+        regrets.Add(infoSetKey, fold, 3d);
+        regrets.Add(infoSetKey, call, 1d);
+
+        var actionSampler = new CapturingActionSampler();
+        var traverser = new PreflopTrajectoryTraverser(
+            new FixedRootStateProvider(state),
+            new SolverChanceSampler(),
+            mapper,
+            new RegretMatchingPolicyProvider(regrets),
+            actionSampler,
+            new PlaceholderPreflopLeafEvaluator(),
+            new DefaultPreflopLeafDetector());
+
+        traverser.RunIteration(new Random(11));
+
+        Assert.True(actionSampler.LastPolicy!.ContainsKey(fold));
+        Assert.True(actionSampler.LastPolicy!.ContainsKey(call));
+        Assert.Equal(0.75d, actionSampler.LastPolicy[fold], 10);
+        Assert.Equal(0.25d, actionSampler.LastPolicy[call], 10);
+    }
+
+    [Fact]
     public void SampleTrajectory_WhenPreflopRoundAlreadyClosed_SamplesChanceAndStopsAtFlopCutoff()
     {
         var state = CreateClosedPreflopStateWithoutPrivateCards();
@@ -44,7 +75,7 @@ public sealed class PreflopTrajectoryTraverserTests
             new FixedRootStateProvider(state),
             new SolverChanceSampler(),
             new PreflopInfoSetMapper(),
-            new InMemoryPolicyProvider(),
+            new RegretMatchingPolicyProvider(new InMemoryRegretStore()),
             new WeightedRandomActionSampler(),
             new PlaceholderPreflopLeafEvaluator(),
             new DefaultPreflopLeafDetector());
@@ -66,7 +97,7 @@ public sealed class PreflopTrajectoryTraverserTests
             new FixedRootStateProvider(state),
             new NonProgressingChanceSampler(),
             new PreflopInfoSetMapper(),
-            new InMemoryPolicyProvider(),
+            new RegretMatchingPolicyProvider(new InMemoryRegretStore()),
             new WeightedRandomActionSampler(),
             new PlaceholderPreflopLeafEvaluator(),
             new DefaultPreflopLeafDetector());
@@ -138,9 +169,12 @@ public sealed class PreflopTrajectoryTraverserTests
     {
         public int SampleCalls { get; private set; }
 
+        public IReadOnlyDictionary<LegalAction, double>? LastPolicy { get; private set; }
+
         public LegalAction Sample(IReadOnlyList<LegalAction> legalActions, IReadOnlyDictionary<LegalAction, double> policy, Random rng)
         {
             SampleCalls++;
+            LastPolicy = policy;
             return legalActions[0];
         }
     }
