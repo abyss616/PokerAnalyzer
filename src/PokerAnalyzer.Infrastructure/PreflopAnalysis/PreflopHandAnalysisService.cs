@@ -65,8 +65,12 @@ public sealed class PreflopHandAnalysisService : IPreflopHandAnalysisService
             ? BuildCanonicalNode(extraction.Trace)
             : NotYetImplemented;
 
+        var legalActionKeys = extraction.IsSupported
+            ? BuildLegalActionKeys(extraction.Trace)
+            : new List<string>();
+
         var legalActions = extraction.IsSupported
-            ? BuildLegalActionsText(extraction.Trace)
+            ? BuildLegalActionsText(legalActionKeys)
             : NotYetImplemented;
 
         var mixedStrategy = NotYetImplemented;
@@ -74,8 +78,8 @@ public sealed class PreflopHandAnalysisService : IPreflopHandAnalysisService
 
         if (extraction.IsSupported && extraction.Key is not null)
         {
-            var strategy = await _strategyProvider.GetMixedStrategyAsync(extraction.Key.SolverKey, ct);
-            if (strategy is { Count: > 0 })
+            var strategyResult = await _strategyProvider.GetStrategyResultAsync(extraction.Key.SolverKey, legalActionKeys, ct);
+            if (strategyResult?.AverageStrategy is { Count: > 0 } strategy)
             {
                 mixedStrategy = FormatStrategy(strategy);
                 actualVsRecommendation = BuildActualVsRecommendation(hand, hero.Name, strategy);
@@ -127,7 +131,10 @@ public sealed class PreflopHandAnalysisService : IPreflopHandAnalysisService
             _ => false
         };
 
-    private static string BuildLegalActionsText(PreflopQueryTrace trace)
+    private static string BuildLegalActionsText(IReadOnlyList<string> actions)
+        => string.Join(", ", actions.Distinct());
+
+    private static List<string> BuildLegalActionKeys(PreflopQueryTrace trace)
     {
         var actions = new List<string>();
         if (trace.ToCallBb > 0)
@@ -136,11 +143,11 @@ public sealed class PreflopHandAnalysisService : IPreflopHandAnalysisService
             actions.Add("Check");
 
         if (trace.ToCallBb > 0)
-            actions.Add($"Call {trace.ToCallBb:0.##}bb");
+            actions.Add("Call");
 
         actions.Add("Raise");
 
-        return string.Join(", ", actions.Distinct());
+        return actions;
     }
 
     private static string BuildActualVsRecommendationFallback(Hand hand, string heroName)

@@ -2,5 +2,5 @@ namespace PokerAnalyzer.Application.PreflopAnalysis;
 
 public interface IPreflopStrategyProvider
 {
-    Task<IReadOnlyDictionary<string, decimal>?> GetMixedStrategyAsync(string solverKey, CancellationToken ct);
+    Task<PreflopStrategyResultDto?> GetStrategyResultAsync(string solverKey, IReadOnlyList<string> legalActions, CancellationToken ct);
 }

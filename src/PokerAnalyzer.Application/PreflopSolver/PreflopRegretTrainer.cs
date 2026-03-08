@@ -236,6 +236,42 @@ public sealed class PreflopTrainingResult
     public required bool ReachedIterationLimit { get; init; }
 }
 
+public interface IPreflopTrainingProgressStore
+{
+    int TotalIterationsCompleted { get; }
+    void IncrementIterations(int count);
+}
+
+public sealed class InMemoryPreflopTrainingProgressStore : IPreflopTrainingProgressStore
+{
+    private int _totalIterationsCompleted;
+
+    public int TotalIterationsCompleted => _totalIterationsCompleted;
+
+    public void IncrementIterations(int count)
+    {
+        if (count <= 0)
+            return;
+
+        _totalIterationsCompleted += count;
+    }
+}
+
+public sealed class NullPreflopTrainingProgressStore : IPreflopTrainingProgressStore
+{
+    public static NullPreflopTrainingProgressStore Instance { get; } = new();
+
+    private NullPreflopTrainingProgressStore()
+    {
+    }
+
+    public int TotalIterationsCompleted => 0;
+
+    public void IncrementIterations(int count)
+    {
+    }
+}
+
 public sealed class PreflopRegretTrainer
 {
     private readonly IPreflopRootStateProvider _rootStateProvider;
@@ -243,6 +279,7 @@ public sealed class PreflopRegretTrainer
     private readonly ITraversalPlayerSelector _traversalPlayerSelector;
     private readonly IRegretStore _regretStore;
     private readonly IAverageStrategyStore _averageStrategyStore;
+    private readonly IPreflopTrainingProgressStore _trainingProgressStore;
 
 
     public PreflopRegretTrainer(
@@ -254,7 +291,8 @@ public sealed class PreflopRegretTrainer
         IPreflopLeafDetector leafDetector,
         ITraversalPlayerSelector traversalPlayerSelector,
         IRegretStore regretStore,
-        IAverageStrategyStore averageStrategyStore)
+        IAverageStrategyStore averageStrategyStore,
+        IPreflopTrainingProgressStore? trainingProgressStore = null)
         : this(
             rootStateProvider,
             new PreflopTrajectoryTraverser(
@@ -267,7 +305,8 @@ public sealed class PreflopRegretTrainer
                 leafDetector),
             traversalPlayerSelector,
             regretStore,
-            averageStrategyStore)
+            averageStrategyStore,
+            trainingProgressStore)
     {
     }
 
@@ -276,13 +315,15 @@ public sealed class PreflopRegretTrainer
         IPreflopTrajectoryTraverser trajectoryTraverser,
         ITraversalPlayerSelector traversalPlayerSelector,
         IRegretStore regretStore,
-        IAverageStrategyStore averageStrategyStore)
+        IAverageStrategyStore averageStrategyStore,
+        IPreflopTrainingProgressStore? trainingProgressStore = null)
     {
         _rootStateProvider = rootStateProvider ?? throw new ArgumentNullException(nameof(rootStateProvider));
         _trajectoryTraverser = trajectoryTraverser ?? throw new ArgumentNullException(nameof(trajectoryTraverser));
         _traversalPlayerSelector = traversalPlayerSelector ?? throw new ArgumentNullException(nameof(traversalPlayerSelector));
         _regretStore = regretStore ?? throw new ArgumentNullException(nameof(regretStore));
         _averageStrategyStore = averageStrategyStore ?? throw new ArgumentNullException(nameof(averageStrategyStore));
+        _trainingProgressStore = trainingProgressStore ?? NullPreflopTrainingProgressStore.Instance;
     }
 
     public void RunIteration(Random rng)
@@ -333,6 +374,8 @@ public sealed class PreflopRegretTrainer
 
             // Future hook: MCCFR-style weighting can adjust regretDelta before Add.
         }
+
+        _trainingProgressStore.IncrementIterations(1);
     }
 
     public PreflopTrainingResult RunTraining(
