@@ -188,6 +188,26 @@ public class SolverStateStepperTests
     }
 
     [Fact]
+    public void Step_ApplyingGeneratedBetAction_WhenPriorContributionIsNonZero_Succeeds()
+    {
+        var p1 = Player(0, Position.SB, stack: 90, street: 10, total: 10);
+        var p2 = Player(1, Position.BB, stack: 90, street: 10, total: 10);
+        var state = CreateState(
+            actingPlayerId: p1.PlayerId,
+            players: [p1, p2],
+            pot: 20,
+            currentBetSize: 10,
+            lastRaiseSize: 10,
+            raisesThisStreet: 1);
+
+        var bet = state.GenerateLegalActions().Single(a => a.ActionType == ActionType.Bet);
+        var ex = Record.Exception(() => _ = SolverStateStepper.Step(state, bet));
+
+        Assert.True(bet.Amount > p1.CurrentStreetContribution);
+        Assert.Null(ex);
+    }
+
+    [Fact]
     public void Step_CheckedToGeneratedActions_AreExecutable()
     {
         var state = CreateCheckedToState();
@@ -206,6 +226,19 @@ public class SolverStateStepperTests
 
         var ex = Record.Exception(() => _ = SolverStateStepper.Step(state, raise));
 
+        Assert.Null(ex);
+    }
+
+    [Fact]
+    public void Step_ApplyingGeneratedRaiseAction_TargetExceedsPriorContribution()
+    {
+        var state = CreateFacingBetState();
+        var acting = state.Players.Single(p => p.PlayerId == state.ActingPlayerId);
+        var raise = state.GenerateLegalActions().Single(a => a.ActionType == ActionType.Raise);
+
+        var ex = Record.Exception(() => _ = SolverStateStepper.Step(state, raise));
+
+        Assert.True(raise.Amount > acting.CurrentStreetContribution);
         Assert.Null(ex);
     }
 
