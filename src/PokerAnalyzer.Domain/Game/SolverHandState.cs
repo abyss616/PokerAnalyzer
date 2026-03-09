@@ -225,9 +225,11 @@ public sealed record SolverHandState
         if (ActionHistory.Count == 0)
             return;
 
+        // Action-history validation should be based on the progression inside ActionHistory itself,
+        // not on each player's current snapshot status (players may have acted earlier and folded later).
         var stateByPlayer = Players.ToDictionary(
             p => p.PlayerId,
-            _ => new ActionValidationState(Active: true, AllIn: false, Contribution: ChipAmount.Zero));
+            _ => new ActionValidationState(HasFoldedInHistory: false, AllIn: false, Contribution: ChipAmount.Zero));
 
         var currentBet = ChipAmount.Zero;
         var lastRaiseSize = ChipAmount.Zero;
@@ -237,7 +239,7 @@ public sealed record SolverHandState
             if (!stateByPlayer.TryGetValue(action.PlayerId, out var playerState))
                 throw new InvalidOperationException($"Action history contains action from non-seated player {action.PlayerId}.");
 
-            if (!playerState.Active)
+            if (playerState.HasFoldedInHistory)
                 throw new InvalidOperationException($"Action history contains action by folded player {action.PlayerId}.");
 
             if (playerState.AllIn)
@@ -252,7 +254,7 @@ public sealed record SolverHandState
                 case ActionType.Fold:
                     if (action.Amount != ChipAmount.Zero)
                         throw new InvalidOperationException($"Fold action for player {action.PlayerId} must have zero amount.");
-                    stateByPlayer[action.PlayerId] = playerState with { Active = false };
+                    stateByPlayer[action.PlayerId] = playerState with { HasFoldedInHistory = true };
                     break;
                 case ActionType.Check:
                     if (action.Amount != ChipAmount.Zero)
@@ -313,7 +315,7 @@ public sealed record SolverHandState
                     stateByPlayer[action.PlayerId] = playerState with { Contribution = action.Amount };
                     break;
                 case ActionType.SitOut:
-                    stateByPlayer[action.PlayerId] = playerState with { Active = false };
+                    stateByPlayer[action.PlayerId] = playerState with { HasFoldedInHistory = true };
                     break;
                 default:
                     throw new InvalidOperationException($"Unsupported action type in history: {action.ActionType}.");
@@ -340,7 +342,7 @@ public sealed record SolverHandState
         ValidateActionHistoryConsistency();
     }
 
-    private readonly record struct ActionValidationState(bool Active, bool AllIn, ChipAmount Contribution);
+    private readonly record struct ActionValidationState(bool HasFoldedInHistory, bool AllIn, ChipAmount Contribution);
 
     private SolverPlayerState GetActingPlayer()
         => Players.First(p => p.PlayerId == ActingPlayerId);
