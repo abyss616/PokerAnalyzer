@@ -269,6 +269,56 @@ public class SolverStateStepperTests
         Assert.All(exceptions, ex => Assert.Null(ex));
     }
 
+
+
+    [Fact]
+    public void Step_ApplyingGeneratedBetAction_WithPriorContribution100_Succeeds()
+    {
+        var p1 = Player(0, Position.SB, stack: 100, street: 100, total: 100);
+        var p2 = Player(1, Position.BB, stack: 100, street: 100, total: 100);
+        var state = CreateState(
+            actingPlayerId: p1.PlayerId,
+            players: [p1, p2],
+            pot: 200,
+            currentBetSize: 100,
+            lastRaiseSize: 50,
+            raisesThisStreet: 1);
+
+        var provider = new FixedSizeProvider(
+            betSizes: [new ChipAmount(100), new ChipAmount(150)],
+            raiseSizes: Array.Empty<ChipAmount>());
+
+        var bet = state.GenerateLegalActions(provider).Single(a => a.ActionType == ActionType.Bet);
+        var ex = Record.Exception(() => _ = SolverStateStepper.Step(state, bet));
+
+        Assert.True(bet.Amount > p1.CurrentStreetContribution);
+        Assert.Null(ex);
+    }
+
+    [Fact]
+    public void Step_ApplyingGeneratedRaiseAction_WithPriorContribution100_Succeeds()
+    {
+        var p1 = Player(0, Position.SB, stack: 100, street: 100, total: 100);
+        var p2 = Player(1, Position.BB, stack: 60, street: 140, total: 140);
+        var state = CreateState(
+            actingPlayerId: p1.PlayerId,
+            players: [p1, p2],
+            pot: 240,
+            currentBetSize: 140,
+            lastRaiseSize: 20,
+            raisesThisStreet: 1);
+
+        var provider = new FixedSizeProvider(
+            betSizes: Array.Empty<ChipAmount>(),
+            raiseSizes: [new ChipAmount(100), new ChipAmount(160)]);
+
+        var raise = state.GenerateLegalActions(provider).Single(a => a.ActionType == ActionType.Raise);
+        var ex = Record.Exception(() => _ = SolverStateStepper.Step(state, raise));
+
+        Assert.True(raise.Amount > p1.CurrentStreetContribution);
+        Assert.Null(ex);
+    }
+
     private SolverHandState CreateFacingBetState()
     {
         var p1 = Player(0, Position.SB, stack: 90, street: 10, total: 10);
@@ -298,6 +348,15 @@ public class SolverStateStepperTests
 
     private static SolverPlayerState Player(int seat, Position pos, long stack, long street, long total)
         => new(PlayerId.New(), seat, pos, new ChipAmount(stack), new ChipAmount(street), new ChipAmount(total), false, false);
+
+
+
+    private sealed class FixedSizeProvider(IReadOnlyList<ChipAmount> betSizes, IReadOnlyList<ChipAmount> raiseSizes) : IBetSizeSetProvider
+    {
+        public IReadOnlyList<ChipAmount> GetBetSizes(SolverHandState state) => betSizes;
+
+        public IReadOnlyList<ChipAmount> GetRaiseSizes(SolverHandState state) => raiseSizes;
+    }
 
     private static SolverHandState CreateState(
         PlayerId actingPlayerId,
