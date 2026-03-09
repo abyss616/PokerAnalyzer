@@ -94,6 +94,54 @@ public class SolverChanceSamplerTests
         Assert.Equal(a.BoardCards.Select(c => c.ToString()).ToArray(), b.BoardCards.Select(c => c.ToString()).ToArray());
     }
 
+
+    [Fact]
+    public void IsChanceNode_PreflopActionableRootWithUnknownOpponentCards_ReturnsFalse()
+    {
+        var players = CreatePlayers(2);
+        var privateCards = new Dictionary<PlayerId, HoleCards>
+        {
+            [players[0].PlayerId] = HoleCards.Parse("Jc9h")
+        };
+
+        var state = CreateState(
+            players,
+            players[0].PlayerId,
+            Street.Preflop,
+            currentBetSize: new ChipAmount(10),
+            raisesThisStreet: 1,
+            privateCardsByPlayer: privateCards);
+
+        Assert.False(_sut.IsChanceNode(state));
+    }
+
+    [Fact]
+    public void IsChanceNode_CompletedPreflopRoundAwaitingFlop_ReturnsTrue()
+    {
+        var players = CreatePlayers(2);
+        var state = CreateAwaitingBoardState(players, Street.Preflop, boardCards: []);
+
+        Assert.True(_sut.IsChanceNode(state));
+    }
+
+    [Fact]
+    public void IsChanceNode_CompletedFlopRoundAwaitingTurn_ReturnsTrue()
+    {
+        var players = CreatePlayers(2);
+        var state = CreateAwaitingBoardState(players, Street.Flop, boardCards: [Card.Parse("2h"), Card.Parse("7d"), Card.Parse("Ks")]);
+
+        Assert.True(_sut.IsChanceNode(state));
+    }
+
+    [Fact]
+    public void IsChanceNode_CompletedTurnRoundAwaitingRiver_ReturnsTrue()
+    {
+        var players = CreatePlayers(2);
+        var state = CreateAwaitingBoardState(players, Street.Turn, boardCards: [Card.Parse("2h"), Card.Parse("7d"), Card.Parse("Ks"), Card.Parse("Tc")]);
+
+        Assert.True(_sut.IsChanceNode(state));
+    }
+
     [Fact]
     public void IsChanceNode_WithNoMissingPrivateCardsAndNoBoardTransition_ReturnsFalse()
     {
