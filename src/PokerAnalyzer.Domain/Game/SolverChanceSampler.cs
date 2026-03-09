@@ -9,7 +9,13 @@ public sealed class SolverChanceSampler : IChanceSampler
         if (state is null)
             throw new ArgumentNullException(nameof(state));
 
-        return GetPlayersMissingPrivateCards(state).Count > 0 || GetBoardCardsToDeal(state) > 0;
+        if (IsTerminalState(state))
+            return false;
+
+        if (HasPendingPlayerDecision(state))
+            return false;
+
+        return GetBoardCardsToDeal(state) > 0;
     }
 
     public SolverHandState Sample(SolverHandState state, Random rng)
@@ -72,6 +78,14 @@ public sealed class SolverChanceSampler : IChanceSampler
             .OrderBy(player => player.SeatIndex)
             .ToList();
 
+    private static bool HasPendingPlayerDecision(SolverHandState state)
+    {
+        if (IsAwaitingBoardChance(state))
+            return false;
+
+        return state.GenerateLegalActions().Count > 0;
+    }
+
     private static int GetBoardCardsToDeal(SolverHandState state)
     {
         if (!IsAwaitingBoardChance(state))
@@ -93,6 +107,9 @@ public sealed class SolverChanceSampler : IChanceSampler
 
         return state.Players.All(player => player.CurrentStreetContribution.Value == 0);
     }
+
+    private static bool IsTerminalState(SolverHandState state)
+        => state.Players.Count(player => player.IsActive) <= 1;
 
     private static Street AdvanceStreetForBoardCount(Street currentStreet, int boardCardsDealt)
     {
