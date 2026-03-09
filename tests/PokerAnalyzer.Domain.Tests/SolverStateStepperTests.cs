@@ -175,6 +175,29 @@ public class SolverStateStepperTests
         Assert.Contains("not legal", ex.Message, StringComparison.OrdinalIgnoreCase);
     }
 
+
+    [Fact]
+    public void Step_ApplyingGeneratedBetAction_Succeeds()
+    {
+        var state = CreateCheckedToState();
+        var bet = state.GenerateLegalActions().Single(a => a.ActionType == ActionType.Bet);
+
+        var ex = Record.Exception(() => _ = SolverStateStepper.Step(state, bet));
+
+        Assert.Null(ex);
+    }
+
+    [Fact]
+    public void Step_CheckedToGeneratedActions_AreExecutable()
+    {
+        var state = CreateCheckedToState();
+        var actions = state.GenerateLegalActions();
+        var exceptions = actions.Select(action => Record.Exception(() => _ = SolverStateStepper.Step(state, action))).ToArray();
+
+        Assert.Contains(actions, action => action.ActionType == ActionType.Check);
+        Assert.Contains(actions, action => action.ActionType == ActionType.Bet && action.Amount is not null);
+        Assert.All(exceptions, ex => Assert.Null(ex));
+    }
     [Fact]
     public void Step_ApplyingGeneratedRaiseAction_Succeeds()
     {
