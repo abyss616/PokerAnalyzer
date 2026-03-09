@@ -82,7 +82,7 @@ public class SolverLegalActionGeneratorTests
     }
 
     [Fact]
-    public void GenerateLegalActions_AfterLimp_DoesNotUseUnopenedActionSet()
+    public void GenerateLegalActions_AfterLimp_UsesCheckAndRaiseTargets()
     {
         var sb = Player(seat: 0, stack: 98, streetContribution: 2, totalContribution: 2);
         var bb = Player(seat: 1, stack: 98, streetContribution: 2, totalContribution: 2);
@@ -106,11 +106,11 @@ public class SolverLegalActionGeneratorTests
         Assert.Equal(
             [
                 new LegalAction(ActionType.Check),
-                new LegalAction(ActionType.Bet, new ChipAmount(4))
+                new LegalAction(ActionType.Raise, new ChipAmount(4))
             ],
             actions);
 
-        Assert.DoesNotContain(actions, action => action.ActionType == ActionType.Bet && action.Amount is null);
+        Assert.DoesNotContain(actions, action => action.ActionType == ActionType.Raise && action.Amount is null);
     }
     [Fact]
     public void GenerateLegalActions_FacingBetWithFullRaise_ReturnsFoldCallRaiseCategory()
@@ -243,6 +243,50 @@ public class SolverLegalActionGeneratorTests
         var actions = state.GenerateLegalActions(provider);
 
         Assert.DoesNotContain(actions, a => (a.ActionType == ActionType.Bet || a.ActionType == ActionType.Raise) && a.Amount == acting.CurrentStreetContribution);
+    }
+
+    [Fact]
+    public void GenerateLegalActions_AggressiveActionsAlwaysIncreaseStreetContribution_AndCanBeStepped()
+    {
+        var checkedToActing = Player(seat: 0, stack: 90, streetContribution: 10, totalContribution: 10);
+        var checkedToVillain = Player(seat: 1, stack: 90, streetContribution: 10, totalContribution: 10);
+        var checkedToState = CreateState(
+            checkedToActing.PlayerId,
+            [checkedToActing, checkedToVillain],
+            pot: 20,
+            currentBetSize: 10,
+            lastRaiseSize: 10);
+
+        var checkedToAggressive = checkedToState.GenerateLegalActions()
+            .Where(a => a.ActionType is ActionType.Bet or ActionType.Raise)
+            .ToArray();
+
+        Assert.NotEmpty(checkedToAggressive);
+        Assert.All(checkedToAggressive, a => Assert.True(a.Amount > checkedToActing.CurrentStreetContribution));
+        Assert.All(checkedToAggressive, a =>
+        {
+            _ = SolverStateStepper.Step(checkedToState, a);
+        });
+
+        var facingBetActing = Player(seat: 0, stack: 90, streetContribution: 10, totalContribution: 10);
+        var facingBetVillain = Player(seat: 1, stack: 80, streetContribution: 20, totalContribution: 20);
+        var facingBetState = CreateState(
+            facingBetActing.PlayerId,
+            [facingBetActing, facingBetVillain],
+            pot: 30,
+            currentBetSize: 20,
+            lastRaiseSize: 10);
+
+        var facingBetAggressive = facingBetState.GenerateLegalActions()
+            .Where(a => a.ActionType is ActionType.Bet or ActionType.Raise)
+            .ToArray();
+
+        Assert.NotEmpty(facingBetAggressive);
+        Assert.All(facingBetAggressive, a => Assert.True(a.Amount > facingBetActing.CurrentStreetContribution));
+        Assert.All(facingBetAggressive, a =>
+        {
+            _ = SolverStateStepper.Step(facingBetState, a);
+        });
     }
 
     [Fact]
