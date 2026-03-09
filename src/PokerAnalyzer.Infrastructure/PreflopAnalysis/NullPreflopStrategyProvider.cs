@@ -4,6 +4,6 @@ namespace PokerAnalyzer.Infrastructure.PreflopAnalysis;
 
 public sealed class NullPreflopStrategyProvider : IPreflopStrategyProvider
 {
-    public Task<PreflopStrategyResultDto?> GetStrategyResultAsync(string solverKey, IReadOnlyList<string> legalActions, CancellationToken ct)
+    public Task<PreflopStrategyResultDto?> GetStrategyResultAsync(PreflopStrategyRequestDto request, CancellationToken ct)
         => Task.FromResult<PreflopStrategyResultDto?>(null);
 }

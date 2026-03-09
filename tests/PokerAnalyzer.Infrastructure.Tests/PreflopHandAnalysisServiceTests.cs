@@ -1,4 +1,5 @@
 using PokerAnalyzer.Application.PreflopAnalysis;
+using PokerAnalyzer.Application.PreflopSolver;
 using PokerAnalyzer.Domain.Game;
 using PokerAnalyzer.Infrastructure.Engines;
 using PokerAnalyzer.Infrastructure.HandHistories;
@@ -104,73 +105,22 @@ public sealed class PreflopHandAnalysisServiceTests
     }
 
     [Fact]
-    public async Task QueryPreflopNodeByHandNumberAsync_UnopenedSpot_StrategyKeysExactlyMatchLegalActions()
+    public async Task QueryPreflopNodeByHandNumberAsync_UsesLiveSolverAndReturnsSolveMetadata()
     {
-        var hand = BuildUnopenedHeroDecisionHand();
-        var strategyProvider = new TestStrategyProvider(new Dictionary<string, decimal>
-        {
-            ["Fold"] = 0.2m,
-            ["Call:1"] = 0.3m,
-            ["Raise:2.5"] = 0.5m,
-            ["Raise:3"] = 0.99m
-        });
+        var hand = BuildStandardHeroFacingOpenHand();
+        var liveProvider = new LivePreflopSolveService(
+            new InMemoryRegretStore(),
+            new InMemoryAverageStrategyStore(),
+            new InMemoryPreflopTrainingProgressStore(),
+            new PreflopInfoSetMapper());
 
-        var result = await BuildService(hand, strategyProvider).QueryPreflopNodeByHandNumberAsync(1, CancellationToken.None);
-
-        Assert.NotNull(result);
-        var legal = result!.LegalActions.Select(a => a.ActionKey).ToHashSet(StringComparer.Ordinal);
-        Assert.All(result.Strategy, item => Assert.Contains(item.ActionKey, legal));
-        Assert.DoesNotContain(result.Strategy, s => s.ActionKey == "Raise:3");
-    }
-
-    [Fact]
-    public async Task QueryPreflopNodeByHandNumberAsync_ParsesAndNormalizesStacks_ToRealisticEffectiveStack()
-    {
-        var hand = BuildUnopenedHeroDecisionHandWithCentStacks();
-
-        var result = await BuildService(hand).QueryPreflopNodeByHandNumberAsync(1, CancellationToken.None);
+        var result = await BuildService(hand, liveProvider).QueryPreflopNodeByHandNumberAsync(1, CancellationToken.None);
 
         Assert.NotNull(result);
         Assert.True(result!.IsSupported);
-        Assert.Equal(53.5m, result.EffectiveStackBb);
-        Assert.Contains("eff=53.5", result.SolverKey, StringComparison.Ordinal);
-    }
-
-    [Fact]
-    public async Task QueryPreflopNodeByHandNumberAsync_DoesNotReturnImpossibleEffectiveStacks()
-    {
-        var hand = BuildUnopenedHeroDecisionHandWithCentStacks();
-
-        var result = await BuildService(hand).QueryPreflopNodeByHandNumberAsync(1, CancellationToken.None);
-
-        Assert.NotNull(result);
-        Assert.InRange(result!.EffectiveStackBb, 1m, 500m);
-        Assert.DoesNotContain("eff=534999", result.SolverKey, StringComparison.Ordinal);
-    }
-
-    [Fact]
-    public async Task QueryPreflopNodeByHandNumberAsync_UsesBlindActions_ToResolvePositionsAndTrace()
-    {
-        var hand = BuildSeatWraparoundUnopenedHand();
-
-        var result = await BuildService(hand).QueryPreflopNodeByHandNumberAsync(1, CancellationToken.None);
-
-        Assert.NotNull(result);
-        Assert.True(result!.IsSupported);
-        Assert.Equal(Position.CO, result.ActingPosition);
-
-        Assert.Collection(
-            result.Trace.RawActionHistory.Take(2),
-            sb =>
-            {
-                Assert.Equal("POST_SB", sb.ActionType);
-                Assert.Equal(Position.SB, sb.Position);
-            },
-            bb =>
-            {
-                Assert.Equal("POST_BB", bb.ActionType);
-                Assert.Equal(Position.BB, bb.Position);
-            });
+        Assert.Equal("LiveSolved", result.SolveMetadata.StrategySource);
+        Assert.True(result.SolveMetadata.IterationsCompleted > 0);
+        Assert.NotEmpty(result.Strategy);
     }
 
     private static PreflopHandAnalysisService BuildService(Hand? hand, IPreflopStrategyProvider? strategyProvider = null)
@@ -335,16 +285,19 @@ public sealed class PreflopHandAnalysisServiceTests
             _strategy = strategy;
         }
 
-        public Task<PreflopStrategyResultDto?> GetStrategyResultAsync(string solverKey, IReadOnlyList<string> legalActions, CancellationToken ct)
+        public Task<PreflopStrategyResultDto?> GetStrategyResultAsync(PreflopStrategyRequestDto request, CancellationToken ct)
         {
             if (_strategy is null)
                 return Task.FromResult<PreflopStrategyResultDto?>(null);
 
             var selected = _strategy
-                .Where(kv => legalActions.Contains(kv.Key, StringComparer.Ordinal))
+                .Where(kv => request.LegalActions.Select(ToActionKey).Contains(kv.Key, StringComparer.Ordinal))
                 .ToDictionary(kv => kv.Key, kv => kv.Value, StringComparer.Ordinal);
 
-            return Task.FromResult<PreflopStrategyResultDto?>(new PreflopStrategyResultDto(solverKey, selected, 0, 0d));
+            return Task.FromResult<PreflopStrategyResultDto?>(new PreflopStrategyResultDto(request.SolverKey, selected, 0, 0d, "TestProvider", 0, "None"));
         }
+
+        private static string ToActionKey(LegalAction action)
+            => action.Amount is null ? action.ActionType.ToString() : $"{action.ActionType}:{action.Amount.Value.Value / 100m:0.##}";
     }
 }

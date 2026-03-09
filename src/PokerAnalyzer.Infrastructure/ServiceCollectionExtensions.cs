@@ -27,8 +27,9 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<IRegretStore, InMemoryRegretStore>();
         services.AddSingleton<IAverageStrategyStore, InMemoryAverageStrategyStore>();
         services.AddSingleton<IPreflopTrainingProgressStore, InMemoryPreflopTrainingProgressStore>();
+        services.AddSingleton<IPreflopInfoSetMapper, PreflopInfoSetMapper>();
         services.AddSingleton<IPreflopStrategyQueryService, PreflopStrategyQueryService>();
-        services.AddSingleton<IPreflopStrategyProvider, StoreBackedPreflopStrategyProvider>();
+        services.AddSingleton<IPreflopStrategyProvider, LivePreflopSolveService>();
         return services;
     }
 

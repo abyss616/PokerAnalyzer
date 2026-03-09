@@ -82,8 +82,9 @@ public sealed class PreflopHandAnalysisService : IPreflopHandAnalysisService
         if (!extraction.IsSupported || extraction.Key is null)
             return BuildUnsupported(extraction.UnsupportedReason ?? "Preflop extraction was unsupported.", extraction.Trace);
 
-        var legalActions = BuildLegalActions(request, extraction.Trace);
-        var strategy = await ResolveStrategyAsync(extraction.Key.SolverKey, legalActions, ct);
+        var snapshotState = BuildSnapshotState(request, extraction.Trace);
+        var legalActions = BuildLegalActions(snapshotState, extraction.Trace);
+        var strategyResult = await ResolveStrategyAsync(extraction.Key.SolverKey, snapshotState, legalActions, ct);
 
         var canonicalKey = BuildCanonicalKey(extraction.Key, request.HeroHoleCards);
         return new PreflopNodeQueryResultDto(
@@ -100,26 +101,41 @@ public sealed class PreflopHandAnalysisService : IPreflopHandAnalysisService
             extraction.Trace.EffectiveStackBb,
             extraction.Key.RaiseDepth,
             BuildSizingSummary(extraction.Trace),
-            legalActions,
-            strategy,
+            legalActions.Select(ToLegalActionDto).ToList(),
+            strategyResult.Strategy,
+            strategyResult.Metadata,
             ToTraceDto(extraction.Trace));
     }
 
-    private async Task<IReadOnlyList<PreflopNodeStrategyItemDto>> ResolveStrategyAsync(
+    private async Task<(IReadOnlyList<PreflopNodeStrategyItemDto> Strategy, PreflopNodeSolveMetadataDto Metadata)> ResolveStrategyAsync(
         string solverKey,
-        IReadOnlyList<PreflopNodeLegalActionDto> legalActions,
+        SolverHandState snapshotState,
+        IReadOnlyList<LegalAction> legalActions,
         CancellationToken ct)
     {
-        var actionKeys = legalActions.Select(x => x.ActionKey).ToList();
-        var strategyResult = await _strategyProvider.GetStrategyResultAsync(solverKey, actionKeys, ct);
-        if (strategyResult?.AverageStrategy is not { Count: > 0 } strategy)
-            return Array.Empty<PreflopNodeStrategyItemDto>();
+        var strategyResult = await _strategyProvider.GetStrategyResultAsync(
+            new PreflopStrategyRequestDto(solverKey, snapshotState, legalActions),
+            ct);
 
-        return legalActions
-            .Where(x => strategy.ContainsKey(x.ActionKey))
-            .Select(x => new PreflopNodeStrategyItemDto(x.ActionKey, decimal.Round(strategy[x.ActionKey] * 100m, 2)))
+        if (strategyResult?.AverageStrategy is not { Count: > 0 } strategy)
+        {
+            return (
+                Array.Empty<PreflopNodeStrategyItemDto>(),
+                new PreflopNodeSolveMetadataDto("Unavailable", 0, 0, "None"));
+        }
+
+        var items = strategy
+            .Select(kv => new PreflopNodeStrategyItemDto(kv.Key, decimal.Round(kv.Value * 100m, 2)))
             .OrderByDescending(x => x.Frequency)
             .ToList();
+
+        return (
+            items,
+            new PreflopNodeSolveMetadataDto(
+                strategyResult.StrategySource,
+                strategyResult.IterationsCompleted,
+                strategyResult.ElapsedMilliseconds,
+                strategyResult.SolveMode));
     }
 
     private static string BuildCanonicalKey(PreflopInfoSetKey key, string? heroHoleCards)
@@ -164,11 +180,9 @@ public sealed class PreflopHandAnalysisService : IPreflopHandAnalysisService
     private static string BuildSizingSummary(PreflopQueryTrace trace)
         => $"open={trace.OpenSizeBucket}, iso={trace.IsoSizeBucket}, 3bet={trace.ThreeBetBucket}, squeeze={trace.SqueezeBucket}, 4bet={trace.FourBetBucket}, jam={trace.JamThreshold:0.##}";
 
-    private static IReadOnlyList<PreflopNodeLegalActionDto> BuildLegalActions(PreflopNodeQueryRequestDto request, PreflopQueryTrace trace)
+    private static IReadOnlyList<LegalAction> BuildLegalActions(SolverHandState state, PreflopQueryTrace trace)
     {
-        var state = BuildSnapshotState(request, trace);
-        var actions = state.GenerateLegalActions(new TraceBetSizeSetProvider(trace));
-        return actions.Select(ToLegalActionDto).ToList();
+        return state.GenerateLegalActions(new TraceBetSizeSetProvider(trace));
     }
 
     private static PreflopNodeLegalActionDto ToLegalActionDto(LegalAction action)
@@ -396,6 +410,7 @@ public sealed class PreflopHandAnalysisService : IPreflopHandAnalysisService
             trace is null ? "NA" : BuildSizingSummary(trace),
             Array.Empty<PreflopNodeLegalActionDto>(),
             Array.Empty<PreflopNodeStrategyItemDto>(),
+            new PreflopNodeSolveMetadataDto("Unavailable", 0, 0, "None"),
             ToTraceDto(trace ?? EmptyTrace()));
 
     private static PreflopQueryTrace EmptyTrace()

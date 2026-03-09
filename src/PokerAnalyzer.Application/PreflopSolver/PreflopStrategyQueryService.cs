@@ -47,7 +47,10 @@ public sealed class PreflopStrategyQueryService : IPreflopStrategyQueryService
             infoSetKey,
             averageStrategy,
             _trainingProgressStore.TotalIterationsCompleted,
-            regretMagnitude);
+            regretMagnitude,
+            "StoreBacked",
+            0,
+            "None");
     }
 
     private static string ToActionKey(LegalAction action)

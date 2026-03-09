@@ -1,6 +1,13 @@
+using PokerAnalyzer.Domain.Game;
+
 namespace PokerAnalyzer.Application.PreflopAnalysis;
+
+public sealed record PreflopStrategyRequestDto(
+    string SolverKey,
+    SolverHandState RootState,
+    IReadOnlyList<LegalAction> LegalActions);
 
 public interface IPreflopStrategyProvider
 {
-    Task<PreflopStrategyResultDto?> GetStrategyResultAsync(string solverKey, IReadOnlyList<string> legalActions, CancellationToken ct);
+    Task<PreflopStrategyResultDto?> GetStrategyResultAsync(PreflopStrategyRequestDto request, CancellationToken ct);
 }

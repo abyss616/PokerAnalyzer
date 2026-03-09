@@ -61,6 +61,10 @@
             <div><strong>Pot / ToCall / Effective:</strong> @_preflopAnalysis.PotBb bb / @_preflopAnalysis.ToCallBb bb / @_preflopAnalysis.EffectiveStackBb bb</div>
             <div><strong>Raise depth:</strong> @_preflopAnalysis.RaiseDepth</div>
             <div><strong>Sizing buckets:</strong> @_preflopAnalysis.SizingBucketSummary</div>
+            <div><strong>Strategy source:</strong> @_preflopAnalysis.SolveMetadata.StrategySource</div>
+            <div><strong>Solve mode:</strong> @_preflopAnalysis.SolveMetadata.SolveMode</div>
+            <div><strong>Iterations:</strong> @_preflopAnalysis.SolveMetadata.IterationsCompleted</div>
+            <div><strong>Elapsed:</strong> @_preflopAnalysis.SolveMetadata.ElapsedMilliseconds ms</div>
 
             <div class="mt-2"><strong>Legal actions</strong></div>
             <ul>
@@ -71,12 +75,19 @@
             </ul>
 
             <div class="mt-2"><strong>Mixed strategy</strong></div>
-            <ul>
-                @foreach (var mix in _preflopAnalysis.Strategy)
-                {
-                    <li>@mix.ActionKey: @mix.Frequency%</li>
-                }
-            </ul>
+            @if (_preflopAnalysis.Strategy.Count == 0)
+            {
+                <div class="text-warning">No solved strategy available for this node.</div>
+            }
+            else
+            {
+                <ul>
+                    @foreach (var mix in _preflopAnalysis.Strategy)
+                    {
+                        <li>@mix.ActionKey: @mix.Frequency%</li>
+                    }
+                </ul>
+            }
 
             <details class="mt-2">
                 <summary><strong>Mapping trace</strong></summary>
