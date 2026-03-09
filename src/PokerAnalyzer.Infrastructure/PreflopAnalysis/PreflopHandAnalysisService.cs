@@ -171,8 +171,8 @@ public sealed class PreflopHandAnalysisService : IPreflopHandAnalysisService
     private static PreflopNodeLegalActionDto ToLegalActionDto(LegalAction action)
     {
         var amountBb = action.Amount is null
-            ? null
-            : decimal.Round(action.Amount.Value.Value / 100m, 2);
+    ? (decimal?)null
+    : decimal.Round(action.Amount.Value.Value / 100m, 2);
 
         var actionKey = action.ActionType switch
         {
