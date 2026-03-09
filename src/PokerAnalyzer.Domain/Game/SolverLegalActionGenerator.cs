@@ -136,9 +136,11 @@ public static class SolverLegalActionGenerator
         bool includeMinBound,
         ChipAmount currentContribution)
     {
-        foreach (var size in candidateSizes)
+        foreach (var targetAmount in candidateSizes)
         {
-            var targetAmount = currentContribution + size;
+            if (targetAmount <= currentContribution)
+                continue;
+
             var aboveMin = includeMinBound ? targetAmount >= minTotalBet : targetAmount > minTotalBet;
             if (!aboveMin)
                 continue;
