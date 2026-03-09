@@ -1,5 +1,6 @@
 using PokerAnalyzer.Application.PreflopAnalysis;
 using PokerAnalyzer.Domain.Game;
+using System.Globalization;
 
 namespace PokerAnalyzer.Application.PreflopSolver;
 
@@ -46,13 +47,16 @@ public sealed class PreflopStrategyQueryService : IPreflopStrategyQueryService
             infoSetKey,
             averageStrategy,
             _trainingProgressStore.TotalIterationsCompleted,
-            regretMagnitude);
+            regretMagnitude,
+            "StoreBacked",
+            0,
+            "None");
     }
 
     private static string ToActionKey(LegalAction action)
     {
         if (action.Amount?.Value > 0L)
-            return $"{action.ActionType}:{action.Amount.Value.Value:0.##}";
+            return $"{action.ActionType}:{(action.Amount.Value.Value / 100m).ToString("0.##", CultureInfo.InvariantCulture)}";
 
         return action.ActionType.ToString();
     }

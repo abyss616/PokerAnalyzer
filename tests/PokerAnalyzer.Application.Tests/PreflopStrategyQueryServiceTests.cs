@@ -12,7 +12,7 @@ public sealed class PreflopStrategyQueryServiceTests
     {
         var infoSetKey = "hero_infoset";
         var fold = new LegalAction(ActionType.Fold);
-        var call = new LegalAction(ActionType.Call, new ChipAmount(1));
+        var call = new LegalAction(ActionType.Call, new ChipAmount(100));
         var legalActions = new[] { fold, call };
 
         var averageStrategyStore = new InMemoryAverageStrategyStore();
@@ -36,8 +36,8 @@ public sealed class PreflopStrategyQueryServiceTests
     {
         var infoSetKey = "hero_infoset";
         var fold = new LegalAction(ActionType.Fold);
-        var call = new LegalAction(ActionType.Call, new ChipAmount(1));
-        var raise = new LegalAction(ActionType.Raise, new ChipAmount(4));
+        var call = new LegalAction(ActionType.Call, new ChipAmount(100));
+        var raise = new LegalAction(ActionType.Raise, new ChipAmount(400));
         var legalActions = new[] { fold, call, raise };
 
         var averageStrategyStore = new InMemoryAverageStrategyStore();
@@ -57,7 +57,7 @@ public sealed class PreflopStrategyQueryServiceTests
     public void GetStrategyResult_UsesTrainingProgressStore_ForIterationsCompleted()
     {
         var infoSetKey = "hero_infoset";
-        var legalActions = new[] { new LegalAction(ActionType.Fold), new LegalAction(ActionType.Call, new ChipAmount(1)) };
+        var legalActions = new[] { new LegalAction(ActionType.Fold), new LegalAction(ActionType.Call, new ChipAmount(100)) };
         var progress = new InMemoryPreflopTrainingProgressStore();
         progress.IncrementIterations(17);
 
@@ -73,8 +73,8 @@ public sealed class PreflopStrategyQueryServiceTests
     {
         var infoSetKey = "hero_infoset";
         var fold = new LegalAction(ActionType.Fold);
-        var call = new LegalAction(ActionType.Call, new ChipAmount(1));
-        var raise = new LegalAction(ActionType.Raise, new ChipAmount(4));
+        var call = new LegalAction(ActionType.Call, new ChipAmount(100));
+        var raise = new LegalAction(ActionType.Raise, new ChipAmount(400));
         var legalActions = new[] { fold, call, raise };
 
         var sut = new PreflopStrategyQueryService(new InMemoryAverageStrategyStore(), new InMemoryRegretStore(), new InMemoryPreflopTrainingProgressStore());
@@ -92,7 +92,7 @@ public sealed class PreflopStrategyQueryServiceTests
     {
         var infoSetKey = "hero_infoset";
         var fold = new LegalAction(ActionType.Fold);
-        var call = new LegalAction(ActionType.Call, new ChipAmount(1));
+        var call = new LegalAction(ActionType.Call, new ChipAmount(100));
         var legalActions = new[] { fold, call };
 
         var averages = new InMemoryAverageStrategyStore();

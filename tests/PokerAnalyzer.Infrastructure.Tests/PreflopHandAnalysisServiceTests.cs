@@ -1,4 +1,5 @@
 using PokerAnalyzer.Application.PreflopAnalysis;
+using PokerAnalyzer.Application.PreflopSolver;
 using PokerAnalyzer.Domain.Game;
 using PokerAnalyzer.Infrastructure.Engines;
 using PokerAnalyzer.Infrastructure.HandHistories;
@@ -103,6 +104,25 @@ public sealed class PreflopHandAnalysisServiceTests
             result.LegalActions.Select(a => a.ActionKey).ToArray());
     }
 
+    [Fact]
+    public async Task QueryPreflopNodeByHandNumberAsync_UsesLiveSolverAndReturnsSolveMetadata()
+    {
+        var hand = BuildStandardHeroFacingOpenHand();
+        var liveProvider = new LivePreflopSolveService(
+            new InMemoryRegretStore(),
+            new InMemoryAverageStrategyStore(),
+            new InMemoryPreflopTrainingProgressStore(),
+            new PreflopInfoSetMapper());
+
+        var result = await BuildService(hand, liveProvider).QueryPreflopNodeByHandNumberAsync(1, CancellationToken.None);
+
+        Assert.NotNull(result);
+        Assert.True(result!.IsSupported);
+        Assert.Equal("LiveSolved", result.SolveMetadata.StrategySource);
+        Assert.True(result.SolveMetadata.IterationsCompleted > 0);
+        Assert.NotEmpty(result.Strategy);
+    }
+
     private static PreflopHandAnalysisService BuildService(Hand? hand, IPreflopStrategyProvider? strategyProvider = null)
     {
         var repo = new TestRepo(hand);
@@ -193,6 +213,50 @@ public sealed class PreflopHandAnalysisServiceTests
         };
     }
 
+    private static Hand BuildUnopenedHeroDecisionHandWithCentStacks()
+    {
+        return new Hand
+        {
+            GameCode = 9005,
+            Players =
+            [
+                new HandPlayer { Id = Guid.NewGuid(), Name = "UTG", Seat = 1, StackStart = 10699.98m, IsHero = false },
+                new HandPlayer { Id = Guid.NewGuid(), Name = "Hero", Seat = 2, StackStart = 10700.00m, IsHero = true },
+                new HandPlayer { Id = Guid.NewGuid(), Name = "SB", Seat = 3, StackStart = 10500.00m, IsHero = false },
+                new HandPlayer { Id = Guid.NewGuid(), Name = "BB", Seat = 4, StackStart = 10800.00m, IsHero = false }
+            ],
+            Actions =
+            [
+                new HandAction { Street = Street.Preflop, Player = "SB", Type = ActionType.PostSmallBlind, Amount = 0.5m },
+                new HandAction { Street = Street.Preflop, Player = "BB", Type = ActionType.PostBigBlind, Amount = 1m },
+                new HandAction { Street = Street.Preflop, Player = "Hero", Type = ActionType.Call, Amount = 1m }
+            ]
+        };
+    }
+
+    private static Hand BuildSeatWraparoundUnopenedHand()
+    {
+        return new Hand
+        {
+            GameCode = 9006,
+            Players =
+            [
+                new HandPlayer { Id = Guid.NewGuid(), Name = "Hero", Seat = 1, StackStart = 100m, IsHero = true },
+                new HandPlayer { Id = Guid.NewGuid(), Name = "BTN", Seat = 3, StackStart = 100m, IsHero = false },
+                new HandPlayer { Id = Guid.NewGuid(), Name = "SB", Seat = 7, StackStart = 100m, IsHero = false },
+                new HandPlayer { Id = Guid.NewGuid(), Name = "BB", Seat = 9, StackStart = 100m, IsHero = false },
+                new HandPlayer { Id = Guid.NewGuid(), Name = "UTG", Seat = 10, StackStart = 100m, IsHero = false },
+                new HandPlayer { Id = Guid.NewGuid(), Name = "HJ", Seat = 12, StackStart = 100m, IsHero = false }
+            ],
+            Actions =
+            [
+                new HandAction { Street = Street.Preflop, Player = "SB", Type = ActionType.PostSmallBlind, Amount = 0.5m },
+                new HandAction { Street = Street.Preflop, Player = "BB", Type = ActionType.PostBigBlind, Amount = 1m },
+                new HandAction { Street = Street.Preflop, Player = "Hero", Type = ActionType.Call, Amount = 1m }
+            ]
+        };
+    }
+
     private sealed class TestRepo : IHandHistoryRepository
     {
         private readonly Hand? _hand;
@@ -221,16 +285,19 @@ public sealed class PreflopHandAnalysisServiceTests
             _strategy = strategy;
         }
 
-        public Task<PreflopStrategyResultDto?> GetStrategyResultAsync(string solverKey, IReadOnlyList<string> legalActions, CancellationToken ct)
+        public Task<PreflopStrategyResultDto?> GetStrategyResultAsync(PreflopStrategyRequestDto request, CancellationToken ct)
         {
             if (_strategy is null)
                 return Task.FromResult<PreflopStrategyResultDto?>(null);
 
             var selected = _strategy
-                .Where(kv => legalActions.Contains(kv.Key, StringComparer.Ordinal))
+                .Where(kv => request.LegalActions.Select(ToActionKey).Contains(kv.Key, StringComparer.Ordinal))
                 .ToDictionary(kv => kv.Key, kv => kv.Value, StringComparer.Ordinal);
 
-            return Task.FromResult<PreflopStrategyResultDto?>(new PreflopStrategyResultDto(solverKey, selected, 0, 0d));
+            return Task.FromResult<PreflopStrategyResultDto?>(new PreflopStrategyResultDto(request.SolverKey, selected, 0, 0d, "TestProvider", 0, "None"));
         }
+
+        private static string ToActionKey(LegalAction action)
+            => action.Amount is null ? action.ActionType.ToString() : $"{action.ActionType}:{action.Amount.Value.Value / 100m:0.##}";
     }
 }

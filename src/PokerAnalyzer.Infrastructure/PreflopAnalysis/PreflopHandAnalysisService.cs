@@ -76,12 +76,15 @@ public sealed class PreflopHandAnalysisService : IPreflopHandAnalysisService
             .Select(a => new PreflopInputAction(new PlayerId(a.PlayerId), a.ActionType, a.AmountBb))
             .ToList();
 
-        var extraction = _extractor.TryExtract(seats, actions, actingPlayerId, request.SmallBlind, request.BigBlind);
+        var extractorSmallBlind = BbToSolverChips(request.SmallBlind / request.BigBlind);
+        var extractorBigBlind = BbToSolverChips(1m);
+        var extraction = _extractor.TryExtract(seats, actions, actingPlayerId, extractorSmallBlind, extractorBigBlind);
         if (!extraction.IsSupported || extraction.Key is null)
             return BuildUnsupported(extraction.UnsupportedReason ?? "Preflop extraction was unsupported.", extraction.Trace);
 
-        var legalActions = BuildLegalActions(request, extraction.Trace);
-        var strategy = await ResolveStrategyAsync(extraction.Key.SolverKey, legalActions, ct);
+        var snapshotState = BuildSnapshotState(request, extraction.Trace);
+        var legalActions = BuildLegalActions(snapshotState, extraction.Trace);
+        var strategyResult = await ResolveStrategyAsync(extraction.Key.SolverKey, snapshotState, legalActions, ct);
 
         var canonicalKey = BuildCanonicalKey(extraction.Key, request.HeroHoleCards);
         return new PreflopNodeQueryResultDto(
@@ -98,25 +101,41 @@ public sealed class PreflopHandAnalysisService : IPreflopHandAnalysisService
             extraction.Trace.EffectiveStackBb,
             extraction.Key.RaiseDepth,
             BuildSizingSummary(extraction.Trace),
-            legalActions,
-            strategy,
+            legalActions.Select(ToLegalActionDto).ToList(),
+            strategyResult.Strategy,
+            strategyResult.Metadata,
             ToTraceDto(extraction.Trace));
     }
 
-    private async Task<IReadOnlyList<PreflopNodeStrategyItemDto>> ResolveStrategyAsync(
+    private async Task<(IReadOnlyList<PreflopNodeStrategyItemDto> Strategy, PreflopNodeSolveMetadataDto Metadata)> ResolveStrategyAsync(
         string solverKey,
-        IReadOnlyList<PreflopNodeLegalActionDto> legalActions,
+        SolverHandState snapshotState,
+        IReadOnlyList<LegalAction> legalActions,
         CancellationToken ct)
     {
-        var actionKeys = legalActions.Select(x => x.ActionKey).ToList();
-        var strategyResult = await _strategyProvider.GetStrategyResultAsync(solverKey, actionKeys, ct);
-        if (strategyResult?.AverageStrategy is not { Count: > 0 } strategy)
-            return Array.Empty<PreflopNodeStrategyItemDto>();
+        var strategyResult = await _strategyProvider.GetStrategyResultAsync(
+            new PreflopStrategyRequestDto(solverKey, snapshotState, legalActions),
+            ct);
 
-        return strategy
+        if (strategyResult?.AverageStrategy is not { Count: > 0 } strategy)
+        {
+            return (
+                Array.Empty<PreflopNodeStrategyItemDto>(),
+                new PreflopNodeSolveMetadataDto("Unavailable", 0, 0, "None"));
+        }
+
+        var items = strategy
             .Select(kv => new PreflopNodeStrategyItemDto(kv.Key, decimal.Round(kv.Value * 100m, 2)))
             .OrderByDescending(x => x.Frequency)
             .ToList();
+
+        return (
+            items,
+            new PreflopNodeSolveMetadataDto(
+                strategyResult.StrategySource,
+                strategyResult.IterationsCompleted,
+                strategyResult.ElapsedMilliseconds,
+                strategyResult.SolveMode));
     }
 
     private static string BuildCanonicalKey(PreflopInfoSetKey key, string? heroHoleCards)
@@ -161,11 +180,9 @@ public sealed class PreflopHandAnalysisService : IPreflopHandAnalysisService
     private static string BuildSizingSummary(PreflopQueryTrace trace)
         => $"open={trace.OpenSizeBucket}, iso={trace.IsoSizeBucket}, 3bet={trace.ThreeBetBucket}, squeeze={trace.SqueezeBucket}, 4bet={trace.FourBetBucket}, jam={trace.JamThreshold:0.##}";
 
-    private static IReadOnlyList<PreflopNodeLegalActionDto> BuildLegalActions(PreflopNodeQueryRequestDto request, PreflopQueryTrace trace)
+    private static IReadOnlyList<LegalAction> BuildLegalActions(SolverHandState state, PreflopQueryTrace trace)
     {
-        var state = BuildSnapshotState(request, trace);
-        var actions = state.GenerateLegalActions(new TraceBetSizeSetProvider(trace));
-        return actions.Select(ToLegalActionDto).ToList();
+        return state.GenerateLegalActions(new TraceBetSizeSetProvider(trace));
     }
 
     private static PreflopNodeLegalActionDto ToLegalActionDto(LegalAction action)
@@ -351,14 +368,15 @@ public sealed class PreflopHandAnalysisService : IPreflopHandAnalysisService
             return null;
 
         var seatMap = hand.Players.ToDictionary(p => p.Name, p => p);
+        var positionsByPlayer = ResolvePositions(hand);
         var seats = hand.Players
             .OrderBy(p => p.Seat)
-            .Select((p, i) => new PreflopNodeSeatDto(
+            .Select(p => new PreflopNodeSeatDto(
                 p.Id,
                 p.Name,
                 p.Seat,
-                ResolvePosition(i, hand.Players.Count),
-                blindInfo.Value.BigBlind > 0 ? decimal.Round((p.StackStart ?? 0m) / blindInfo.Value.BigBlind, 2) : 0m))
+                positionsByPlayer.TryGetValue(p.Id, out var pos) ? pos : Position.Unknown,
+                NormalizeStartingStackBb(p.StackStart, blindInfo.Value.BigBlind)))
             .ToList();
 
         var actions = BuildExtractorActions(hand, seatMap, blindInfo.Value.BigBlind, hero.Name)
@@ -392,6 +410,7 @@ public sealed class PreflopHandAnalysisService : IPreflopHandAnalysisService
             trace is null ? "NA" : BuildSizingSummary(trace),
             Array.Empty<PreflopNodeLegalActionDto>(),
             Array.Empty<PreflopNodeStrategyItemDto>(),
+            new PreflopNodeSolveMetadataDto("Unavailable", 0, 0, "None"),
             ToTraceDto(trace ?? EmptyTrace()));
 
     private static PreflopQueryTrace EmptyTrace()
@@ -459,7 +478,93 @@ public sealed class PreflopHandAnalysisService : IPreflopHandAnalysisService
         return (sb.Value, bb.Value);
     }
 
-    private static Position ResolvePosition(int index, int playerCount)
+    private static decimal NormalizeStartingStackBb(decimal? stackStart, decimal bigBlind)
+    {
+        if (!stackStart.HasValue || stackStart.Value <= 0 || bigBlind <= 0)
+            return 0m;
+
+        var normalized = stackStart.Value / bigBlind;
+        while (normalized > 500m)
+            normalized /= 100m;
+
+        return decimal.Round(Math.Max(0m, normalized), 2);
+    }
+
+    private static Dictionary<Guid, Position> ResolvePositions(Hand hand)
+    {
+        var orderedPlayers = hand.Players.OrderBy(p => p.Seat).ToList();
+        if (orderedPlayers.Count == 0)
+            return new Dictionary<Guid, Position>();
+
+        var byName = orderedPlayers.ToDictionary(p => p.Name, StringComparer.Ordinal);
+        var sbName = hand.Actions.FirstOrDefault(a => a.Street == Street.Preflop && a.Type == ActionType.PostSmallBlind)?.Player;
+        var bbName = hand.Actions.FirstOrDefault(a => a.Street == Street.Preflop && a.Type == ActionType.PostBigBlind)?.Player;
+
+        if (!string.IsNullOrWhiteSpace(sbName)
+            && !string.IsNullOrWhiteSpace(bbName)
+            && byName.TryGetValue(sbName, out var sb)
+            && byName.TryGetValue(bbName, out var bb)
+            && sb.Id != bb.Id)
+        {
+            return ResolvePositionsFromBlinds(orderedPlayers, sb, bb);
+        }
+
+        return orderedPlayers
+            .Select((player, index) => new { player.Id, Position = ResolveFallbackPosition(index, orderedPlayers.Count) })
+            .ToDictionary(x => x.Id, x => x.Position);
+    }
+
+    private static Dictionary<Guid, Position> ResolvePositionsFromBlinds(IReadOnlyList<HandPlayer> orderedPlayers, HandPlayer sb, HandPlayer bb)
+    {
+        var bySeat = orderedPlayers.ToDictionary(p => p.Seat);
+        var seats = orderedPlayers.Select(p => p.Seat).OrderBy(x => x).ToList();
+        var playerCount = orderedPlayers.Count;
+
+        var positions = new Dictionary<Guid, Position>
+        {
+            [sb.Id] = Position.SB,
+            [bb.Id] = Position.BB
+        };
+
+        if (playerCount == 2)
+            return positions;
+
+        var sbIndex = seats.IndexOf(sb.Seat);
+        var btnIndex = (sbIndex - 1 + seats.Count) % seats.Count;
+        var btnSeat = seats[btnIndex];
+        positions[bySeat[btnSeat].Id] = Position.BTN;
+
+        var orderedFromBb = new List<int>();
+        var bbIndex = seats.IndexOf(bb.Seat);
+        for (var i = 1; i < seats.Count; i++)
+        {
+            var idx = (bbIndex + i) % seats.Count;
+            var seat = seats[idx];
+            if (seat == btnSeat || seat == sb.Seat || seat == bb.Seat)
+                continue;
+
+            orderedFromBb.Add(seat);
+        }
+
+        var earlyPositions = GetEarlyPositions(orderedFromBb.Count);
+        for (var i = 0; i < orderedFromBb.Count; i++)
+            positions[bySeat[orderedFromBb[i]].Id] = earlyPositions[i];
+
+        return positions;
+    }
+
+    private static Position[] GetEarlyPositions(int count)
+    {
+        return count switch
+        {
+            <= 0 => [],
+            1 => [Position.CO],
+            2 => [Position.HJ, Position.CO],
+            _ => [Position.UTG, Position.HJ, Position.CO]
+        };
+    }
+
+    private static Position ResolveFallbackPosition(int index, int playerCount)
     {
         if (playerCount == 2)
             return index == 0 ? Position.SB : Position.BB;
