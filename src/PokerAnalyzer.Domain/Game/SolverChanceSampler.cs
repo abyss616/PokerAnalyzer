@@ -102,11 +102,57 @@ public sealed class SolverChanceSampler : IChanceSampler
 
     private static bool IsAwaitingBoardChance(SolverHandState state)
     {
+        if (!HasValidBoardCountForStreet(state))
+            return false;
+
         if (state.CurrentBetSize.Value != 0 || state.RaisesThisStreet != 0)
             return false;
 
-        return state.Players.All(player => player.CurrentStreetContribution.Value == 0);
+        if (!state.Players.All(player => player.CurrentStreetContribution.Value == 0))
+            return false;
+
+        if (!AllActivePlayersHavePrivateCards(state))
+            return false;
+
+        return state.Street switch
+        {
+            Street.Preflop => IsCompletedPreflopSnapshot(state),
+            Street.Flop => HasPostBlindAction(state),
+            Street.Turn => HasPostBlindAction(state),
+            _ => false
+        };
     }
+
+    private static bool HasValidBoardCountForStreet(SolverHandState state)
+        => state.Street switch
+        {
+            Street.Preflop => state.BoardCards.Count == 0,
+            Street.Flop => state.BoardCards.Count == 3,
+            Street.Turn => state.BoardCards.Count == 4,
+            _ => false
+        };
+
+    private static bool AllActivePlayersHavePrivateCards(SolverHandState state)
+        => state.Players
+            .Where(player => player.IsActive)
+            .All(player => state.PrivateCardsByPlayer.ContainsKey(player.PlayerId));
+
+    private static bool IsCompletedPreflopSnapshot(SolverHandState state)
+    {
+        var hasPostedSmallBlind = state.ActionHistory.Any(a => a.ActionType == ActionType.PostSmallBlind);
+        var hasPostedBigBlind = state.ActionHistory.Any(a => a.ActionType == ActionType.PostBigBlind);
+        if (!hasPostedSmallBlind || !hasPostedBigBlind)
+            return false;
+
+        if (!HasPostBlindAction(state))
+            return false;
+
+        var forcedBlinds = state.Config.SmallBlind + state.Config.BigBlind;
+        return state.Pot >= forcedBlinds;
+    }
+
+    private static bool HasPostBlindAction(SolverHandState state)
+        => state.ActionHistory.Any(a => a.ActionType is not ActionType.PostSmallBlind and not ActionType.PostBigBlind);
 
     private static bool IsTerminalState(SolverHandState state)
         => state.Players.Count(player => player.IsActive) <= 1;
