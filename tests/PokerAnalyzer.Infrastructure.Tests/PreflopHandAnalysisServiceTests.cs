@@ -103,6 +103,76 @@ public sealed class PreflopHandAnalysisServiceTests
             result.LegalActions.Select(a => a.ActionKey).ToArray());
     }
 
+    [Fact]
+    public async Task QueryPreflopNodeByHandNumberAsync_UnopenedSpot_StrategyKeysExactlyMatchLegalActions()
+    {
+        var hand = BuildUnopenedHeroDecisionHand();
+        var strategyProvider = new TestStrategyProvider(new Dictionary<string, decimal>
+        {
+            ["Fold"] = 0.2m,
+            ["Call:1"] = 0.3m,
+            ["Raise:2.5"] = 0.5m,
+            ["Raise:3"] = 0.99m
+        });
+
+        var result = await BuildService(hand, strategyProvider).QueryPreflopNodeByHandNumberAsync(1, CancellationToken.None);
+
+        Assert.NotNull(result);
+        var legal = result!.LegalActions.Select(a => a.ActionKey).ToHashSet(StringComparer.Ordinal);
+        Assert.All(result.Strategy, item => Assert.Contains(item.ActionKey, legal));
+        Assert.DoesNotContain(result.Strategy, s => s.ActionKey == "Raise:3");
+    }
+
+    [Fact]
+    public async Task QueryPreflopNodeByHandNumberAsync_ParsesAndNormalizesStacks_ToRealisticEffectiveStack()
+    {
+        var hand = BuildUnopenedHeroDecisionHandWithCentStacks();
+
+        var result = await BuildService(hand).QueryPreflopNodeByHandNumberAsync(1, CancellationToken.None);
+
+        Assert.NotNull(result);
+        Assert.True(result!.IsSupported);
+        Assert.Equal(53.5m, result.EffectiveStackBb);
+        Assert.Contains("eff=53.5", result.SolverKey, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task QueryPreflopNodeByHandNumberAsync_DoesNotReturnImpossibleEffectiveStacks()
+    {
+        var hand = BuildUnopenedHeroDecisionHandWithCentStacks();
+
+        var result = await BuildService(hand).QueryPreflopNodeByHandNumberAsync(1, CancellationToken.None);
+
+        Assert.NotNull(result);
+        Assert.InRange(result!.EffectiveStackBb, 1m, 500m);
+        Assert.DoesNotContain("eff=534999", result.SolverKey, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task QueryPreflopNodeByHandNumberAsync_UsesBlindActions_ToResolvePositionsAndTrace()
+    {
+        var hand = BuildSeatWraparoundUnopenedHand();
+
+        var result = await BuildService(hand).QueryPreflopNodeByHandNumberAsync(1, CancellationToken.None);
+
+        Assert.NotNull(result);
+        Assert.True(result!.IsSupported);
+        Assert.Equal(Position.CO, result.ActingPosition);
+
+        Assert.Collection(
+            result.Trace.RawActionHistory.Take(2),
+            sb =>
+            {
+                Assert.Equal("POST_SB", sb.ActionType);
+                Assert.Equal(Position.SB, sb.Position);
+            },
+            bb =>
+            {
+                Assert.Equal("POST_BB", bb.ActionType);
+                Assert.Equal(Position.BB, bb.Position);
+            });
+    }
+
     private static PreflopHandAnalysisService BuildService(Hand? hand, IPreflopStrategyProvider? strategyProvider = null)
     {
         var repo = new TestRepo(hand);
@@ -183,6 +253,50 @@ public sealed class PreflopHandAnalysisServiceTests
                 new HandPlayer { Id = Guid.NewGuid(), Name = "Villain1", Seat = 2, StackStart = 100m, IsHero = false },
                 new HandPlayer { Id = Guid.NewGuid(), Name = "SB", Seat = 3, StackStart = 100m, IsHero = false },
                 new HandPlayer { Id = Guid.NewGuid(), Name = "BB", Seat = 4, StackStart = 100m, IsHero = false }
+            ],
+            Actions =
+            [
+                new HandAction { Street = Street.Preflop, Player = "SB", Type = ActionType.PostSmallBlind, Amount = 0.5m },
+                new HandAction { Street = Street.Preflop, Player = "BB", Type = ActionType.PostBigBlind, Amount = 1m },
+                new HandAction { Street = Street.Preflop, Player = "Hero", Type = ActionType.Call, Amount = 1m }
+            ]
+        };
+    }
+
+    private static Hand BuildUnopenedHeroDecisionHandWithCentStacks()
+    {
+        return new Hand
+        {
+            GameCode = 9005,
+            Players =
+            [
+                new HandPlayer { Id = Guid.NewGuid(), Name = "UTG", Seat = 1, StackStart = 10699.98m, IsHero = false },
+                new HandPlayer { Id = Guid.NewGuid(), Name = "Hero", Seat = 2, StackStart = 10700.00m, IsHero = true },
+                new HandPlayer { Id = Guid.NewGuid(), Name = "SB", Seat = 3, StackStart = 10500.00m, IsHero = false },
+                new HandPlayer { Id = Guid.NewGuid(), Name = "BB", Seat = 4, StackStart = 10800.00m, IsHero = false }
+            ],
+            Actions =
+            [
+                new HandAction { Street = Street.Preflop, Player = "SB", Type = ActionType.PostSmallBlind, Amount = 0.5m },
+                new HandAction { Street = Street.Preflop, Player = "BB", Type = ActionType.PostBigBlind, Amount = 1m },
+                new HandAction { Street = Street.Preflop, Player = "Hero", Type = ActionType.Call, Amount = 1m }
+            ]
+        };
+    }
+
+    private static Hand BuildSeatWraparoundUnopenedHand()
+    {
+        return new Hand
+        {
+            GameCode = 9006,
+            Players =
+            [
+                new HandPlayer { Id = Guid.NewGuid(), Name = "Hero", Seat = 1, StackStart = 100m, IsHero = true },
+                new HandPlayer { Id = Guid.NewGuid(), Name = "BTN", Seat = 3, StackStart = 100m, IsHero = false },
+                new HandPlayer { Id = Guid.NewGuid(), Name = "SB", Seat = 7, StackStart = 100m, IsHero = false },
+                new HandPlayer { Id = Guid.NewGuid(), Name = "BB", Seat = 9, StackStart = 100m, IsHero = false },
+                new HandPlayer { Id = Guid.NewGuid(), Name = "UTG", Seat = 10, StackStart = 100m, IsHero = false },
+                new HandPlayer { Id = Guid.NewGuid(), Name = "HJ", Seat = 12, StackStart = 100m, IsHero = false }
             ],
             Actions =
             [

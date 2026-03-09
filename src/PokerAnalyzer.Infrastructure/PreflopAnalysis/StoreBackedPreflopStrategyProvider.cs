@@ -57,7 +57,7 @@ public sealed class StoreBackedPreflopStrategyProvider : IPreflopStrategyProvide
         if (!decimal.TryParse(parts[1], NumberStyles.Number, CultureInfo.InvariantCulture, out var sizeBb))
             return null;
 
-        var size = new ChipAmount((long)Math.Round(sizeBb, MidpointRounding.AwayFromZero));
+        var size = new ChipAmount((long)Math.Round(sizeBb * 100m, MidpointRounding.AwayFromZero));
         return parts[0].ToUpperInvariant() switch
         {
             "CALL" => new LegalAction(ActionType.Call, size),
