@@ -122,9 +122,22 @@ public class SolverLegalActionGeneratorTests
             [
                 new LegalAction(ActionType.Fold),
             new LegalAction(ActionType.Call, new ChipAmount(10)),
-            new LegalAction(ActionType.Raise)
+            new LegalAction(ActionType.Raise, new ChipAmount(30))
             ],
             actions);
+    }
+
+    [Fact]
+    public void GenerateLegalActions_FacingBet_RaiseActionsAlwaysIncludeAmount()
+    {
+        var acting = Player(seat: 0, stack: 90, streetContribution: 10, totalContribution: 10);
+        var villain = Player(seat: 1, stack: 80, streetContribution: 20, totalContribution: 20);
+        var state = CreateState(acting.PlayerId, [acting, villain], pot: 30, currentBetSize: 20, lastRaiseSize: 10);
+
+        var actions = state.GenerateLegalActions();
+
+        Assert.NotEmpty(actions.Where(action => action.ActionType == ActionType.Raise));
+        Assert.DoesNotContain(actions, action => action.ActionType == ActionType.Raise && action.Amount is null);
     }
 
     [Fact]
