@@ -99,8 +99,10 @@ public sealed class PreflopHandAnalysisServiceTests
         Assert.NotNull(result);
         Assert.True(result!.IsSupported);
         Assert.Equal("UNOPENED", result.HistorySignature);
+        string[] expected = { "Fold", "Call:1", "Raise:2.5" };
+
         Assert.Equal(
-            ["Fold", "Call:1", "Raise:2.5"],
+            expected,
             result.LegalActions.Select(a => a.ActionKey).ToArray());
     }
 

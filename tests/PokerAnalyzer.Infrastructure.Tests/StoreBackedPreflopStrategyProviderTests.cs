@@ -9,7 +9,7 @@ namespace PokerAnalyzer.Infrastructure.Tests;
 public sealed class StoreBackedPreflopStrategyProviderTests
 {
     [Fact]
-    public async Task GetStrategyResultAsync_MapsBbSizedActionKeys_ToSolverChipScale()
+    public async Task GetStrategyResultAsync_ForwardsLegalActions_ToQueryService()
     {
         var query = new CapturingQueryService();
         var sut = new StoreBackedPreflopStrategyProvider(query);
@@ -17,8 +17,8 @@ public sealed class StoreBackedPreflopStrategyProviderTests
         _ = await sut.GetStrategyResultAsync("v2/key", ["Fold", "Call:1", "Raise:2.5"], CancellationToken.None);
 
         Assert.NotNull(query.CapturedLegalActions);
-        Assert.Contains(query.CapturedLegalActions!, a => a.ActionType == ActionType.Call && a.Amount!.Value == 100);
-        Assert.Contains(query.CapturedLegalActions!, a => a.ActionType == ActionType.Raise && a.Amount!.Value == 250);
+        Assert.Contains(query.CapturedLegalActions!, a => a.ActionType == ActionType.Call && a.Amount?.Value == 100);
+        Assert.Contains(query.CapturedLegalActions!, a => a.ActionType == ActionType.Raise && a.Amount?.Value == 250);
     }
 
     private sealed class CapturingQueryService : IPreflopStrategyQueryService
