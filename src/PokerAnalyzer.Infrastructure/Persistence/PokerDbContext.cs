@@ -99,6 +99,13 @@ namespace PokerAnalyzer.Infrastructure.Persistence
                 .IsRequired()
                 .HasMaxLength(128);
 
+            b.Entity<HandAction>()
+                .Property(x => x.SequenceNumber)
+                .IsRequired();
+
+            b.Entity<HandAction>()
+                .HasIndex(x => new { x.HandId, x.SequenceNumber });
+
             b.Entity<HandPlayer>()
                 .HasKey(x => x.Id);
 
@@ -239,8 +246,13 @@ namespace PokerAnalyzer.Infrastructure.Persistence
                 //     hand.SessionId = s.Id;
 
                 if (hand.Actions != null)
-                    foreach (var a in hand.Actions)
+                {
+                    foreach (var (a, index) in hand.Actions.OrderBy(a => a.SequenceNumber).ThenBy(a => a.Id).Select((a, index) => (a, index)))
+                    {
                         if (a.HandId == Guid.Empty) a.HandId = hand.Id;
+                        if (a.SequenceNumber < 0) a.SequenceNumber = index;
+                    }
+                }
 
                 if (hand.Players != null)
                     foreach (var p in hand.Players)

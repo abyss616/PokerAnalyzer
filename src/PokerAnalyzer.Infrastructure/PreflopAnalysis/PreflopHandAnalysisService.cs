@@ -359,6 +359,10 @@ public sealed class PreflopHandAnalysisService : IPreflopHandAnalysisService
 
     private static PreflopNodeQueryRequestDto? BuildRequestFromHand(Hand hand)
     {
+        var orderedActions = GetOrderedActions(hand);
+        if (!HasValidPreflopBlindOrdering(orderedActions))
+            return null;
+
         var hero = hand.Players.FirstOrDefault(p => p.IsHero);
         if (hero is null)
             return null;
@@ -379,7 +383,7 @@ public sealed class PreflopHandAnalysisService : IPreflopHandAnalysisService
                 NormalizeStartingStackBb(p.StackStart, blindInfo.Value.BigBlind)))
             .ToList();
 
-        var actions = BuildExtractorActions(hand, seatMap, blindInfo.Value.BigBlind, hero.Name)
+        var actions = BuildExtractorActions(orderedActions, seatMap, blindInfo.Value.BigBlind, hero.Name)
             .Select(a => new PreflopNodeActionDto(a.PlayerId.Value, a.Type, a.AmountBb))
             .ToList();
 
@@ -435,10 +439,16 @@ public sealed class PreflopHandAnalysisService : IPreflopHandAnalysisService
             RawActionHistory = Array.Empty<PreflopRawActionTrace>()
         };
 
-    private static List<PreflopInputAction> BuildExtractorActions(Hand hand, Dictionary<string, HandPlayer> playersByName, decimal bb, string heroName)
+    private static IReadOnlyList<HandAction> GetOrderedActions(Hand hand)
+        => hand.Actions
+            .OrderBy(a => a.SequenceNumber)
+            .ThenBy(a => a.Id)
+            .ToList();
+
+    private static List<PreflopInputAction> BuildExtractorActions(IReadOnlyList<HandAction> orderedActions, Dictionary<string, HandPlayer> playersByName, decimal bb, string heroName)
     {
         var actions = new List<PreflopInputAction>();
-        foreach (var action in hand.Actions.Where(a => a.Street == Street.Preflop))
+        foreach (var action in orderedActions.Where(a => a.Street == Street.Preflop))
         {
             if (!playersByName.TryGetValue(action.Player, out var player))
                 continue;
@@ -468,10 +478,32 @@ public sealed class PreflopHandAnalysisService : IPreflopHandAnalysisService
         return actions;
     }
 
+    private static bool HasValidPreflopBlindOrdering(IReadOnlyList<HandAction> orderedActions)
+    {
+        var preflopActions = orderedActions.Where(a => a.Street == Street.Preflop).ToList();
+        if (preflopActions.Count == 0)
+            return false;
+
+        var sbIndex = preflopActions.FindIndex(a => a.Type == ActionType.PostSmallBlind);
+        var bbIndex = preflopActions.FindIndex(a => a.Type == ActionType.PostBigBlind);
+        if (sbIndex < 0 || bbIndex < 0)
+            return false;
+
+        if (sbIndex > bbIndex)
+            return false;
+
+        var firstVoluntaryIndex = preflopActions.FindIndex(a => a.Type is ActionType.Fold or ActionType.Call or ActionType.Raise or ActionType.Bet or ActionType.AllIn or ActionType.Check);
+        if (firstVoluntaryIndex >= 0 && (firstVoluntaryIndex < sbIndex || firstVoluntaryIndex < bbIndex))
+            return false;
+
+        return true;
+    }
+
     private static (decimal SmallBlind, decimal BigBlind)? TryResolveBlinds(Hand hand)
     {
-        var sb = hand.Actions.FirstOrDefault(a => a.Street == Street.Preflop && a.Type == ActionType.PostSmallBlind)?.Amount;
-        var bb = hand.Actions.FirstOrDefault(a => a.Street == Street.Preflop && a.Type == ActionType.PostBigBlind)?.Amount;
+        var orderedActions = GetOrderedActions(hand);
+        var sb = orderedActions.FirstOrDefault(a => a.Street == Street.Preflop && a.Type == ActionType.PostSmallBlind)?.Amount;
+        var bb = orderedActions.FirstOrDefault(a => a.Street == Street.Preflop && a.Type == ActionType.PostBigBlind)?.Amount;
         if (!sb.HasValue || !bb.HasValue || bb.Value <= 0)
             return null;
 
@@ -497,8 +529,9 @@ public sealed class PreflopHandAnalysisService : IPreflopHandAnalysisService
             return new Dictionary<Guid, Position>();
 
         var byName = orderedPlayers.ToDictionary(p => p.Name, StringComparer.Ordinal);
-        var sbName = hand.Actions.FirstOrDefault(a => a.Street == Street.Preflop && a.Type == ActionType.PostSmallBlind)?.Player;
-        var bbName = hand.Actions.FirstOrDefault(a => a.Street == Street.Preflop && a.Type == ActionType.PostBigBlind)?.Player;
+        var orderedActions = GetOrderedActions(hand);
+        var sbName = orderedActions.FirstOrDefault(a => a.Street == Street.Preflop && a.Type == ActionType.PostSmallBlind)?.Player;
+        var bbName = orderedActions.FirstOrDefault(a => a.Street == Street.Preflop && a.Type == ActionType.PostBigBlind)?.Player;
 
         if (!string.IsNullOrWhiteSpace(sbName)
             && !string.IsNullOrWhiteSpace(bbName)
