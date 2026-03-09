@@ -225,22 +225,25 @@ public sealed record SolverHandState
         if (ActionHistory.Count == 0)
             return;
 
-        // Action-history validation should be based on the progression inside ActionHistory itself,
-        // not on each player's current snapshot status (players may have acted earlier and folded later).
         var stateByPlayer = Players.ToDictionary(
             p => p.PlayerId,
-            _ => new ActionValidationState(HasFoldedInHistory: false, AllIn: false, Contribution: ChipAmount.Zero));
+            _ => new ActionValidationState(false, false, ChipAmount.Zero));
 
         var currentBet = ChipAmount.Zero;
         var lastRaiseSize = ChipAmount.Zero;
 
-        foreach (var action in ActionHistory)
+        for (var i = 0; i < ActionHistory.Count; i++)
         {
+            var action = ActionHistory[i];
+
             if (!stateByPlayer.TryGetValue(action.PlayerId, out var playerState))
-                throw new InvalidOperationException($"Action history contains action from non-seated player {action.PlayerId}.");
+                throw new InvalidOperationException(
+                    $"ActionHistory[{i}] contains action from non-seated player {action.PlayerId}.");
 
             if (playerState.HasFoldedInHistory)
-                throw new InvalidOperationException($"Action history contains action by folded player {action.PlayerId}.");
+                throw new InvalidOperationException(
+                    $"ActionHistory[{i}] contains action by folded player {action.PlayerId}. " +
+                    $"Action={action.ActionType}, Amount={action.Amount.Value}.");
 
             if (playerState.AllIn)
                 throw new InvalidOperationException($"Action history contains action by all-in player {action.PlayerId}.");

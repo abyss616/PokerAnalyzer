@@ -233,7 +233,12 @@ public sealed class PreflopHandAnalysisService : IPreflopHandAnalysisService
             stacks[playerId] -= delta;
             pot += delta;
         }
-
+        for (var i = 0; i < trace.RawActionHistory.Count; i++)
+        {
+            var a = trace.RawActionHistory[i];
+            Console.WriteLine(
+                $"RAW[{i}] player={a.PlayerId.Value} type={a.ActionType} amountBb={a.AmountBb}");
+        }
         foreach (var action in trace.RawActionHistory)
         {
             var playerId = action.PlayerId;
@@ -278,7 +283,12 @@ public sealed class PreflopHandAnalysisService : IPreflopHandAnalysisService
                     break;
             }
         }
-
+        for (var i = 0; i < actionHistory.Count; i++)
+        {
+            var a = actionHistory[i];
+            Console.WriteLine(
+                $"BUILT[{i}] player={a.PlayerId.Value} type={a.ActionType} amount={a.Amount.Value}");
+        }
         var players = seatsByPlayer
             .Select(kvp => new SolverPlayerState(
                 kvp.Key,
