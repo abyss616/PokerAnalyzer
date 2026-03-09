@@ -111,6 +111,7 @@ public class SolverStateStepperTests
         Assert.Equal(0, next.CurrentBetSize.Value);
         Assert.Equal(0, next.RaisesThisStreet);
         Assert.All(next.Players, p => Assert.Equal(0, p.CurrentStreetContribution.Value));
+        Assert.Empty(next.GenerateLegalActions());
     }
 
     [Fact]

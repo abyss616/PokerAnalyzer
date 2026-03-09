@@ -240,6 +240,9 @@ public sealed class DefaultPreflopLeafDetector : IPreflopLeafDetector
         if (state.Street != Street.Preflop)
             return true;
 
+        if (SolverTraversalGuards.IsCompletedPreflopState(state))
+            return true;
+
         var activePlayers = state.Players.Count(p => p.IsActive);
         return activePlayers <= 1;
     }

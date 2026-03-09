@@ -12,6 +12,9 @@ public static class SolverLegalActionGenerator
     {
     
 
+        if (SolverTraversalGuards.IsCompletedPreflopState(state))
+            return Array.Empty<LegalAction>();
+
         var acting = state.Players.FirstOrDefault(p => p.PlayerId == state.ActingPlayerId);
         if (acting is null)
         {
