@@ -9,14 +9,15 @@ namespace PokerAnalyzer.Infrastructure.Helpers
             GetFlopProbeBet(IEnumerable<HandAction> actions)
         {
             if (actions is null) throw new ArgumentNullException(nameof(actions));
-            if (!actions.Any(a => a.Street == Street.Flop)) return (null, null);
+            var orderedActions = actions.OrderBy(a => a.SequenceNumber).ThenBy(a => a.Id).ToList();
+            if (!orderedActions.Any(a => a.Street == Street.Flop)) return (null, null);
 
-            var aggressor = FlopOperations.CalculateFlopAggressor(actions);
+            var aggressor = FlopOperations.CalculateFlopAggressor(orderedActions);
             if (aggressor is null) return (null, null);
 
             bool aggressorCheckedFirst = false;
 
-            foreach (var a in actions.Where(a => a.Street == Street.Flop))
+            foreach (var a in orderedActions.Where(a => a.Street == Street.Flop))
             {
                 // If someone donks before aggressor acts, no probe spot (this is a donk line)
                 if (!aggressorCheckedFirst && a.Type == ActionType.Bet && a.Player != aggressor)

@@ -11,13 +11,15 @@ namespace PokerAnalyzer.Infrastructure.Helpers
         {
             if (actions is null) throw new ArgumentNullException(nameof(actions));
 
-            var cbet = TryGetFlopCBetPlayer(actions);
+            var orderedActions = actions.OrderBy(a => a.SequenceNumber).ThenBy(a => a.Id).ToList();
+
+            var cbet = TryGetFlopCBetPlayer(orderedActions);
             if (cbet is null)
                 return (null, null);
 
             bool afterCBet = false;
 
-            foreach (var a in actions.Where(a => a.Street == Street.Flop))
+            foreach (var a in orderedActions.Where(a => a.Street == Street.Flop))
             {
                 if (!afterCBet)
                 {
@@ -44,13 +46,15 @@ namespace PokerAnalyzer.Infrastructure.Helpers
         {
             if (actions is null) throw new ArgumentNullException(nameof(actions));
 
-            var cbet = TryGetFlopCBetPlayer(actions);
+            var orderedActions = actions.OrderBy(a => a.SequenceNumber).ThenBy(a => a.Id).ToList();
+
+            var cbet = TryGetFlopCBetPlayer(orderedActions);
             if (cbet is null)
                 return (null, null);
 
             bool afterCBet = false;
 
-            foreach (var a in actions.Where(a => a.Street == Street.Flop))
+            foreach (var a in orderedActions.Where(a => a.Street == Street.Flop))
             {
                 if (!afterCBet)
                 {
@@ -79,10 +83,12 @@ namespace PokerAnalyzer.Infrastructure.Helpers
         {
             if (actions is null) throw new ArgumentNullException(nameof(actions));
 
-            if (!actions.Any(a => a.Street == Street.Flop))
+            var orderedActions = actions.OrderBy(a => a.SequenceNumber).ThenBy(a => a.Id).ToList();
+
+            if (!orderedActions.Any(a => a.Street == Street.Flop))
                 return null;
 
-            var flopPlayers = actions
+            var flopPlayers = orderedActions
                 .Where(a => a.Street == Street.Flop)
                 .Select(a => a.Player)
                 .Distinct(StringComparer.Ordinal)
@@ -93,7 +99,7 @@ namespace PokerAnalyzer.Infrastructure.Helpers
                 return null;
 
             // Who c-bet?
-            var cbet = TryGetFlopCBetPlayer(actions);
+            var cbet = TryGetFlopCBetPlayer(orderedActions);
             return cbet; // will be null if no c-bet happened
         }
 
@@ -104,14 +110,16 @@ namespace PokerAnalyzer.Infrastructure.Helpers
         // ======================================================
         private static string? TryGetFlopCBetPlayer(IEnumerable<HandAction> actions)
         {
-            if (!actions.Any(a => a.Street == Street.Flop))
+            var orderedActions = actions.OrderBy(a => a.SequenceNumber).ThenBy(a => a.Id).ToList();
+
+            if (!orderedActions.Any(a => a.Street == Street.Flop))
                 return null;
 
-            var aggressor = FlopOperations.CalculateFlopAggressor(actions);
+            var aggressor = FlopOperations.CalculateFlopAggressor(orderedActions);
             if (aggressor is null)
                 return null;
 
-            foreach (var a in actions.Where(a => a.Street == Street.Flop))
+            foreach (var a in orderedActions.Where(a => a.Street == Street.Flop))
             {
                 // Donk bet blocks c-bet
                 if (a.Type == ActionType.Bet && a.Player != aggressor)

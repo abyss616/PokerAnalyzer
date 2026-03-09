@@ -9,13 +9,15 @@ namespace PokerAnalyzer.Infrastructure.Helpers
             if (actions == null)
                 throw new ArgumentNullException(nameof(actions));
 
+            var orderedActions = actions.OrderBy(a => a.SequenceNumber).ThenBy(a => a.Id).ToList();
+
             // Only hands that reach the flop can have a flop aggressor
-            if (!actions.Any(a => a.Street == Street.Flop))
+            if (!orderedActions.Any(a => a.Street == Street.Flop))
                 return null;
 
             string? lastAggressor = null;
 
-            foreach (var action in actions.Where(a => a.Street == Street.Preflop))
+            foreach (var action in orderedActions.Where(a => a.Street == Street.Preflop))
             {
                 if (action.Type == ActionType.Raise || action.Type == ActionType.Bet)
                 {
@@ -38,16 +40,18 @@ namespace PokerAnalyzer.Infrastructure.Helpers
             if (actions is null)
                 throw new ArgumentNullException(nameof(actions));
 
+            var orderedActions = actions.OrderBy(a => a.SequenceNumber).ThenBy(a => a.Id).ToList();
+
             // Must reach flop
-            if (!actions.Any(a => a.Street == Street.Flop))
+            if (!orderedActions.Any(a => a.Street == Street.Flop))
                 return (null, null);
 
             // Preflop aggressor
-            var aggressor = CalculateFlopAggressor(actions);
+            var aggressor = CalculateFlopAggressor(orderedActions);
             if (aggressor is null)
                 return (null, null);
 
-            foreach (var action in actions.Where(a => a.Street == Street.Flop))
+            foreach (var action in orderedActions.Where(a => a.Street == Street.Flop))
             {
                 // Someone else bet first → donk → no c-bet opportunity
                 if (action.Type == ActionType.Bet && action.Player != aggressor)
@@ -74,14 +78,16 @@ namespace PokerAnalyzer.Infrastructure.Helpers
             if (actions is null)
                 throw new ArgumentNullException(nameof(actions));
 
-            if (!actions.Any(a => a.Street == Street.Flop))
+            var orderedActions = actions.OrderBy(a => a.SequenceNumber).ThenBy(a => a.Id).ToList();
+
+            if (!orderedActions.Any(a => a.Street == Street.Flop))
                 return (null, null);
 
-            var aggressor = CalculateFlopAggressor(actions);
+            var aggressor = CalculateFlopAggressor(orderedActions);
             if (aggressor is null)
                 return (null, null);
 
-            foreach (var action in actions.Where(a => a.Street == Street.Flop))
+            foreach (var action in orderedActions.Where(a => a.Street == Street.Flop))
             {
                 // First bet on flop determines whether there's a donk
                 if (action.Type == ActionType.Bet)
@@ -104,16 +110,18 @@ namespace PokerAnalyzer.Infrastructure.Helpers
             if (actions is null)
                 throw new ArgumentNullException(nameof(actions));
 
-            if (!actions.Any(a => a.Street == Street.Flop))
+            var orderedActions = actions.OrderBy(a => a.SequenceNumber).ThenBy(a => a.Id).ToList();
+
+            if (!orderedActions.Any(a => a.Street == Street.Flop))
                 return (null, null);
 
-            var aggressor = CalculateFlopAggressor(actions);
+            var aggressor = CalculateFlopAggressor(orderedActions);
             if (aggressor is null)
                 return (null, null);
 
             bool cBetOccurred = false;
 
-            foreach (var action in actions.Where(a => a.Street == Street.Flop))
+            foreach (var action in orderedActions.Where(a => a.Street == Street.Flop))
             {
                 if (!cBetOccurred)
                 {

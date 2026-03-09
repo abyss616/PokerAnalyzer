@@ -78,6 +78,25 @@ public sealed class PreflopHandAnalysisServiceTests
     }
 
     [Fact]
+    public async Task QueryPreflopNodeByHandNumberAsync_OrdersActionsBySequenceNumber()
+    {
+        var hand = BuildStandardHeroFacingOpenHand();
+        hand.Actions =
+        [
+            new HandAction { SequenceNumber = 3, Street = Street.Preflop, Player = "Hero", Type = ActionType.Call, Amount = 2.5m },
+            new HandAction { SequenceNumber = 2, Street = Street.Preflop, Player = "Villain", Type = ActionType.Raise, Amount = 2.5m },
+            new HandAction { SequenceNumber = 1, Street = Street.Preflop, Player = "BB", Type = ActionType.PostBigBlind, Amount = 1m },
+            new HandAction { SequenceNumber = 0, Street = Street.Preflop, Player = "SB", Type = ActionType.PostSmallBlind, Amount = 0.5m }
+        ];
+
+        var result = await BuildService(hand).QueryPreflopNodeByHandNumberAsync(1, CancellationToken.None);
+
+        Assert.NotNull(result);
+        Assert.True(result!.IsSupported);
+        Assert.Equal("VS_OPEN", result.HistorySignature);
+    }
+
+    [Fact]
     public async Task QueryPreflopNodeByHandNumberAsync_ReturnsUnsupportedSpot_WithReason()
     {
         var hand = BuildHandWithoutHero();
@@ -136,7 +155,7 @@ public sealed class PreflopHandAnalysisServiceTests
 
     private static Hand BuildHandWithoutHero()
     {
-        return new Hand
+        return WithSequenceNumbers(new Hand
         {
             GameCode = 9001,
             Players =
@@ -147,12 +166,12 @@ public sealed class PreflopHandAnalysisServiceTests
             [
                 new HandAction { Street = Street.Preflop, Player = "Villain", Type = ActionType.PostBigBlind, Amount = 1m }
             ]
-        };
+        });
     }
 
     private static Hand BuildStandardHeroFacingOpenHand()
     {
-        return new Hand
+        return WithSequenceNumbers(new Hand
         {
             GameCode = 9002,
             Players =
@@ -169,12 +188,12 @@ public sealed class PreflopHandAnalysisServiceTests
                 new HandAction { Street = Street.Preflop, Player = "Villain", Type = ActionType.Raise, Amount = 2.5m },
                 new HandAction { Street = Street.Preflop, Player = "Hero", Type = ActionType.Call, Amount = 2.5m }
             ]
-        };
+        });
     }
 
     private static Hand BuildLimpedPotHand()
     {
-        return new Hand
+        return WithSequenceNumbers(new Hand
         {
             GameCode = 9003,
             Players =
@@ -191,12 +210,12 @@ public sealed class PreflopHandAnalysisServiceTests
                 new HandAction { Street = Street.Preflop, Player = "Villain", Type = ActionType.Call, Amount = 1m },
                 new HandAction { Street = Street.Preflop, Player = "Hero", Type = ActionType.Check, Amount = 0m }
             ]
-        };
+        });
     }
 
     private static Hand BuildUnopenedHeroDecisionHand()
     {
-        return new Hand
+        return WithSequenceNumbers(new Hand
         {
             GameCode = 9004,
             Players =
@@ -212,12 +231,12 @@ public sealed class PreflopHandAnalysisServiceTests
                 new HandAction { Street = Street.Preflop, Player = "BB", Type = ActionType.PostBigBlind, Amount = 1m },
                 new HandAction { Street = Street.Preflop, Player = "Hero", Type = ActionType.Call, Amount = 1m }
             ]
-        };
+        });
     }
 
     private static Hand BuildUnopenedHeroDecisionHandWithCentStacks()
     {
-        return new Hand
+        return WithSequenceNumbers(new Hand
         {
             GameCode = 9005,
             Players =
@@ -233,12 +252,12 @@ public sealed class PreflopHandAnalysisServiceTests
                 new HandAction { Street = Street.Preflop, Player = "BB", Type = ActionType.PostBigBlind, Amount = 1m },
                 new HandAction { Street = Street.Preflop, Player = "Hero", Type = ActionType.Call, Amount = 1m }
             ]
-        };
+        });
     }
 
     private static Hand BuildSeatWraparoundUnopenedHand()
     {
-        return new Hand
+        return WithSequenceNumbers(new Hand
         {
             GameCode = 9006,
             Players =
@@ -256,7 +275,15 @@ public sealed class PreflopHandAnalysisServiceTests
                 new HandAction { Street = Street.Preflop, Player = "BB", Type = ActionType.PostBigBlind, Amount = 1m },
                 new HandAction { Street = Street.Preflop, Player = "Hero", Type = ActionType.Call, Amount = 1m }
             ]
-        };
+        });
+    }
+
+    private static Hand WithSequenceNumbers(Hand hand)
+    {
+        for (var i = 0; i < hand.Actions.Count; i++)
+            hand.Actions[i].SequenceNumber = i;
+
+        return hand;
     }
 
     private sealed class TestRepo : IHandHistoryRepository

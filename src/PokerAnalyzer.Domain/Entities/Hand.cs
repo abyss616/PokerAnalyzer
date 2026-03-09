@@ -57,6 +57,7 @@ public sealed class HandAction
     public Guid HandId { get; set; }                 // ✅ FK
     public Hand Hand { get; set; } = null!;
     public Street Street { get; set; }
+    public int SequenceNumber { get; set; }
     public string Player { get; set; } = "";
     public ActionType Type { get; set; }
     public decimal? Amount { get; set; }      // bet/raise/call amount

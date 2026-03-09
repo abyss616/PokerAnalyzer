@@ -38,6 +38,7 @@ public sealed partial class HandHistoryIngestService
         }
 
         // rounds => streets + actions + cards
+        var actionSequenceNumber = 0;
         foreach (var round in game.Elements("round"))
         {
             var street = DetectStreet(round);
@@ -82,6 +83,7 @@ public sealed partial class HandHistoryIngestService
 
                 hand.Actions.Add(new HandAction
                 {
+                    SequenceNumber = actionSequenceNumber++,
                     Street = street,
                     Player = player,
                     Type = type,
@@ -148,8 +150,9 @@ public sealed partial class HandHistoryIngestService
   );
 
         //1st tier stats
-        hand.PreflopAggressor = hand.Actions.Where(a => a.Street == Street.Preflop).Where(a => PreFlopOperations.IsPreflopAggressive(a.Type)).Select(a => a.Player).LastOrDefault();
-        var flopAggressor = FlopOperations.CalculateFlopAggressor(hand.Actions);
+        var orderedActions = hand.Actions.OrderBy(a => a.SequenceNumber).ToList();
+        hand.PreflopAggressor = orderedActions.Where(a => a.Street == Street.Preflop).Where(a => PreFlopOperations.IsPreflopAggressive(a.Type)).Select(a => a.Player).LastOrDefault();
+        var flopAggressor = FlopOperations.CalculateFlopAggressor(orderedActions);
         hand.FlopAggressor = flopAggressor;
 
         return hand;
