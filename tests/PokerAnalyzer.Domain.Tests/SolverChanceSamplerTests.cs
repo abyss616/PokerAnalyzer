@@ -125,6 +125,31 @@ public class SolverChanceSamplerTests
     }
 
     [Fact]
+    public void IsChanceNode_MalformedZeroedPreflopState_ReturnsFalse()
+    {
+        var players = CreatePlayers(2)
+            .Select(p => p with
+            {
+                CurrentStreetContribution = ChipAmount.Zero,
+                TotalContribution = ChipAmount.Zero,
+                Stack = new ChipAmount(100)
+            })
+            .ToArray();
+
+        var state = CreateState(
+            players,
+            players[0].PlayerId,
+            Street.Preflop,
+            pot: ChipAmount.Zero,
+            currentBetSize: ChipAmount.Zero,
+            raisesThisStreet: 0,
+            actionHistory: [new SolverActionEntry(players[0].PlayerId, ActionType.Check, ChipAmount.Zero)],
+            privateCardsByPlayer: new Dictionary<PlayerId, HoleCards>());
+
+        Assert.False(_sut.IsChanceNode(state));
+    }
+
+    [Fact]
     public void IsChanceNode_CompletedFlopRoundAwaitingTurn_ReturnsTrue()
     {
         var players = CreatePlayers(2);
@@ -188,16 +213,46 @@ public class SolverChanceSamplerTests
             street,
             currentBetSize: ChipAmount.Zero,
             raisesThisStreet: 0,
+            actionHistory: street == Street.Preflop
+                ? BuildCompletedPreflopHistory(resetPlayers)
+                : BuildCompletedPostflopHistory(resetPlayers),
             boardCards: boardCards,
             privateCardsByPlayer: privateCards);
+    }
+
+    private static IReadOnlyList<SolverActionEntry> BuildCompletedPreflopHistory(IReadOnlyList<SolverPlayerState> players)
+    {
+        var sb = players.First(p => p.Position == Position.SB);
+        var bb = players.First(p => p.Position == Position.BB);
+
+        return
+        [
+            new SolverActionEntry(sb.PlayerId, ActionType.PostSmallBlind, new ChipAmount(5)),
+            new SolverActionEntry(bb.PlayerId, ActionType.PostBigBlind, new ChipAmount(10)),
+            new SolverActionEntry(sb.PlayerId, ActionType.Call, new ChipAmount(5)),
+            new SolverActionEntry(bb.PlayerId, ActionType.Check, ChipAmount.Zero)
+        ];
+    }
+
+    private static IReadOnlyList<SolverActionEntry> BuildCompletedPostflopHistory(IReadOnlyList<SolverPlayerState> players)
+    {
+        var first = players[0];
+        var second = players[1];
+        return
+        [
+            new SolverActionEntry(first.PlayerId, ActionType.Check, ChipAmount.Zero),
+            new SolverActionEntry(second.PlayerId, ActionType.Check, ChipAmount.Zero)
+        ];
     }
 
     private static SolverHandState CreateState(
         IReadOnlyList<SolverPlayerState> players,
         PlayerId actingPlayerId,
         Street street,
+        ChipAmount? pot = null,
         ChipAmount? currentBetSize = null,
         int raisesThisStreet = 1,
+        IReadOnlyList<SolverActionEntry>? actionHistory = null,
         IReadOnlyList<Card>? boardCards = null,
         IReadOnlyList<Card>? deadCards = null,
         IReadOnlyDictionary<PlayerId, HoleCards>? privateCardsByPlayer = null)
@@ -206,12 +261,12 @@ public class SolverChanceSamplerTests
             street: street,
             buttonSeatIndex: 1,
             actingPlayerId: actingPlayerId,
-            pot: new ChipAmount(players.Sum(p => p.TotalContribution.Value)),
+            pot: pot ?? new ChipAmount(players.Sum(p => p.TotalContribution.Value)),
             currentBetSize: currentBetSize ?? new ChipAmount(10),
             lastRaiseSize: new ChipAmount(10),
             raisesThisStreet: raisesThisStreet,
             players: players,
-            actionHistory: null,
+            actionHistory: actionHistory,
             boardCards: boardCards,
             deadCards: deadCards,
             privateCardsByPlayer: privateCardsByPlayer);
