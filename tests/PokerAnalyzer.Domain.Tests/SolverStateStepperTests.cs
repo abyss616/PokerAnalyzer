@@ -175,6 +175,44 @@ public class SolverStateStepperTests
         Assert.Contains("not legal", ex.Message, StringComparison.OrdinalIgnoreCase);
     }
 
+    [Fact]
+    public void Step_ApplyingGeneratedRaiseAction_Succeeds()
+    {
+        var state = CreateFacingBetState();
+        var raise = state.GenerateLegalActions().Single(a => a.ActionType == ActionType.Raise);
+
+        var ex = Record.Exception(() => _ = SolverStateStepper.Step(state, raise));
+
+        Assert.Null(ex);
+    }
+
+    [Fact]
+    public void Step_UnopenedPreflopGeneratedActions_AreExecutable()
+    {
+        var sb = Player(0, Position.SB, stack: 99, street: 1, total: 1);
+        var bb = Player(1, Position.BB, stack: 98, street: 2, total: 2);
+        var state = CreateState(
+            actingPlayerId: sb.PlayerId,
+            players: [sb, bb],
+            pot: 3,
+            currentBetSize: 2,
+            lastRaiseSize: 2,
+            raisesThisStreet: 0,
+            actionHistory:
+            [
+                new SolverActionEntry(sb.PlayerId, ActionType.PostSmallBlind, new ChipAmount(1)),
+                new SolverActionEntry(bb.PlayerId, ActionType.PostBigBlind, new ChipAmount(2))
+            ]);
+
+        var actions = state.GenerateLegalActions();
+        var exceptions = actions.Select(action => Record.Exception(() => _ = SolverStateStepper.Step(state, action))).ToArray();
+
+        Assert.Contains(actions, action => action.ActionType == ActionType.Fold);
+        Assert.Contains(actions, action => action.ActionType == ActionType.Call);
+        Assert.Contains(actions, action => action.ActionType == ActionType.Raise);
+        Assert.All(exceptions, ex => Assert.Null(ex));
+    }
+
     private SolverHandState CreateFacingBetState()
     {
         var p1 = Player(0, Position.SB, stack: 90, street: 10, total: 10);

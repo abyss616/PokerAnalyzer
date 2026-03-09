@@ -56,7 +56,7 @@ public static class SolverLegalActionGenerator
         if (sizeProvider is null)
         {
             if (canFullRaise)
-                actions.Add(new LegalAction(ActionType.Raise));
+                actions.Add(new LegalAction(ActionType.Raise, minTotalBet));
 
             return actions.AsReadOnly();
         }
