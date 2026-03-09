@@ -290,6 +290,32 @@ public class SolverLegalActionGeneratorTests
     }
 
     [Fact]
+    public void GenerateLegalActions_CompletedPreflopState_ReturnsEmpty()
+    {
+        var sb = Player(seat: 0, stack: 97, streetContribution: 0, totalContribution: 3);
+        var bb = Player(seat: 1, stack: 97, streetContribution: 0, totalContribution: 3);
+
+        var state = CreateState(
+            actingPlayerId: sb.PlayerId,
+            players: [sb, bb],
+            pot: 6,
+            currentBetSize: 0,
+            lastRaiseSize: 2,
+            raisesThisStreet: 0,
+            actionHistory:
+            [
+                new SolverActionEntry(sb.PlayerId, ActionType.PostSmallBlind, new ChipAmount(1)),
+                new SolverActionEntry(bb.PlayerId, ActionType.PostBigBlind, new ChipAmount(2)),
+                new SolverActionEntry(sb.PlayerId, ActionType.Call, new ChipAmount(2)),
+                new SolverActionEntry(bb.PlayerId, ActionType.Check, new ChipAmount(2))
+            ]);
+
+        var actions = state.GenerateLegalActions();
+
+        Assert.Empty(actions);
+    }
+
+    [Fact]
     public void CreateState_ActingPlayerIsAllIn_Throws()
     {
         var acting = Player(

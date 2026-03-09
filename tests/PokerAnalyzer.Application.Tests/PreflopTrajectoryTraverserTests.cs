@@ -58,7 +58,7 @@ public sealed class PreflopTrajectoryTraverserTests
     }
 
     [Fact]
-    public void SampleTrajectory_WhenPreflopRoundAlreadyClosed_SamplesChanceAndStopsAtFlopCutoff()
+    public void SampleTrajectory_WhenPreflopRoundAlreadyClosed_StopsAtPreflopTerminalWithoutChanceSampling()
     {
         var state = CreateClosedPreflopStateWithoutPrivateCards();
         var traverser = new PreflopTrajectoryTraverser(
@@ -72,10 +72,11 @@ public sealed class PreflopTrajectoryTraverserTests
 
         var result = traverser.RunIteration(new Random(17));
 
-        Assert.Equal(Street.Flop, result.FinalState.Street);
-        Assert.Equal(3, result.FinalState.BoardCards.Count);
-        Assert.Contains(result.Path, node => node.NodeKind == TraversalNodeKind.Chance);
+        Assert.Equal(Street.Preflop, result.FinalState.Street);
+        Assert.Empty(result.FinalState.BoardCards);
+        Assert.DoesNotContain(result.Path, node => node.NodeKind == TraversalNodeKind.Chance);
         Assert.Equal(TraversalNodeKind.Leaf, result.Path[^1].NodeKind);
+        Assert.Equal("preflop terminal placeholder utility", result.Path[^1].Note);
     }
 
 
