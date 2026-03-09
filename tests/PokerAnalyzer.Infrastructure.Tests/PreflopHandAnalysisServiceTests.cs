@@ -1,4 +1,5 @@
 using PokerAnalyzer.Application.PreflopAnalysis;
+using PokerAnalyzer.Application.PreflopSolver;
 using PokerAnalyzer.Domain.Game;
 using PokerAnalyzer.Infrastructure.Engines;
 using PokerAnalyzer.Infrastructure.HandHistories;
@@ -101,6 +102,25 @@ public sealed class PreflopHandAnalysisServiceTests
         Assert.Equal(
             ["Fold", "Call:1", "Raise:2.5"],
             result.LegalActions.Select(a => a.ActionKey).ToArray());
+    }
+
+    [Fact]
+    public async Task QueryPreflopNodeByHandNumberAsync_UsesLiveSolverAndReturnsSolveMetadata()
+    {
+        var hand = BuildStandardHeroFacingOpenHand();
+        var liveProvider = new LivePreflopSolveService(
+            new InMemoryRegretStore(),
+            new InMemoryAverageStrategyStore(),
+            new InMemoryPreflopTrainingProgressStore(),
+            new PreflopInfoSetMapper());
+
+        var result = await BuildService(hand, liveProvider).QueryPreflopNodeByHandNumberAsync(1, CancellationToken.None);
+
+        Assert.NotNull(result);
+        Assert.True(result!.IsSupported);
+        Assert.Equal("LiveSolved", result.SolveMetadata.StrategySource);
+        Assert.True(result.SolveMetadata.IterationsCompleted > 0);
+        Assert.NotEmpty(result.Strategy);
     }
 
     private static PreflopHandAnalysisService BuildService(Hand? hand, IPreflopStrategyProvider? strategyProvider = null)
@@ -221,16 +241,19 @@ public sealed class PreflopHandAnalysisServiceTests
             _strategy = strategy;
         }
 
-        public Task<PreflopStrategyResultDto?> GetStrategyResultAsync(string solverKey, IReadOnlyList<string> legalActions, CancellationToken ct)
+        public Task<PreflopStrategyResultDto?> GetStrategyResultAsync(PreflopStrategyRequestDto request, CancellationToken ct)
         {
             if (_strategy is null)
                 return Task.FromResult<PreflopStrategyResultDto?>(null);
 
             var selected = _strategy
-                .Where(kv => legalActions.Contains(kv.Key, StringComparer.Ordinal))
+                .Where(kv => request.LegalActions.Select(ToActionKey).Contains(kv.Key, StringComparer.Ordinal))
                 .ToDictionary(kv => kv.Key, kv => kv.Value, StringComparer.Ordinal);
 
-            return Task.FromResult<PreflopStrategyResultDto?>(new PreflopStrategyResultDto(solverKey, selected, 0, 0d));
+            return Task.FromResult<PreflopStrategyResultDto?>(new PreflopStrategyResultDto(request.SolverKey, selected, 0, 0d, "TestProvider", 0, "None"));
         }
+
+        private static string ToActionKey(LegalAction action)
+            => action.Amount is null ? action.ActionType.ToString() : $"{action.ActionType}:{action.Amount.Value.Value / 100m:0.##}";
     }
 }
