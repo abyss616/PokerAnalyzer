@@ -83,6 +83,89 @@ public sealed class PreflopCompilerFixturesTests
     }
 
 
+
+    [Fact]
+    public void Extraction_Unopened_Btn_Facing_Blinds_Derives_ToCall_From_Bet_State()
+    {
+        var extractor = new PreflopStateExtractor();
+        var btnId = PlayerId.New();
+        var sbId = PlayerId.New();
+        var bbId = PlayerId.New();
+        var seats = new List<PlayerSeat>
+        {
+            new(btnId, "BTN", 1, Position.BTN, new ChipAmount(100m)),
+            new(sbId, "SB", 2, Position.SB, new ChipAmount(100m)),
+            new(bbId, "BB", 3, Position.BB, new ChipAmount(100m))
+        };
+
+        var result = extractor.TryExtract(seats, [], btnId, smallBlind: 0.5m, bigBlind: 1m);
+
+        Assert.True(result.IsSupported, result.UnsupportedReason);
+        Assert.NotNull(result.Key);
+        Assert.Equal("UNOPENED", result.Key!.HistorySignature);
+        Assert.Equal(1m, result.Key.ToCallBb);
+        Assert.Equal(result.Key.ToCallBb, result.Trace.ToCallBb);
+        Assert.Equal(1m, result.Trace.CurrentBetBb);
+        Assert.Equal(0m, result.Trace.ActingContribBb);
+        Assert.Equal(1.5m, result.Trace.PotBb);
+    }
+
+    [Fact]
+    public void Extraction_Unopened_Sb_Facing_Bb_Derives_ToCall_From_Bet_State()
+    {
+        var extractor = new PreflopStateExtractor();
+        var btnId = PlayerId.New();
+        var sbId = PlayerId.New();
+        var bbId = PlayerId.New();
+        var seats = new List<PlayerSeat>
+        {
+            new(btnId, "BTN", 1, Position.BTN, new ChipAmount(100m)),
+            new(sbId, "SB", 2, Position.SB, new ChipAmount(100m)),
+            new(bbId, "BB", 3, Position.BB, new ChipAmount(100m))
+        };
+
+        var result = extractor.TryExtract(seats, [], sbId, smallBlind: 0.5m, bigBlind: 1m);
+
+        Assert.True(result.IsSupported, result.UnsupportedReason);
+        Assert.NotNull(result.Key);
+        Assert.Equal("UNOPENED_SB", result.Key!.HistorySignature);
+        Assert.Equal(0.5m, result.Key.ToCallBb);
+        Assert.Equal(result.Key.ToCallBb, result.Trace.ToCallBb);
+        Assert.Equal(1m, result.Trace.CurrentBetBb);
+        Assert.Equal(0.5m, result.Trace.ActingContribBb);
+        Assert.Equal(1.5m, result.Trace.PotBb);
+    }
+
+    [Fact]
+    public void Extraction_Checked_To_Big_Blind_Reports_Zero_ToCall()
+    {
+        var extractor = new PreflopStateExtractor();
+        var btnId = PlayerId.New();
+        var sbId = PlayerId.New();
+        var bbId = PlayerId.New();
+        var seats = new List<PlayerSeat>
+        {
+            new(btnId, "BTN", 1, Position.BTN, new ChipAmount(100m)),
+            new(sbId, "SB", 2, Position.SB, new ChipAmount(100m)),
+            new(bbId, "BB", 3, Position.BB, new ChipAmount(100m))
+        };
+
+        var actions = new List<PreflopInputAction>
+        {
+            new(sbId, "CALL", 0.5m)
+        };
+
+        var result = extractor.TryExtract(seats, actions, bbId, smallBlind: 0.5m, bigBlind: 1m);
+
+        Assert.True(result.IsSupported, result.UnsupportedReason);
+        Assert.NotNull(result.Key);
+        Assert.Equal("UNOPENED_CHECK", result.Key!.HistorySignature);
+        Assert.Equal(0m, result.Key.ToCallBb);
+        Assert.Equal(result.Key.ToCallBb, result.Trace.ToCallBb);
+        Assert.Equal(1m, result.Trace.CurrentBetBb);
+        Assert.Equal(1m, result.Trace.ActingContribBb);
+        Assert.Equal(2m, result.Trace.PotBb);
+    }
     [Fact]
     public void Extraction_Uses_Literal_ToCall_For_Open_And_VsOpen()
     {
@@ -151,7 +234,7 @@ public sealed class PreflopCompilerFixturesTests
     [Fact]
     public void Validation_Valid_Unopened_Sb_Spot_Passes()
     {
-        var key = new PreflopInfoSetKey(Position.SB, null, "UNOPENED_SB", 0, 0m, 100m, null, null, null, null, null, 18m, "k");
+        var key = new PreflopInfoSetKey(Position.SB, null, "UNOPENED_SB", 0, 0.5m, 100m, null, null, null, null, null, 18m, "k");
         var ctx = new PreflopSpotContext(PlayerId.New(), Position.SB, null, null, 0, 0m, 0.5m, 0.5m, 1.5m, 100m);
 
         var result = PreflopKeyValidator.Validate(key, ctx);

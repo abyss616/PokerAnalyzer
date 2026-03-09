@@ -110,16 +110,12 @@ public sealed class PreflopStateExtractor
             }
 
             var actingSeat = byId[actingPlayerId];
-            var toCallChips = Math.Max(0, betToCall - contrib[actingPlayerId]);
-            var toCallBb = bigBlind == 0 ? 0 : decimal.Round(toCallChips / bigBlind, 2);
             var currentBetBb = bigBlind == 0 ? 0 : decimal.Round(betToCall / bigBlind, 2);
             var actingContribBb = bigBlind == 0 ? 0 : decimal.Round(contrib[actingPlayerId] / bigBlind, 2);
+            var toCallBb = Math.Max(0m, decimal.Round(currentBetBb - actingContribBb, 2));
             var potBb = bigBlind == 0 ? 0 : decimal.Round(pot / bigBlind, 2);
 
             var historySignature = BuildSignature(actingSeat.Position, raiseDepth, actingPlayersFirstActionType);
-
-            if (historySignature is "OPEN" or "UNOPENED" or "UNOPENED_SB" or "UNOPENED_CHECK" or "UNOPENED_FOLD")
-                toCallBb = 0m;
 
             var bigBlindSeat = seats.FirstOrDefault(s => s.Position == Position.BB);
             Position? facingPos = lastAggressor.HasValue
