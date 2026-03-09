@@ -10,7 +10,9 @@ public sealed partial class HandHistoryIngestService
 
         foreach (var hand in hands)
         {
-            var preflopActions = hand.Actions
+            var orderedActions = hand.Actions.OrderBy(a => a.SequenceNumber).ThenBy(a => a.Id).ToList();
+
+            var preflopActions = orderedActions
                 .Where(a => a.Street == Street.Preflop)
                 .ToList();
 
@@ -113,7 +115,7 @@ public sealed partial class HandHistoryIngestService
             }
             
  
-            var flopActions = hand.Actions
+            var flopActions = orderedActions
                 .Where(a => a.Street == Street.Flop && a.Type != ActionType.SitOut)
                 .ToList();
 
@@ -144,7 +146,7 @@ public sealed partial class HandHistoryIngestService
 
                 IncrementFlopProfilesByPosition(profiles, positionAssignments, winners, p => p.WonAtShowdown++);
 
-                var (cbetOpportunityPlayer, cbetPlayer) = FlopOperations.GetFlopCBetResult(hand.Actions);
+                var (cbetOpportunityPlayer, cbetPlayer) = FlopOperations.GetFlopCBetResult(orderedActions);
                 if (!string.IsNullOrWhiteSpace(cbetOpportunityPlayer))
                 {
                     IncrementFlopProfilesByPosition(profiles, positionAssignments, new[] { cbetOpportunityPlayer }, p => p.CBetOpportunities++);
@@ -184,44 +186,44 @@ public sealed partial class HandHistoryIngestService
                     IncrementFlopProfilesByPosition(profiles, positionAssignments, foldedToCBetPlayers, p => p.FoldToCBet++);
                 }
 
-                var donkBet = FlopOperations.GetFlopDonkBet(hand.Actions);
+                var donkBet = FlopOperations.GetFlopDonkBet(orderedActions);
                 if (!string.IsNullOrWhiteSpace(donkBet.DonkBettor))
                 {
                     IncrementFlopProfilesByPosition(profiles, positionAssignments, new[] { donkBet.DonkBettor }, p => p.DonkBets++);
                 }
 
-                var firstFoldToCBet = FlopOperations.GetFirstFoldToFlopCBet(hand.Actions);
+                var firstFoldToCBet = FlopOperations.GetFirstFoldToFlopCBet(orderedActions);
                 if (!string.IsNullOrWhiteSpace(firstFoldToCBet.Folder))
                 {
                     IncrementFlopProfilesByPosition(profiles, positionAssignments, new[] { firstFoldToCBet.Folder }, p => p.FirstFoldToCBet++);
                 }
 
-                var firstCallVsCBet = FlopTier2Operations.GetFirstCallVsFlopCBet(hand.Actions);
+                var firstCallVsCBet = FlopTier2Operations.GetFirstCallVsFlopCBet(orderedActions);
                 if (!string.IsNullOrWhiteSpace(firstCallVsCBet.Caller))
                 {
                     IncrementFlopProfilesByPosition(profiles, positionAssignments, new[] { firstCallVsCBet.Caller }, p => p.CallVsCBet++);
                 }
 
-                var firstRaiseVsCBet = FlopTier2Operations.GetFirstRaiseVsFlopCBet(hand.Actions);
+                var firstRaiseVsCBet = FlopTier2Operations.GetFirstRaiseVsFlopCBet(orderedActions);
                 if (!string.IsNullOrWhiteSpace(firstRaiseVsCBet.Raiser))
                 {
                     IncrementFlopProfilesByPosition(profiles, positionAssignments, new[] { firstRaiseVsCBet.Raiser }, p => p.RaiseVsCBet++);
                 }
 
-                var multiwayCBetPlayer = FlopTier2Operations.GetMultiwayFlopCBetPlayer(hand.Actions);
+                var multiwayCBetPlayer = FlopTier2Operations.GetMultiwayFlopCBetPlayer(orderedActions);
                 if (!string.IsNullOrWhiteSpace(multiwayCBetPlayer))
                 {
                     IncrementFlopProfilesByPosition(profiles, positionAssignments, new[] { multiwayCBetPlayer }, p => p.MultiwayCBets++);
                 }
 
-                var probeBet = FlopTier3Operations.GetFlopProbeBet(hand.Actions);
+                var probeBet = FlopTier3Operations.GetFlopProbeBet(orderedActions);
                 if (!string.IsNullOrWhiteSpace(probeBet.ProbeBettor))
                 {
                     IncrementFlopProfilesByPosition(profiles, positionAssignments, new[] { probeBet.ProbeBettor }, p => p.ProbeBets++);
                 }
             }
 
-            var turnActions = hand.Actions
+            var turnActions = orderedActions
                 .Where(a => a.Street == Street.Turn && a.Type != ActionType.SitOut)
                 .ToList();
 
@@ -252,7 +254,7 @@ public sealed partial class HandHistoryIngestService
 
                 IncrementTurnProfilesByPosition(profiles, positionAssignments, winners, p => p.WonAtShowdown++);
 
-                var flopCBetResult = FlopOperations.GetFlopCBetResult(hand.Actions);
+                var flopCBetResult = FlopOperations.GetFlopCBetResult(orderedActions);
                 if (!string.IsNullOrWhiteSpace(flopCBetResult.CBetPlayer))
                 {
                     var flopCBetPlayer = flopCBetResult.CBetPlayer;
@@ -348,7 +350,7 @@ public sealed partial class HandHistoryIngestService
                 IncrementTurnProfilesByPosition(profiles, positionAssignments, wtsdCarryoverPlayers, p => p.TurnWTSDCarryover++);
             }
 
-            var riverActions = hand.Actions
+            var riverActions = orderedActions
                 .Where(a => a.Street == Street.River && a.Type != ActionType.SitOut)
                 .ToList();
 

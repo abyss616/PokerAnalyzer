@@ -20,12 +20,14 @@ public sealed class HandHistoryRepository : IHandHistoryRepository
     public Task<Hand?> GetHandAsync(Guid handId, CancellationToken ct) =>
         _db.HandHistoryHands
             .AsNoTracking()
+            .Include(x => x.Actions.OrderBy(a => a.SequenceNumber))
+            .Include(x => x.Players)
             .FirstOrDefaultAsync(x => x.Id == handId, ct);
 
     public Task<Hand?> GetHandByGameCodeAsync(long handNumber, CancellationToken ct) =>
         _db.HandHistoryHands
             .AsNoTracking()
-            .Include(x => x.Actions)
+            .Include(x => x.Actions.OrderBy(a => a.SequenceNumber))
             .Include(x => x.Players)
             .OrderBy(x => x.StartedAtUtc)
             .ThenBy(x => x.Id)
