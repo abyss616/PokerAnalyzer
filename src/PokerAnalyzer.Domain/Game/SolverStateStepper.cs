@@ -22,7 +22,13 @@ public static class SolverStateStepper
         var nextRaisesThisStreet = state.RaisesThisStreet;
         var nextPot = state.Pot;
         var actionAmount = ChipAmount.Zero;
-
+        if (state.Street == Street.Preflop &&
+    action.ActionType == ActionType.Bet &&
+    state.CurrentBetSize.Value > 0)
+        {
+            throw new InvalidOperationException(
+                $"Invalid preflop Bet action encountered. currentBet={state.CurrentBetSize.Value}, toCall={state.ToCall.Value}, amount={action.Amount?.Value}");
+        }
         switch (action.ActionType)
         {
             case ActionType.Fold:
@@ -33,17 +39,19 @@ public static class SolverStateStepper
                     throw new InvalidOperationException($"Player {acting.PlayerId} cannot check while facing {state.ToCall.Value} chips to call.");
                 break;
             case ActionType.Call:
-            {
-                var toCall = state.ToCall;
-                if (toCall.Value <= 0)
-                    throw new InvalidOperationException($"Player {acting.PlayerId} cannot call when there is nothing to call.");
+                {
+                    var toCall = state.ToCall;
+                    if (toCall.Value <= 0)
+                        throw new InvalidOperationException($"Player {acting.PlayerId} cannot call when there is nothing to call.");
 
-                var pay = toCall.Value > acting.Stack.Value ? acting.Stack : toCall;
-                actionAmount = pay;
-                players[actingIndex] = ApplyContribution(acting, pay);
-                nextPot += pay;
-                break;
-            }
+                    var pay = toCall.Value > acting.Stack.Value ? acting.Stack : toCall;
+                    var target = acting.CurrentStreetContribution + pay;
+
+                    players[actingIndex] = ApplyContribution(acting, pay);
+                    nextPot += pay;
+                    actionAmount = target;
+                    break;
+                }
             case ActionType.Bet:
             {
                 if (state.ToCall.Value != 0)
@@ -107,11 +115,18 @@ public static class SolverStateStepper
             default:
                 throw new InvalidOperationException($"Unsupported action type {action.ActionType} for solver traversal step.");
         }
+        Console.WriteLine(
+    $"STEP APPLY: street={state.Street}, acting={acting.PlayerId.Value}, " +
+    $"currentBet={state.CurrentBetSize.Value}, toCall={state.ToCall.Value}, " +
+    $"inputActionType={action.ActionType}, inputActionAmount={action.Amount?.Value}");
 
         var updatedHistory = state.ActionHistory
             .Concat([new SolverActionEntry(acting.PlayerId, action.ActionType, actionAmount)])
             .ToArray();
 
+        var appended = updatedHistory[^1];
+        Console.WriteLine(
+            $"STEP APPENDED: player={appended.PlayerId.Value}, type={appended.ActionType}, amount={appended.Amount.Value}");
         var activePlayers = players.Where(p => p.IsActive).ToArray();
         if (activePlayers.Length == 0)
             throw new InvalidOperationException("State transition produced no active players.");

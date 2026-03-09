@@ -252,6 +252,23 @@ public sealed record SolverHandState
             if (toCall.Value < 0)
                 toCall = ChipAmount.Zero;
 
+
+    //        Console.WriteLine(
+    //$"VALIDATE STEP: street={Street}, player={action.PlayerId.Value}, action={action.ActionType}, " +
+    //$"amount={action.Amount.Value}, priorContribution={playerState.Contribution.Value}, " +
+    //$"currentBet={currentBet.Value}, lastRaiseSize={lastRaiseSize.Value}, toCall={toCall.Value}");
+
+    //        Console.WriteLine(
+    //            "VALIDATE PLAYERS: " +
+    //            string.Join(" | ", Players.Select(p =>
+    //            {
+    //                var histState = stateByPlayer[p.PlayerId];
+    //                return $"id={p.PlayerId.Value}, pos={p.Position}, " +
+    //                       $"snapshotStreetContrib={p.CurrentStreetContribution.Value}, " +
+    //                       $"historyContrib={histState.Contribution.Value}, " +
+    //                       $"foldedInHistory={histState.HasFoldedInHistory}, allInInHistory={histState.AllIn}";
+    //            })));
+
             switch (action.ActionType)
             {
                 case ActionType.Fold:
@@ -332,7 +349,13 @@ public sealed record SolverHandState
             throw new InvalidOperationException($"{actionName} action for player {action.PlayerId} must use a positive to-amount.");
 
         if (action.Amount <= priorContribution)
+        {
+            Console.WriteLine(
+    $"VALIDATE AGGRO: player={action.PlayerId.Value} action={action.ActionType} " +
+    $"amount={action.Amount.Value} priorContribution={priorContribution.Value}");
+
             throw new InvalidOperationException($"{actionName} action for player {action.PlayerId} must increase street contribution.");
+        }
     }
 
     internal void EnsureValid()

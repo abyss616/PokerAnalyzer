@@ -84,6 +84,13 @@ public sealed class PreflopHandAnalysisService : IPreflopHandAnalysisService
 
         var snapshotState = BuildSnapshotState(request, extraction.Trace);
         var legalActions = BuildLegalActions(snapshotState, extraction.Trace);
+        Console.WriteLine("LEGAL ACTIONS:");
+        foreach (var la in legalActions)
+        {
+            Console.WriteLine($"  {la.ActionType} amount={la.Amount?.Value}");
+        }
+        
+
         var strategyResult = await ResolveStrategyAsync(extraction.Key.SolverKey, snapshotState, legalActions, ct);
 
         var canonicalKey = BuildCanonicalKey(extraction.Key, request.HeroHoleCards);
@@ -233,12 +240,15 @@ public sealed class PreflopHandAnalysisService : IPreflopHandAnalysisService
             stacks[playerId] -= delta;
             pot += delta;
         }
+        Console.WriteLine("=== PRE-FLOP NODE DEBUG ===");
+
         for (var i = 0; i < trace.RawActionHistory.Count; i++)
         {
             var a = trace.RawActionHistory[i];
             Console.WriteLine(
-                $"RAW[{i}] player={a.PlayerId.Value} type={a.ActionType} amountBb={a.AmountBb}");
+                $"RAW[{i}] player={a.PlayerId.Value} pos={a.Position} type={a.ActionType} amountBb={a.AmountBb}");
         }
+
         foreach (var action in trace.RawActionHistory)
         {
             var playerId = action.PlayerId;
@@ -304,7 +314,7 @@ public sealed class PreflopHandAnalysisService : IPreflopHandAnalysisService
         var button = players.FirstOrDefault(p => p.Position == Position.BTN)?.SeatIndex ?? 0;
         var maxStartingStack = seatsByPlayer.Max(x => BbToSolverChips(x.Value.Seat.StartingStackBb));
 
-        return new SolverHandState(
+        var state = new SolverHandState(
             new GameConfig(
                 request.Seats.Count,
                 new ChipAmount(BbToSolverChips(request.SmallBlind / request.BigBlind)),
@@ -320,6 +330,18 @@ public sealed class PreflopHandAnalysisService : IPreflopHandAnalysisService
             raisesThisStreet,
             players,
             actionHistory);
+
+        Console.WriteLine(
+            $"STATE acting={state.ActingPlayerId.Value} currentBet={state.CurrentBetSize.Value} " +
+            $"lastRaise={state.LastRaiseSize.Value} pot={state.Pot.Value} toCall={state.ToCall.Value}");
+
+        foreach (var p in state.Players)
+        {
+            Console.WriteLine(
+                $"PLAYER id={p.PlayerId.Value} pos={p.Position} folded={p.IsFolded} active={p.IsActive} " +
+                $"stack={p.Stack.Value} contrib={p.CurrentStreetContribution.Value}");
+        }
+        return state;
     }
 
     private static long BbToSolverChips(decimal amountBb)
@@ -393,7 +415,47 @@ public sealed class PreflopHandAnalysisService : IPreflopHandAnalysisService
                 NormalizeStartingStackBb(p.StackStart, blindInfo.Value.BigBlind)))
             .ToList();
 
-        var actions = BuildExtractorActions(orderedActions, seatMap, blindInfo.Value.BigBlind, hero.Name)
+        Console.WriteLine("=== ORDERED HAND ACTIONS ===");
+        for (var i = 0; i < orderedActions.Count; i++)
+        {
+            var a = orderedActions[i];
+            Console.WriteLine(
+                $"ORDERED[{i}] player={a.Player} type={a.Type} street={a.Street} amount={a.Amount} toAmount={a.ToAmount}");
+        }
+
+        var heroPreflopIndex = -1;
+        for (var i = 0; i < orderedActions.Count; i++)
+        {
+            var a = orderedActions[i];
+            if (a.Street == Street.Preflop &&
+                string.Equals(a.Player, hero.Name, StringComparison.OrdinalIgnoreCase) &&
+                a.Type is not ActionType.PostSmallBlind and not ActionType.PostBigBlind)
+            {
+                heroPreflopIndex = i;
+                break;
+            }
+        }
+
+        Console.WriteLine($"HERO={hero.Name}, HERO PREFLOP ACTION INDEX={heroPreflopIndex}");
+
+        if (heroPreflopIndex >= 0)
+        {
+            var actual = orderedActions[heroPreflopIndex];
+            Console.WriteLine(
+                $"ACTUAL NEXT ACTION: player={actual.Player} type={actual.Type} amount={actual.Amount} toAmount={actual.ToAmount}");
+        }
+
+        var extractorActions = BuildExtractorActions(orderedActions, seatMap, blindInfo.Value.BigBlind, hero.Name);
+
+        Console.WriteLine("=== EXTRACTOR ACTIONS PASSED INTO REQUEST ===");
+        for (var i = 0; i < extractorActions.Count; i++)
+        {
+            var a = extractorActions[i];
+            Console.WriteLine(
+                $"EXTRACTOR[{i}] player={a.PlayerId.Value} type={a.Type} amountBb={a.AmountBb}");
+        }
+
+        var actions = extractorActions
             .Select(a => new PreflopNodeActionDto(a.PlayerId.Value, a.Type, a.AmountBb))
             .ToList();
 
@@ -481,7 +543,23 @@ public sealed class PreflopHandAnalysisService : IPreflopHandAnalysisService
                 break;
             }
 
-            var amountBb = bb > 0 ? decimal.Round((action.Amount ?? 0m) / bb, 2) : 0m;
+            //var amountBb = bb > 0 ? decimal.Round((action.Amount ?? 0m) / bb, 2) : 0m;
+            Console.WriteLine(
+    $"EXTRACT MAP: player={action.Player} type={action.Type} rawAmount={action.Amount} rawToAmount={action.ToAmount}");
+            decimal sourceAmount = action.Type switch
+            {
+                ActionType.PostSmallBlind => action.Amount ?? 0m,
+                ActionType.PostBigBlind => action.Amount ?? 0m,
+                ActionType.Call => action.ToAmount ?? action.Amount ?? 0m,
+                ActionType.Raise => action.ToAmount ?? action.Amount ?? 0m,
+                ActionType.AllIn => action.ToAmount ?? action.Amount ?? 0m,
+                _ => action.Amount ?? 0m
+            };
+
+            var amountBb = bb > 0 ? decimal.Round(sourceAmount / bb, 2) : 0m;
+
+            Console.WriteLine(
+                $"EXTRACT NORM: player={action.Player} type={action.Type} sourceAmount={sourceAmount} amountBb={amountBb}");
             actions.Add(new PreflopInputAction(new PlayerId(player.Id), type, amountBb));
         }
 
