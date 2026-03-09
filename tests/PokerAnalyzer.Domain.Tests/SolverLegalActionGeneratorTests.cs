@@ -7,7 +7,7 @@ namespace PokerAnalyzer.Domain.Tests;
 public class SolverLegalActionGeneratorTests
 {
     [Fact]
-    public void GenerateLegalActions_CheckedToSpot_ReturnsCheckThenBetCategory()
+    public void GenerateLegalActions_CheckedToSpot_ReturnsCheckThenBetWithExplicitAmount()
     {
         var acting = Player(seat: 0, stack: 90, streetContribution: 10, totalContribution: 10);
         var villain = Player(seat: 1, stack: 90, streetContribution: 10, totalContribution: 10);
@@ -24,9 +24,11 @@ public class SolverLegalActionGeneratorTests
         Assert.Equal(
             [
                 new LegalAction(ActionType.Check),
-            new LegalAction(ActionType.Bet)
+                new LegalAction(ActionType.Bet, new ChipAmount(20))
             ],
             actions);
+
+        Assert.DoesNotContain(actions, action => action.ActionType == ActionType.Bet && action.Amount is null);
     }
 
     [Fact]
@@ -104,9 +106,11 @@ public class SolverLegalActionGeneratorTests
         Assert.Equal(
             [
                 new LegalAction(ActionType.Check),
-                new LegalAction(ActionType.Bet)
+                new LegalAction(ActionType.Bet, new ChipAmount(4))
             ],
             actions);
+
+        Assert.DoesNotContain(actions, action => action.ActionType == ActionType.Bet && action.Amount is null);
     }
     [Fact]
     public void GenerateLegalActions_FacingBetWithFullRaise_ReturnsFoldCallRaiseCategory()

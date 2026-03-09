@@ -20,14 +20,17 @@ public static class SolverLegalActionGenerator
         {
             actions.Add(new LegalAction(ActionType.Check));
 
+            var minTotalBet = ResolveMinBetTarget(acting.CurrentStreetContribution, state.LastRaiseSize);
+
             if (sizeProvider is null)
             {
-                actions.Add(new LegalAction(ActionType.Bet));
+                var defaultBetTarget = minTotalBet <= maxTotalBet ? minTotalBet : maxTotalBet;
+                actions.Add(new LegalAction(ActionType.Bet, defaultBetTarget));
                 return actions.AsReadOnly();
             }
 
             var betSizes = GetDistinctSortedSizes(sizeProvider.GetBetSizes(state));
-            AddSizedAggressionActions(actions, ActionType.Bet, betSizes, acting.CurrentStreetContribution, maxTotalBet, includeMinBound: true);
+            AddSizedAggressionActions(actions, ActionType.Bet, betSizes, minTotalBet, maxTotalBet, includeMinBound: true);
 
             // AllIn exists in the enum but this solver model represents jams as Bet/Raise amounts for deterministic sizing.
             return actions.AsReadOnly();
@@ -102,6 +105,12 @@ public static class SolverLegalActionGenerator
         }
 
         return new ChipAmount(scaled / UnopenedPreflopOpenDenominator);
+    }
+
+    private static ChipAmount ResolveMinBetTarget(ChipAmount currentContribution, ChipAmount lastRaiseSize)
+    {
+        var minBetIncrement = Math.Max(1, lastRaiseSize.Value);
+        return currentContribution + new ChipAmount(minBetIncrement);
     }
 
     private static void AddSizedAggressionActions(
