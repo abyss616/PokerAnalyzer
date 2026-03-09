@@ -20,20 +20,27 @@ public static class SolverLegalActionGenerator
         {
             actions.Add(new LegalAction(ActionType.Check));
 
-            var minTotalBetToCall = ResolveMinBetTarget(acting.CurrentStreetContribution, state.LastRaiseSize);
+            var isCheckedToSpot = state.CurrentBetSize.Value == 0;
+            var aggressiveActionType = isCheckedToSpot ? ActionType.Bet : ActionType.Raise;
+            var minTotalBetToCall = isCheckedToSpot
+                ? ResolveMinBetTarget(acting.CurrentStreetContribution, state.LastRaiseSize)
+                : state.CurrentBetSize + state.LastRaiseSize;
 
             if (sizeProvider is null)
             {
                 var defaultBetTarget = minTotalBetToCall <= maxTotalBet ? minTotalBetToCall : maxTotalBet;
-                actions.Add(new LegalAction(ActionType.Bet, defaultBetTarget));
+                actions.Add(new LegalAction(aggressiveActionType, defaultBetTarget));
                 return actions.AsReadOnly();
             }
 
-            var betSizes = GetDistinctSortedSizes(sizeProvider.GetBetSizes(state));
+            var aggressiveSizes = isCheckedToSpot
+                ? GetDistinctSortedSizes(sizeProvider.GetBetSizes(state))
+                : GetDistinctSortedSizes(sizeProvider.GetRaiseSizes(state));
+
             AddSizedAggressionActions(
                 actions,
-                ActionType.Bet,
-                betSizes,
+                aggressiveActionType,
+                aggressiveSizes,
                 minTotalBetToCall,
                 maxTotalBet,
                 includeMinBound: true,
