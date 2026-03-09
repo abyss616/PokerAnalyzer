@@ -177,10 +177,56 @@ public class SolverLegalActionGeneratorTests
             [
                 new LegalAction(ActionType.Fold),
             new LegalAction(ActionType.Call, new ChipAmount(10)),
-            new LegalAction(ActionType.Raise, new ChipAmount(30)),
+            new LegalAction(ActionType.Raise, new ChipAmount(35)),
+            new LegalAction(ActionType.Raise, new ChipAmount(40)),
             new LegalAction(ActionType.Raise, new ChipAmount(100))
             ],
             actions);
+    }
+
+    [Fact]
+    public void GenerateLegalActions_WithSizeProvider_BetTargetsAreRelativeToPriorContribution()
+    {
+        var acting = Player(seat: 0, stack: 85, streetContribution: 15, totalContribution: 15);
+        var villain = Player(seat: 1, stack: 85, streetContribution: 15, totalContribution: 15);
+        var state = CreateState(acting.PlayerId, [acting, villain], pot: 30, currentBetSize: 15, lastRaiseSize: 10, raisesThisStreet: 1);
+        var provider = new FixedSizeProvider(
+            betSizes: [new ChipAmount(1), new ChipAmount(10), new ChipAmount(20)],
+            raiseSizes: Array.Empty<ChipAmount>());
+
+        var actions = state.GenerateLegalActions(provider);
+        var bets = actions.Where(a => a.ActionType == ActionType.Bet).ToArray();
+
+        Assert.Equal(
+            [
+                new LegalAction(ActionType.Bet, new ChipAmount(25)),
+                new LegalAction(ActionType.Bet, new ChipAmount(35)),
+                new LegalAction(ActionType.Bet, new ChipAmount(100))
+            ],
+            bets);
+        Assert.All(bets, bet => Assert.True(bet.Amount > acting.CurrentStreetContribution));
+    }
+
+    [Fact]
+    public void GenerateLegalActions_WithSizeProvider_RaiseTargetsAreRelativeToPriorContribution()
+    {
+        var acting = Player(seat: 0, stack: 90, streetContribution: 10, totalContribution: 10);
+        var villain = Player(seat: 1, stack: 80, streetContribution: 20, totalContribution: 20);
+        var state = CreateState(acting.PlayerId, [acting, villain], pot: 30, currentBetSize: 20, lastRaiseSize: 10);
+        var provider = new FixedSizeProvider(
+            betSizes: Array.Empty<ChipAmount>(),
+            raiseSizes: [new ChipAmount(1), new ChipAmount(20)]);
+
+        var actions = state.GenerateLegalActions(provider);
+        var raises = actions.Where(a => a.ActionType == ActionType.Raise).ToArray();
+
+        Assert.Equal(
+            [
+                new LegalAction(ActionType.Raise, new ChipAmount(30)),
+                new LegalAction(ActionType.Raise, new ChipAmount(100))
+            ],
+            raises);
+        Assert.All(raises, raise => Assert.True(raise.Amount > acting.CurrentStreetContribution));
     }
 
     [Fact]

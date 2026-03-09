@@ -30,7 +30,14 @@ public static class SolverLegalActionGenerator
             }
 
             var betSizes = GetDistinctSortedSizes(sizeProvider.GetBetSizes(state));
-            AddSizedAggressionActions(actions, ActionType.Bet, betSizes, minTotalBetToCall, maxTotalBet, includeMinBound: true);
+            AddSizedAggressionActions(
+                actions,
+                ActionType.Bet,
+                betSizes,
+                minTotalBetToCall,
+                maxTotalBet,
+                includeMinBound: true,
+                acting.CurrentStreetContribution);
 
             // AllIn exists in the enum but this solver model represents jams as Bet/Raise amounts for deterministic sizing.
             return actions.AsReadOnly();
@@ -67,7 +74,14 @@ public static class SolverLegalActionGenerator
         var raiseSizes = GetDistinctSortedSizes(sizeProvider.GetRaiseSizes(state));
         if (canFullRaise)
         {
-            AddSizedAggressionActions(actions, ActionType.Raise, raiseSizes, minTotalBet, maxTotalBet, includeMinBound: true);
+            AddSizedAggressionActions(
+                actions,
+                ActionType.Raise,
+                raiseSizes,
+                minTotalBet,
+                maxTotalBet,
+                includeMinBound: true,
+                acting.CurrentStreetContribution);
         }
         else
         {
@@ -119,18 +133,20 @@ public static class SolverLegalActionGenerator
         IReadOnlyList<ChipAmount> candidateSizes,
         ChipAmount minTotalBet,
         ChipAmount maxTotalBet,
-        bool includeMinBound)
+        bool includeMinBound,
+        ChipAmount currentContribution)
     {
         foreach (var size in candidateSizes)
         {
-            var aboveMin = includeMinBound ? size >= minTotalBet : size > minTotalBet;
+            var targetAmount = currentContribution + size;
+            var aboveMin = includeMinBound ? targetAmount >= minTotalBet : targetAmount > minTotalBet;
             if (!aboveMin)
                 continue;
 
-            if (size > maxTotalBet)
+            if (targetAmount > maxTotalBet)
                 continue;
 
-            actions.Add(new LegalAction(actionType, size));
+            actions.Add(new LegalAction(actionType, targetAmount));
         }
 
         // Always include a jam amount as a deterministic fallback if it is legal and not duplicated.
