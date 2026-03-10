@@ -42,7 +42,8 @@ public sealed class LivePreflopSolveService : IPreflopStrategyProvider
             new FixedTraversalPlayerSelector(request.RootState.ActingPlayerId),
             _regretStore,
             _averageStrategyStore,
-            _trainingProgressStore);
+            _trainingProgressStore,
+            request.SolverKey);
 
         var trainingResult = trainer.RunTraining(DefaultOptions, ct);
 
