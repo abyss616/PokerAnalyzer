@@ -9,22 +9,35 @@ public sealed class HeuristicPreflopLeafEvaluator : IPreflopLeafEvaluator
     private const double RaiseInitiativeBonus = 0.22;
     private const double RaiseInvestmentPenaltyFactor = 0.75;
 
-    public PreflopLeafEvaluation Evaluate(SolverHandState leafState)
+    public PreflopLeafEvaluation Evaluate(PreflopLeafEvaluationContext context)
     {
-        ArgumentNullException.ThrowIfNull(leafState);
+        ArgumentNullException.ThrowIfNull(context);
 
-        var utility = leafState.Players.ToDictionary(player => player.PlayerId, _ => 0d);
+        var utility = context.LeafState.Players.ToDictionary(player => player.PlayerId, _ => 0d);
 
-        if (!TryBuildUnopenedFirstInContext(leafState, out var context, out var fallbackReason))
+        if (!IsSupportedPreflopUnopenedAction(context.RootAction))
         {
-            return new PreflopLeafEvaluation(utility, fallbackReason);
+            return new PreflopLeafEvaluation(
+                utility,
+                $"heuristic preflop evaluator fallback: unsupported root action {context.RootAction.ActionType}");
         }
 
-        var foldEv = 0d;
-        var limpEv = CalculateLimpEv(context);
-        var raiseEv = CalculateRaiseEv(context);
+        var handLabel = ToCanonicalPreflopHand(context.HeroCards);
+        var handStrength = EvaluateHandStrength(context.HeroCards);
+        var positionFactor = PositionFactor(context.HeroPosition);
+        var foldEquityEstimate = EstimateFoldEquity(context.HeroPosition);
 
-        var chosenEv = context.FirstVoluntaryAction.ActionType switch
+        var rootContext = new RootActionContext(
+            handStrength,
+            positionFactor,
+            context.RootEffectiveStackBb,
+            foldEquityEstimate);
+
+        var foldEv = 0d;
+        var limpEv = CalculateLimpEv(rootContext);
+        var raiseEv = CalculateRaiseEv(rootContext);
+
+        var chosenEv = context.RootAction.ActionType switch
         {
             ActionType.Fold => foldEv,
             ActionType.Call => limpEv,
@@ -32,82 +45,27 @@ public sealed class HeuristicPreflopLeafEvaluator : IPreflopLeafEvaluator
             _ => 0d
         };
 
-        utility[context.Hero.PlayerId] = chosenEv;
+        utility[context.HeroPlayerId] = chosenEv;
 
         var reason =
-            $"heuristic preflop unopened first-in: hand={context.HandLabel}, pos={context.Hero.Position}, stackBb={context.EffectiveStackBb:0.0}, " +
-            $"strength={context.HandStrength:0.000}, action={context.FirstVoluntaryAction.ActionType}, evFold={foldEv:0.000}, evLimp={limpEv:0.000}, evRaise={raiseEv:0.000}, chosen={chosenEv:0.000}";
+            $"heuristic preflop root-action: hand={handLabel}, rootAction={context.RootAction.ActionType}, pos={context.HeroPosition}, stackBb={context.RootEffectiveStackBb:0.0}, " +
+            $"solverKey={context.SolverKey ?? \"n/a\"}, strength={handStrength:0.000}, evFold={foldEv:0.000}, evLimp={limpEv:0.000}, evRaise={raiseEv:0.000}, chosen={chosenEv:0.000}";
 
         return new PreflopLeafEvaluation(utility, reason);
     }
 
-    private static bool TryBuildUnopenedFirstInContext(
-        SolverHandState state,
-        out UnopenedFirstInContext context,
-        out string reason)
+    private static bool IsSupportedPreflopUnopenedAction(LegalAction rootAction)
     {
-        context = default;
+        if (rootAction.ActionType == ActionType.Fold)
+            return true;
 
-        if (state.Street != Street.Preflop)
-        {
-            reason = "heuristic preflop evaluator fallback: non-preflop node";
-            return false;
-        }
+        if (rootAction.ActionType == ActionType.Call)
+            return true;
 
-        var voluntaryActions = state.ActionHistory
-            .Where(a => IsVoluntaryPreflopAction(a.ActionType))
-            .ToArray();
-
-        if (voluntaryActions.Length == 0)
-        {
-            reason = "heuristic preflop evaluator fallback: no voluntary preflop action yet";
-            return false;
-        }
-
-        var firstVoluntary = voluntaryActions[0];
-        if (firstVoluntary.ActionType is not (ActionType.Fold or ActionType.Call or ActionType.Raise))
-        {
-            reason = "heuristic preflop evaluator fallback: unsupported first-in action type";
-            return false;
-        }
-
-        if (voluntaryActions.Skip(1).Any(a => a.ActionType is ActionType.Bet or ActionType.Raise or ActionType.AllIn))
-        {
-            reason = "heuristic preflop evaluator fallback: facing preflop aggression after first action";
-            return false;
-        }
-
-        var hero = state.Players.FirstOrDefault(p => p.PlayerId == firstVoluntary.PlayerId);
-        if (hero is null)
-        {
-            reason = "heuristic preflop evaluator fallback: hero not found in player list";
-            return false;
-        }
-
-        if (!state.PrivateCardsByPlayer.TryGetValue(hero.PlayerId, out var heroCards))
-        {
-            reason = "heuristic preflop evaluator fallback: missing hero private cards";
-            return false;
-        }
-
-        var effectiveStack = ResolveEffectiveStackBb(state, hero);
-        var handStrength = EvaluateHandStrength(heroCards);
-
-        context = new UnopenedFirstInContext(
-            Hero: hero,
-            HeroCards: heroCards,
-            HandLabel: ToCanonicalPreflopHand(heroCards),
-            FirstVoluntaryAction: firstVoluntary,
-            HandStrength: handStrength,
-            PositionFactor: PositionFactor(hero.Position),
-            EffectiveStackBb: effectiveStack,
-            FoldEquityEstimate: EstimateFoldEquity(hero.Position));
-
-        reason = string.Empty;
-        return true;
+        return rootAction.ActionType == ActionType.Raise;
     }
 
-    private static double CalculateLimpEv(UnopenedFirstInContext context)
+    private static double CalculateLimpEv(RootActionContext context)
     {
         var stackAdj = StackDepthAdjustment(context.EffectiveStackBb);
         return ((context.HandStrength - 0.42) * 1.8)
@@ -116,7 +74,7 @@ public sealed class HeuristicPreflopLeafEvaluator : IPreflopLeafEvaluator
              - LimpNoInitiativePenalty;
     }
 
-    private static double CalculateRaiseEv(UnopenedFirstInContext context)
+    private static double CalculateRaiseEv(RootActionContext context)
     {
         var stackAdj = StackDepthAdjustment(context.EffectiveStackBb);
         var openSizeBb = 2.5;
@@ -135,22 +93,6 @@ public sealed class HeuristicPreflopLeafEvaluator : IPreflopLeafEvaluator
                         * RaiseInvestmentPenaltyFactor;
 
         return foldEquityComponent + continueComponent - riskPenalty;
-    }
-
-    private static bool IsVoluntaryPreflopAction(ActionType actionType)
-        => actionType is not (ActionType.PostSmallBlind or ActionType.PostBigBlind or ActionType.SitOut);
-
-    private static double ResolveEffectiveStackBb(SolverHandState state, SolverPlayerState hero)
-    {
-        var villainMaxContribution = state.Players
-            .Where(p => p.PlayerId != hero.PlayerId && p.IsActive)
-            .Select(p => p.Stack.Value + p.CurrentStreetContribution.Value)
-            .DefaultIfEmpty(hero.Stack.Value + hero.CurrentStreetContribution.Value)
-            .Min();
-
-        var heroTotal = hero.Stack.Value + hero.CurrentStreetContribution.Value;
-        var effectiveChips = Math.Min(heroTotal, villainMaxContribution);
-        return effectiveChips / (double)Math.Max(1L, state.Config.BigBlind.Value);
     }
 
     private static double EvaluateHandStrength(HoleCards holeCards)
@@ -268,11 +210,7 @@ public sealed class HeuristicPreflopLeafEvaluator : IPreflopLeafEvaluator
         _ => throw new ArgumentOutOfRangeException(nameof(rank))
     };
 
-    private readonly record struct UnopenedFirstInContext(
-        SolverPlayerState Hero,
-        HoleCards HeroCards,
-        string HandLabel,
-        SolverActionEntry FirstVoluntaryAction,
+    private readonly record struct RootActionContext(
         double HandStrength,
         double PositionFactor,
         double EffectiveStackBb,
