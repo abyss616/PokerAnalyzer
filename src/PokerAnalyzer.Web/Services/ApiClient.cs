@@ -32,11 +32,14 @@ public sealed class ApiClient
         int RaiseDepth,
         string SizingBucketSummary,
         IReadOnlyList<PreflopLegalAction> LegalActions,
+        IReadOnlyList<PreflopRecommendationItem> Recommendations,
+        string SummaryRecommendation,
         IReadOnlyList<PreflopStrategyItem> Strategy,
         PreflopSolveMetadata SolveMetadata,
         PreflopTrace Trace);
 
     public sealed record PreflopLegalAction(string ActionKey, string ActionType, decimal? SizeBb, bool IsFacingAllIn);
+    public sealed record PreflopRecommendationItem(string ActionKey, string DisplayLabel, decimal Frequency, bool IsBestAction);
     public sealed record PreflopStrategyItem(string ActionKey, decimal Frequency);
     public sealed record PreflopSolveMetadata(string StrategySource, int IterationsCompleted, long ElapsedMilliseconds, string SolveMode);
     public sealed record PreflopTrace(
