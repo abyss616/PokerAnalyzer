@@ -84,15 +84,14 @@ public sealed class PreflopHandAnalysisService : IPreflopHandAnalysisService
 
         var snapshotState = BuildSnapshotState(request, extraction.Trace);
         var legalActions = BuildLegalActions(snapshotState, extraction.Trace);
-        Console.WriteLine("LEGAL ACTIONS:");
-        foreach (var la in legalActions)
-        {
-            Console.WriteLine($"  {la.ActionType} amount={la.Amount?.Value}");
-        }
-        
 
         var strategyResult = await ResolveStrategyAsync(extraction.Key.SolverKey, snapshotState, legalActions, ct);
-        var recommendationResult = BuildRecommendations(legalActions, strategyResult.Strategy);
+        var recommendationResult = BuildRecommendations(
+            legalActions,
+            strategyResult.Strategy,
+            strategyResult.StrategySource,
+            strategyResult.IterationsCompleted,
+            strategyResult.RegretMagnitude);
 
         var canonicalKey = BuildCanonicalKey(extraction.Key, request.HeroHoleCards);
         return new PreflopNodeQueryResultDto(
@@ -112,12 +111,17 @@ public sealed class PreflopHandAnalysisService : IPreflopHandAnalysisService
             legalActions.Select(ToLegalActionDto).ToList(),
             recommendationResult.Recommendations,
             recommendationResult.SummaryRecommendation,
+            recommendationResult.HasStrategy,
+            recommendationResult.IsFallbackStrategy,
+            recommendationResult.IsUniformStrategy,
+            recommendationResult.StrategyStatus,
+            recommendationResult.StrategyExplanation,
             strategyResult.Strategy,
             strategyResult.Metadata,
             ToTraceDto(extraction.Trace));
     }
 
-    private async Task<(IReadOnlyList<PreflopNodeStrategyItemDto> Strategy, PreflopNodeSolveMetadataDto Metadata)> ResolveStrategyAsync(
+    private async Task<(IReadOnlyList<PreflopNodeStrategyItemDto> Strategy, PreflopNodeSolveMetadataDto Metadata, string StrategySource, int IterationsCompleted, double RegretMagnitude)> ResolveStrategyAsync(
         string solverKey,
         SolverHandState snapshotState,
         IReadOnlyList<LegalAction> legalActions,
@@ -131,7 +135,10 @@ public sealed class PreflopHandAnalysisService : IPreflopHandAnalysisService
         {
             return (
                 Array.Empty<PreflopNodeStrategyItemDto>(),
-                new PreflopNodeSolveMetadataDto("Unavailable", 0, 0, "None"));
+                new PreflopNodeSolveMetadataDto("Unavailable", 0, 0, "None"),
+                "Unavailable",
+                0,
+                0d);
         }
 
         var items = strategy
@@ -145,19 +152,43 @@ public sealed class PreflopHandAnalysisService : IPreflopHandAnalysisService
                 strategyResult.StrategySource,
                 strategyResult.IterationsCompleted,
                 strategyResult.ElapsedMilliseconds,
-                strategyResult.SolveMode));
+                strategyResult.SolveMode),
+            strategyResult.StrategySource,
+            strategyResult.IterationsCompleted,
+            strategyResult.RegretMagnitude);
     }
 
-    private static (IReadOnlyList<PreflopNodeRecommendationItemDto> Recommendations, string SummaryRecommendation) BuildRecommendations(
+    private const decimal FrequencyEqualityTolerance = 0.0001m;
+
+    private static (
+        IReadOnlyList<PreflopNodeRecommendationItemDto> Recommendations,
+        string SummaryRecommendation,
+        bool HasStrategy,
+        bool IsFallbackStrategy,
+        bool IsUniformStrategy,
+        string StrategyStatus,
+        string? StrategyExplanation) BuildRecommendations(
         IReadOnlyList<LegalAction> legalActions,
-        IReadOnlyList<PreflopNodeStrategyItemDto> strategy)
+        IReadOnlyList<PreflopNodeStrategyItemDto> strategy,
+        string strategySource,
+        int iterationsCompleted,
+        double regretMagnitude)
     {
         if (legalActions.Count == 0)
-            return (Array.Empty<PreflopNodeRecommendationItemDto>(), string.Empty);
+        {
+            return (
+                Array.Empty<PreflopNodeRecommendationItemDto>(),
+                "No solved strategy available for this node.",
+                false,
+                false,
+                false,
+                "NoStrategy",
+                "No legal-action strategy mapping was found for this node.");
+        }
 
+        var legalActionDtos = legalActions.Select(ToLegalActionDto).ToList();
         var strategyByAction = strategy.ToDictionary(x => x.ActionKey, x => x.Frequency, StringComparer.Ordinal);
-        var recommendations = legalActions
-            .Select(ToLegalActionDto)
+        var recommendations = legalActionDtos
             .Select(action => new PreflopNodeRecommendationItemDto(
                 action.ActionKey,
                 BuildDisplayLabel(action),
@@ -165,34 +196,89 @@ public sealed class PreflopHandAnalysisService : IPreflopHandAnalysisService
                 false))
             .ToList();
 
-        if (recommendations.Count == 0)
-            return (recommendations, string.Empty);
+        var hasAnyStrategy = strategy.Count > 0 && recommendations.Any(x => x.Frequency > FrequencyEqualityTolerance);
+        var isFallback = strategySource.Equals("Unavailable", StringComparison.OrdinalIgnoreCase)
+            || strategySource.Contains("fallback", StringComparison.OrdinalIgnoreCase)
+            || strategySource.Contains("dummy", StringComparison.OrdinalIgnoreCase)
+            || strategySource.Contains("default", StringComparison.OrdinalIgnoreCase);
+        if (!hasAnyStrategy)
+        {
+            var explanation = isFallback
+                ? "A fallback strategy was returned instead of a solved strategy."
+                : "No solved strategy available for this node.";
+            return (
+                recommendations,
+                "No solved strategy available for this node.",
+                false,
+                isFallback,
+                false,
+                isFallback ? "Fallback" : "NoStrategy",
+                explanation);
+        }
+
+        var orderedFrequencies = recommendations.Select(x => x.Frequency).OrderBy(x => x).ToList();
+        var isUniform = orderedFrequencies.Count > 1
+            && (orderedFrequencies[^1] - orderedFrequencies[0]) <= FrequencyEqualityTolerance;
 
         var bestFrequency = recommendations.Max(x => x.Frequency);
-        var bestCount = recommendations.Count(x => x.Frequency == bestFrequency);
-        var updated = recommendations
-            .Select(x => x with { IsBestAction = x.Frequency == bestFrequency && bestFrequency > 0m && bestCount == 1 })
+        var bestCount = recommendations.Count(x => Math.Abs(x.Frequency - bestFrequency) <= FrequencyEqualityTolerance);
+        var hasBestAction = !isUniform && bestFrequency > FrequencyEqualityTolerance && bestCount == 1;
+
+        recommendations = recommendations
+            .Select(x => x with { IsBestAction = hasBestAction && Math.Abs(x.Frequency - bestFrequency) <= FrequencyEqualityTolerance })
             .ToList();
 
-        return (updated, BuildSummaryRecommendation(updated, bestFrequency, bestCount));
+        var status = "Solved";
+        string? explanationText = null;
+
+        if (isFallback)
+        {
+            status = "Fallback";
+            explanationText = "A fallback strategy was returned instead of a solved strategy.";
+        }
+
+        if (isUniform)
+        {
+            status = iterationsCompleted <= 0 || regretMagnitude <= 0d ? "Untrained" : "Uniform";
+            explanationText = status == "Untrained"
+                ? "The live solver has not separated action regrets yet."
+                : "The current output is uniform across legal actions, so no clear recommendation is available.";
+        }
+
+        return (
+            recommendations,
+            BuildSummaryRecommendation(recommendations, hasAnyStrategy, isFallback, isUniform, hasBestAction),
+            true,
+            isFallback,
+            isUniform,
+            status,
+            explanationText);
     }
 
     private static string BuildSummaryRecommendation(
         IReadOnlyList<PreflopNodeRecommendationItemDto> recommendations,
-        decimal bestFrequency,
-        int bestCount)
+        bool hasStrategy,
+        bool isFallbackStrategy,
+        bool isUniformStrategy,
+        bool hasBestAction)
     {
-        if (recommendations.Count == 0 || bestFrequency <= 0m)
-            return string.Empty;
+        if (!hasStrategy)
+            return "No solved strategy available for this node.";
 
-        if (bestCount == 1)
+        if (isFallbackStrategy)
+            return "Fallback strategy returned.";
+
+        if (isUniformStrategy)
+            return "Strategy is currently uniform across legal actions.";
+
+        if (hasBestAction)
         {
-            var bestAction = recommendations.First(x => x.Frequency == bestFrequency);
+            var bestAction = recommendations.First(x => x.IsBestAction);
             return $"Recommended: {bestAction.DisplayLabel}";
         }
 
         var mixed = recommendations
-            .Where(x => x.Frequency > 0m)
+            .Where(x => x.Frequency > FrequencyEqualityTolerance)
             .OrderByDescending(x => x.Frequency)
             .Select(x => $"{x.DisplayLabel} {x.Frequency:0.##}%");
 
@@ -303,14 +389,6 @@ public sealed class PreflopHandAnalysisService : IPreflopHandAnalysisService
             stacks[playerId] -= delta;
             pot += delta;
         }
-        Console.WriteLine("=== PRE-FLOP NODE DEBUG ===");
-
-        for (var i = 0; i < trace.RawActionHistory.Count; i++)
-        {
-            var a = trace.RawActionHistory[i];
-            Console.WriteLine(
-                $"RAW[{i}] player={a.PlayerId.Value} pos={a.Position} type={a.ActionType} amountBb={a.AmountBb}");
-        }
 
         foreach (var action in trace.RawActionHistory)
         {
@@ -356,12 +434,6 @@ public sealed class PreflopHandAnalysisService : IPreflopHandAnalysisService
                     break;
             }
         }
-        for (var i = 0; i < actionHistory.Count; i++)
-        {
-            var a = actionHistory[i];
-            Console.WriteLine(
-                $"BUILT[{i}] player={a.PlayerId.Value} type={a.ActionType} amount={a.Amount.Value}");
-        }
         var players = seatsByPlayer
             .Select(kvp => new SolverPlayerState(
                 kvp.Key,
@@ -394,16 +466,6 @@ public sealed class PreflopHandAnalysisService : IPreflopHandAnalysisService
             players,
             actionHistory);
 
-        Console.WriteLine(
-            $"STATE acting={state.ActingPlayerId.Value} currentBet={state.CurrentBetSize.Value} " +
-            $"lastRaise={state.LastRaiseSize.Value} pot={state.Pot.Value} toCall={state.ToCall.Value}");
-
-        foreach (var p in state.Players)
-        {
-            Console.WriteLine(
-                $"PLAYER id={p.PlayerId.Value} pos={p.Position} folded={p.IsFolded} active={p.IsActive} " +
-                $"stack={p.Stack.Value} contrib={p.CurrentStreetContribution.Value}");
-        }
         return state;
     }
 
@@ -478,45 +540,7 @@ public sealed class PreflopHandAnalysisService : IPreflopHandAnalysisService
                 NormalizeStartingStackBb(p.StackStart, blindInfo.Value.BigBlind)))
             .ToList();
 
-        Console.WriteLine("=== ORDERED HAND ACTIONS ===");
-        for (var i = 0; i < orderedActions.Count; i++)
-        {
-            var a = orderedActions[i];
-            Console.WriteLine(
-                $"ORDERED[{i}] player={a.Player} type={a.Type} street={a.Street} amount={a.Amount} toAmount={a.ToAmount}");
-        }
-
-        var heroPreflopIndex = -1;
-        for (var i = 0; i < orderedActions.Count; i++)
-        {
-            var a = orderedActions[i];
-            if (a.Street == Street.Preflop &&
-                string.Equals(a.Player, hero.Name, StringComparison.OrdinalIgnoreCase) &&
-                a.Type is not ActionType.PostSmallBlind and not ActionType.PostBigBlind)
-            {
-                heroPreflopIndex = i;
-                break;
-            }
-        }
-
-        Console.WriteLine($"HERO={hero.Name}, HERO PREFLOP ACTION INDEX={heroPreflopIndex}");
-
-        if (heroPreflopIndex >= 0)
-        {
-            var actual = orderedActions[heroPreflopIndex];
-            Console.WriteLine(
-                $"ACTUAL NEXT ACTION: player={actual.Player} type={actual.Type} amount={actual.Amount} toAmount={actual.ToAmount}");
-        }
-
         var extractorActions = BuildExtractorActions(orderedActions, seatMap, blindInfo.Value.BigBlind, hero.Name);
-
-        Console.WriteLine("=== EXTRACTOR ACTIONS PASSED INTO REQUEST ===");
-        for (var i = 0; i < extractorActions.Count; i++)
-        {
-            var a = extractorActions[i];
-            Console.WriteLine(
-                $"EXTRACTOR[{i}] player={a.PlayerId.Value} type={a.Type} amountBb={a.AmountBb}");
-        }
 
         var actions = extractorActions
             .Select(a => new PreflopNodeActionDto(a.PlayerId.Value, a.Type, a.AmountBb))
@@ -549,7 +573,12 @@ public sealed class PreflopHandAnalysisService : IPreflopHandAnalysisService
             trace is null ? "NA" : BuildSizingSummary(trace),
             Array.Empty<PreflopNodeLegalActionDto>(),
             Array.Empty<PreflopNodeRecommendationItemDto>(),
-            string.Empty,
+            "No solved strategy available for this node.",
+            false,
+            false,
+            false,
+            "Unsupported",
+            "This node is not supported by the current solver.",
             Array.Empty<PreflopNodeStrategyItemDto>(),
             new PreflopNodeSolveMetadataDto("Unavailable", 0, 0, "None"),
             ToTraceDto(trace ?? EmptyTrace()));
@@ -609,8 +638,6 @@ public sealed class PreflopHandAnalysisService : IPreflopHandAnalysisService
             }
 
             //var amountBb = bb > 0 ? decimal.Round((action.Amount ?? 0m) / bb, 2) : 0m;
-            Console.WriteLine(
-    $"EXTRACT MAP: player={action.Player} type={action.Type} rawAmount={action.Amount} rawToAmount={action.ToAmount}");
             decimal sourceAmount = action.Type switch
             {
                 ActionType.PostSmallBlind => action.Amount ?? 0m,
@@ -622,9 +649,6 @@ public sealed class PreflopHandAnalysisService : IPreflopHandAnalysisService
             };
 
             var amountBb = bb > 0 ? decimal.Round(sourceAmount / bb, 2) : 0m;
-
-            Console.WriteLine(
-                $"EXTRACT NORM: player={action.Player} type={action.Type} sourceAmount={sourceAmount} amountBb={amountBb}");
             actions.Add(new PreflopInputAction(new PlayerId(player.Id), type, amountBb));
         }
 

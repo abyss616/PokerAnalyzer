@@ -34,6 +34,11 @@ public sealed class ApiClient
         IReadOnlyList<PreflopLegalAction> LegalActions,
         IReadOnlyList<PreflopRecommendationItem> Recommendations,
         string SummaryRecommendation,
+        bool HasStrategy,
+        bool IsFallbackStrategy,
+        bool IsUniformStrategy,
+        string? StrategyStatus,
+        string? StrategyExplanation,
         IReadOnlyList<PreflopStrategyItem> Strategy,
         PreflopSolveMetadata SolveMetadata,
         PreflopTrace Trace);
