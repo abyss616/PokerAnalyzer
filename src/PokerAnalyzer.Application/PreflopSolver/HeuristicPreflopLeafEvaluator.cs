@@ -49,7 +49,7 @@ public sealed class HeuristicPreflopLeafEvaluator : IPreflopLeafEvaluator
 
         var reason =
             $"heuristic preflop root-action: hand={handLabel}, rootAction={context.RootAction.ActionType}, pos={context.HeroPosition}, stackBb={context.RootEffectiveStackBb:0.0}, " +
-            $"solverKey={context.SolverKey ?? \"n/a\"}, strength={handStrength:0.000}, evFold={foldEv:0.000}, evLimp={limpEv:0.000}, evRaise={raiseEv:0.000}, chosen={chosenEv:0.000}";
+            $"solverKey={(context.SolverKey ?? "n/a")}, strength={handStrength:0.000}, evFold={foldEv:0.000}, evLimp={limpEv:0.000}, evRaise={raiseEv:0.000}, chosen={chosenEv:0.000}";
 
         return new PreflopLeafEvaluation(utility, reason);
     }
