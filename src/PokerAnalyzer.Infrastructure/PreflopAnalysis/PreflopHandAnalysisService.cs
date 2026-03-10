@@ -92,6 +92,7 @@ public sealed class PreflopHandAnalysisService : IPreflopHandAnalysisService
         
 
         var strategyResult = await ResolveStrategyAsync(extraction.Key.SolverKey, snapshotState, legalActions, ct);
+        var recommendationResult = BuildRecommendations(legalActions, strategyResult.Strategy);
 
         var canonicalKey = BuildCanonicalKey(extraction.Key, request.HeroHoleCards);
         return new PreflopNodeQueryResultDto(
@@ -109,6 +110,8 @@ public sealed class PreflopHandAnalysisService : IPreflopHandAnalysisService
             extraction.Key.RaiseDepth,
             BuildSizingSummary(extraction.Trace),
             legalActions.Select(ToLegalActionDto).ToList(),
+            recommendationResult.Recommendations,
+            recommendationResult.SummaryRecommendation,
             strategyResult.Strategy,
             strategyResult.Metadata,
             ToTraceDto(extraction.Trace));
@@ -143,6 +146,66 @@ public sealed class PreflopHandAnalysisService : IPreflopHandAnalysisService
                 strategyResult.IterationsCompleted,
                 strategyResult.ElapsedMilliseconds,
                 strategyResult.SolveMode));
+    }
+
+    private static (IReadOnlyList<PreflopNodeRecommendationItemDto> Recommendations, string SummaryRecommendation) BuildRecommendations(
+        IReadOnlyList<LegalAction> legalActions,
+        IReadOnlyList<PreflopNodeStrategyItemDto> strategy)
+    {
+        if (legalActions.Count == 0)
+            return (Array.Empty<PreflopNodeRecommendationItemDto>(), string.Empty);
+
+        var strategyByAction = strategy.ToDictionary(x => x.ActionKey, x => x.Frequency, StringComparer.Ordinal);
+        var recommendations = legalActions
+            .Select(ToLegalActionDto)
+            .Select(action => new PreflopNodeRecommendationItemDto(
+                action.ActionKey,
+                BuildDisplayLabel(action),
+                strategyByAction.TryGetValue(action.ActionKey, out var frequency) ? frequency : 0m,
+                false))
+            .ToList();
+
+        if (recommendations.Count == 0)
+            return (recommendations, string.Empty);
+
+        var bestFrequency = recommendations.Max(x => x.Frequency);
+        var bestCount = recommendations.Count(x => x.Frequency == bestFrequency);
+        var updated = recommendations
+            .Select(x => x with { IsBestAction = x.Frequency == bestFrequency && bestFrequency > 0m && bestCount == 1 })
+            .ToList();
+
+        return (updated, BuildSummaryRecommendation(updated, bestFrequency, bestCount));
+    }
+
+    private static string BuildSummaryRecommendation(
+        IReadOnlyList<PreflopNodeRecommendationItemDto> recommendations,
+        decimal bestFrequency,
+        int bestCount)
+    {
+        if (recommendations.Count == 0 || bestFrequency <= 0m)
+            return string.Empty;
+
+        if (bestCount == 1)
+        {
+            var bestAction = recommendations.First(x => x.Frequency == bestFrequency);
+            return $"Recommended: {bestAction.DisplayLabel}";
+        }
+
+        var mixed = recommendations
+            .Where(x => x.Frequency > 0m)
+            .OrderByDescending(x => x.Frequency)
+            .Select(x => $"{x.DisplayLabel} {x.Frequency:0.##}%");
+
+        return $"Mix: {string.Join(", ", mixed)}";
+    }
+
+    private static string BuildDisplayLabel(PreflopNodeLegalActionDto action)
+    {
+        var actionTypeLabel = action.ActionType.ToString();
+        if (action.SizeBb is null)
+            return actionTypeLabel;
+
+        return $"{actionTypeLabel} {action.SizeBb:0.##}bb";
     }
 
     private static string BuildCanonicalKey(PreflopInfoSetKey key, string? heroHoleCards)
@@ -485,6 +548,8 @@ public sealed class PreflopHandAnalysisService : IPreflopHandAnalysisService
             trace?.RaiseDepth ?? 0,
             trace is null ? "NA" : BuildSizingSummary(trace),
             Array.Empty<PreflopNodeLegalActionDto>(),
+            Array.Empty<PreflopNodeRecommendationItemDto>(),
+            string.Empty,
             Array.Empty<PreflopNodeStrategyItemDto>(),
             new PreflopNodeSolveMetadataDto("Unavailable", 0, 0, "None"),
             ToTraceDto(trace ?? EmptyTrace()));
