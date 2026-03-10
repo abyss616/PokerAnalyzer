@@ -496,6 +496,9 @@ public sealed class PreflopRegretTrainer
                 : 0d;
 
             actionValues[action] = utility;
+
+            var leafReason = rollout.Path.LastOrDefault(node => node.NodeKind == TraversalNodeKind.Leaf)?.Note ?? "unknown leaf";
+            Trace.WriteLine($"preflop-eval action={action}, utility={utility:0.000}, reason={leafReason}");
         }
 
         return actionValues;
