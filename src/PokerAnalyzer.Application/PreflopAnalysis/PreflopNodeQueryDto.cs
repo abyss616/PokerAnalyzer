@@ -38,6 +38,8 @@ public sealed record PreflopNodeQueryResultDto(
     int RaiseDepth,
     string SizingBucketSummary,
     IReadOnlyList<PreflopNodeLegalActionDto> LegalActions,
+    IReadOnlyList<PreflopNodeRecommendationItemDto> Recommendations,
+    string SummaryRecommendation,
     IReadOnlyList<PreflopNodeStrategyItemDto> Strategy,
     PreflopNodeSolveMetadataDto SolveMetadata,
     PreflopNodeTraceDto Trace);
@@ -49,6 +51,12 @@ public sealed record PreflopNodeLegalActionDto(
     bool IsFacingAllIn);
 
 public sealed record PreflopNodeStrategyItemDto(string ActionKey, decimal Frequency);
+
+public sealed record PreflopNodeRecommendationItemDto(
+    string ActionKey,
+    string DisplayLabel,
+    decimal Frequency,
+    bool IsBestAction);
 
 public sealed record PreflopNodeSolveMetadataDto(
     string StrategySource,

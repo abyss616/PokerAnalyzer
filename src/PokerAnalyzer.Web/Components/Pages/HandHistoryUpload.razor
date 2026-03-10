@@ -66,28 +66,60 @@
             <div><strong>Iterations:</strong> @_preflopAnalysis.SolveMetadata.IterationsCompleted</div>
             <div><strong>Elapsed:</strong> @_preflopAnalysis.SolveMetadata.ElapsedMilliseconds ms</div>
 
-            <div class="mt-2"><strong>Legal actions</strong></div>
-            <ul>
-                @foreach (var action in _preflopAnalysis.LegalActions)
-                {
-                    <li>@action.ActionKey (@action.ActionType@(action.SizeBb.HasValue ? $", {action.SizeBb:0.##}bb" : ""))</li>
-                }
-            </ul>
+            <div class="row mt-2 g-3">
+                <div class="col-md-6">
+                    <div class="card h-100">
+                        <div class="card-body">
+                            <div><strong>Legal actions</strong></div>
+                            <ul class="mb-0">
+                                @foreach (var action in _preflopAnalysis.LegalActions)
+                                {
+                                    <li>@action.ActionKey (@action.ActionType@(action.SizeBb.HasValue ? $", {action.SizeBb:0.##}bb" : ""))</li>
+                                }
+                            </ul>
+                        </div>
+                    </div>
+                </div>
 
-            <div class="mt-2"><strong>Mixed strategy</strong></div>
-            @if (_preflopAnalysis.Strategy.Count == 0)
-            {
-                <div class="text-warning">No solved strategy available for this node.</div>
-            }
-            else
-            {
-                <ul>
-                    @foreach (var mix in _preflopAnalysis.Strategy)
-                    {
-                        <li>@mix.ActionKey: @mix.Frequency%</li>
-                    }
-                </ul>
-            }
+                <div class="col-md-6">
+                    <div class="card h-100">
+                        <div class="card-body">
+                            <div><strong>Solver recommendation</strong></div>
+                            @if (_preflopAnalysis.Recommendations.Count == 0)
+                            {
+                                <div class="text-warning mt-2">No solved strategy available for this node.</div>
+                            }
+                            else
+                            {
+                                @if (!string.IsNullOrWhiteSpace(_preflopAnalysis.SummaryRecommendation))
+                                {
+                                    <div class="mt-2"><strong>@_preflopAnalysis.SummaryRecommendation</strong></div>
+                                }
+
+                                <table class="table table-sm mb-0 mt-2">
+                                    <thead>
+                                        <tr>
+                                            <th>Action</th>
+                                            <th class="text-end">Frequency</th>
+                                            <th>Best</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        @foreach (var recommendation in _preflopAnalysis.Recommendations)
+                                        {
+                                            <tr>
+                                                <td>@recommendation.DisplayLabel</td>
+                                                <td class="text-end">@recommendation.Frequency%</td>
+                                                <td>@(recommendation.IsBestAction ? "Best" : "")</td>
+                                            </tr>
+                                        }
+                                    </tbody>
+                                </table>
+                            }
+                        </div>
+                    </div>
+                </div>
+            </div>
 
             <details class="mt-2">
                 <summary><strong>Mapping trace</strong></summary>
