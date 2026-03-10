@@ -84,10 +84,21 @@
                 <div class="col-md-6">
                     <div class="card h-100">
                         <div class="card-body">
-                            <div><strong>Solver recommendation</strong></div>
-                            @if (_preflopAnalysis.Recommendations.Count == 0)
+                            <div class="d-flex align-items-center gap-2">
+                                <strong>Solver recommendation</strong>
+                                @if (!string.IsNullOrWhiteSpace(_preflopAnalysis.StrategyStatus))
+                                {
+                                    <span class="badge @GetStrategyBadgeClass(_preflopAnalysis.StrategyStatus)">@_preflopAnalysis.StrategyStatus</span>
+                                }
+                            </div>
+
+                            @if (!_preflopAnalysis.HasStrategy)
                             {
-                                <div class="text-warning mt-2">No solved strategy available for this node.</div>
+                                <div class="alert alert-warning mt-2 mb-2">No solved strategy available for this node.</div>
+                                @if (!string.IsNullOrWhiteSpace(_preflopAnalysis.StrategyExplanation))
+                                {
+                                    <div class="text-muted">@_preflopAnalysis.StrategyExplanation</div>
+                                }
                             }
                             else
                             {
@@ -96,25 +107,36 @@
                                     <div class="mt-2"><strong>@_preflopAnalysis.SummaryRecommendation</strong></div>
                                 }
 
-                                <table class="table table-sm mb-0 mt-2">
-                                    <thead>
-                                        <tr>
-                                            <th>Action</th>
-                                            <th class="text-end">Frequency</th>
-                                            <th>Best</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody>
-                                        @foreach (var recommendation in _preflopAnalysis.Recommendations)
-                                        {
+                                @if (_preflopAnalysis.IsFallbackStrategy || _preflopAnalysis.IsUniformStrategy)
+                                {
+                                    @if (!string.IsNullOrWhiteSpace(_preflopAnalysis.StrategyExplanation))
+                                    {
+                                        <div class="text-muted mt-1">@_preflopAnalysis.StrategyExplanation</div>
+                                    }
+                                }
+
+                                @if (_preflopAnalysis.Recommendations.Count > 0)
+                                {
+                                    <table class="table table-sm mb-0 mt-2 @(_preflopAnalysis.IsFallbackStrategy || _preflopAnalysis.IsUniformStrategy ? "table-warning" : string.Empty)">
+                                        <thead>
                                             <tr>
-                                                <td>@recommendation.DisplayLabel</td>
-                                                <td class="text-end">@recommendation.Frequency%</td>
-                                                <td>@(recommendation.IsBestAction ? "Best" : "")</td>
+                                                <th>Action</th>
+                                                <th class="text-end">Frequency</th>
+                                                <th>Best</th>
                                             </tr>
-                                        }
-                                    </tbody>
-                                </table>
+                                        </thead>
+                                        <tbody>
+                                            @foreach (var recommendation in _preflopAnalysis.Recommendations)
+                                            {
+                                                <tr>
+                                                    <td>@recommendation.DisplayLabel</td>
+                                                    <td class="text-end">@recommendation.Frequency.ToString("0.##")%</td>
+                                                    <td>@(recommendation.IsBestAction ? "Best" : "")</td>
+                                                </tr>
+                                            }
+                                        </tbody>
+                                    </table>
+                                }
                             }
                         </div>
                     </div>
@@ -315,6 +337,19 @@
             _analysisError = ex.Message;
         }
     }
+
+
+    private static string GetStrategyBadgeClass(string? status)
+        => status?.ToLowerInvariant() switch
+        {
+            "solved" => "bg-success",
+            "fallback" => "bg-warning text-dark",
+            "uniform" => "bg-info text-dark",
+            "untrained" => "bg-info text-dark",
+            "unsupported" => "bg-secondary",
+            "nostrategy" => "bg-secondary",
+            _ => "bg-light text-dark"
+        };
 
     private void AddTrace(string message)
         => _traceLines.Add($"[{DateTime.Now:HH:mm:ss}] {message}");

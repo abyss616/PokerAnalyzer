@@ -40,6 +40,11 @@ public sealed record PreflopNodeQueryResultDto(
     IReadOnlyList<PreflopNodeLegalActionDto> LegalActions,
     IReadOnlyList<PreflopNodeRecommendationItemDto> Recommendations,
     string SummaryRecommendation,
+    bool HasStrategy,
+    bool IsFallbackStrategy,
+    bool IsUniformStrategy,
+    string? StrategyStatus,
+    string? StrategyExplanation,
     IReadOnlyList<PreflopNodeStrategyItemDto> Strategy,
     PreflopNodeSolveMetadataDto SolveMetadata,
     PreflopNodeTraceDto Trace);
