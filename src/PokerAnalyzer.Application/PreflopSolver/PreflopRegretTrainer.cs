@@ -140,6 +140,23 @@ public sealed class RegretMatchingPolicyProvider : IPreflopPolicyProvider
     }
 }
 
+public sealed class CanonicalKeyRegretMatchingPolicyProvider : IPreflopPolicyProvider
+{
+    private readonly RegretMatchingPolicyProvider _innerProvider;
+    private readonly string _canonicalStorageKey;
+
+    public CanonicalKeyRegretMatchingPolicyProvider(IRegretStore regretStore, string canonicalStorageKey)
+    {
+        _innerProvider = new RegretMatchingPolicyProvider(regretStore ?? throw new ArgumentNullException(nameof(regretStore)));
+        _canonicalStorageKey = string.IsNullOrWhiteSpace(canonicalStorageKey)
+            ? throw new ArgumentException("Canonical storage key cannot be null or whitespace.", nameof(canonicalStorageKey))
+            : canonicalStorageKey;
+    }
+
+    public bool TryGetPolicy(string infoSetKey, IReadOnlyList<LegalAction> legalActions, out IReadOnlyDictionary<LegalAction, double> policy)
+        => _innerProvider.TryGetPolicy(_canonicalStorageKey, legalActions, out policy);
+}
+
 public interface ITraversalPlayerSelector
 {
     PlayerId Select(SolverHandState rootState);
@@ -280,6 +297,8 @@ public sealed class PreflopRegretTrainer
     private readonly IRegretStore _regretStore;
     private readonly IAverageStrategyStore _averageStrategyStore;
     private readonly IPreflopTrainingProgressStore _trainingProgressStore;
+    private readonly string? _canonicalStorageKey;
+    private readonly RegretMatchingPolicyProvider _policyProvider;
 
 
     public PreflopRegretTrainer(
@@ -292,21 +311,25 @@ public sealed class PreflopRegretTrainer
         ITraversalPlayerSelector traversalPlayerSelector,
         IRegretStore regretStore,
         IAverageStrategyStore averageStrategyStore,
-        IPreflopTrainingProgressStore? trainingProgressStore = null)
+        IPreflopTrainingProgressStore? trainingProgressStore = null,
+        string? canonicalStorageKey = null)
         : this(
             rootStateProvider,
             new PreflopTrajectoryTraverser(
                 rootStateProvider,
                 chanceSampler,
                 infoSetMapper,
-                new RegretMatchingPolicyProvider(regretStore),
+                string.IsNullOrWhiteSpace(canonicalStorageKey)
+                    ? new RegretMatchingPolicyProvider(regretStore)
+                    : new CanonicalKeyRegretMatchingPolicyProvider(regretStore, canonicalStorageKey),
                 actionSampler,
                 leafEvaluator,
                 leafDetector),
             traversalPlayerSelector,
             regretStore,
             averageStrategyStore,
-            trainingProgressStore)
+            trainingProgressStore,
+            canonicalStorageKey)
     {
     }
 
@@ -316,7 +339,8 @@ public sealed class PreflopRegretTrainer
         ITraversalPlayerSelector traversalPlayerSelector,
         IRegretStore regretStore,
         IAverageStrategyStore averageStrategyStore,
-        IPreflopTrainingProgressStore? trainingProgressStore = null)
+        IPreflopTrainingProgressStore? trainingProgressStore = null,
+        string? canonicalStorageKey = null)
     {
         _rootStateProvider = rootStateProvider ?? throw new ArgumentNullException(nameof(rootStateProvider));
         _trajectoryTraverser = trajectoryTraverser ?? throw new ArgumentNullException(nameof(trajectoryTraverser));
@@ -324,6 +348,8 @@ public sealed class PreflopRegretTrainer
         _regretStore = regretStore ?? throw new ArgumentNullException(nameof(regretStore));
         _averageStrategyStore = averageStrategyStore ?? throw new ArgumentNullException(nameof(averageStrategyStore));
         _trainingProgressStore = trainingProgressStore ?? NullPreflopTrainingProgressStore.Instance;
+        _canonicalStorageKey = string.IsNullOrWhiteSpace(canonicalStorageKey) ? null : canonicalStorageKey;
+        _policyProvider = new RegretMatchingPolicyProvider(_regretStore);
     }
 
     public void RunIteration(Random rng)
@@ -348,9 +374,12 @@ public sealed class PreflopRegretTrainer
             var actionValues = EvaluateActionValues(node.StateBeforeAction, traversalPlayerId, node.LegalActions, rng);
             var nodeValue = 0d;
 
+            var storageKey = _canonicalStorageKey ?? node.InfoSetKey;
+            var policy = ResolvePolicy(storageKey, node.LegalActions, node.Policy);
+
             foreach (var action in node.LegalActions)
             {
-                var policyProbability = node.Policy.TryGetValue(action, out var probability)
+                var policyProbability = policy.TryGetValue(action, out var probability)
                     ? probability
                     : 0d;
 
@@ -360,22 +389,35 @@ public sealed class PreflopRegretTrainer
             foreach (var action in node.LegalActions)
             {
                 var regretDelta = actionValues[action] - nodeValue;
-                _regretStore.Add(node.InfoSetKey, action, regretDelta);
+                _regretStore.Add(storageKey, action, regretDelta);
             }
 
             foreach (var action in node.LegalActions)
             {
-                var probability = node.Policy.TryGetValue(action, out var policyProbability)
+                var probability = policy.TryGetValue(action, out var policyProbability)
                     ? policyProbability
                     : 0d;
 
-                _averageStrategyStore.Add(node.InfoSetKey, action, probability);
+                _averageStrategyStore.Add(storageKey, action, probability);
             }
 
             // Future hook: MCCFR-style weighting can adjust regretDelta before Add.
         }
 
         _trainingProgressStore.IncrementIterations(1);
+    }
+
+    private IReadOnlyDictionary<LegalAction, double> ResolvePolicy(
+        string infoSetKey,
+        IReadOnlyList<LegalAction> legalActions,
+        IReadOnlyDictionary<LegalAction, double> fallbackPolicy)
+    {
+        if (_canonicalStorageKey is null)
+            return fallbackPolicy;
+
+        return _policyProvider.TryGetPolicy(infoSetKey, legalActions, out var policy)
+            ? policy
+            : fallbackPolicy;
     }
 
     public PreflopTrainingResult RunTraining(

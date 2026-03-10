@@ -310,6 +310,41 @@ public sealed class PreflopRegretTrainerTests
         Assert.Equal(0d, averageStrategy.Get("traversal_infoset", raise), 10);
     }
 
+    [Fact]
+    public void RunIteration_WithCanonicalStorageKey_WritesAndReadsUsingCanonicalKey()
+    {
+        var root = CreateHeadsUpPreflopState();
+        var traversalPlayer = root.Players[0].PlayerId;
+
+        var regrets = new InMemoryRegretStore();
+        var averageStrategy = new InMemoryAverageStrategyStore();
+        var fold = new LegalAction(ActionType.Fold);
+        var call = new LegalAction(ActionType.Call, new ChipAmount(1));
+        var policy = new Dictionary<LegalAction, double>
+        {
+            [fold] = 0.6d,
+            [call] = 0.4d
+        };
+
+        var traverser = new StaticPolicyTrajectoryTraverser(root, traversalPlayer, fold, call, policy);
+        const string solverKey = "v2/UNOPENED/BTN/eff=130.5/jam=18";
+
+        var trainer = new PreflopRegretTrainer(
+            new FixedRootStateProvider(root),
+            traverser,
+            new FixedTraversalPlayerSelector(traversalPlayer),
+            regrets,
+            averageStrategy,
+            canonicalStorageKey: solverKey);
+
+        trainer.RunIteration(new Random(17));
+
+        Assert.Equal(0.6d, averageStrategy.Get(solverKey, fold), 10);
+        Assert.Equal(0.4d, averageStrategy.Get(solverKey, call), 10);
+        Assert.Equal(0d, averageStrategy.Get("traversal_infoset", fold), 10);
+        Assert.Equal(0d, averageStrategy.Get("traversal_infoset", call), 10);
+    }
+
 
     private static PreflopRegretTrainer CreateTrainerWithRegretAwareTraverser(
         out InMemoryRegretStore regrets,
