@@ -490,7 +490,23 @@ public sealed class PreflopRegretTrainer
         foreach (var action in legalActions)
         {
             var afterActionState = stateBeforeAction.Apply(action);
-            var rollout = _trajectoryTraverser.SampleTrajectory(afterActionState, rng);
+            if (!stateBeforeAction.PrivateCardsByPlayer.TryGetValue(traversalPlayerId, out var heroCards))
+                throw new InvalidOperationException($"Missing private cards for traversal player {traversalPlayerId} at root decision.");
+
+            var hero = stateBeforeAction.Players.FirstOrDefault(player => player.PlayerId == traversalPlayerId)
+                ?? throw new InvalidOperationException($"Traversal player {traversalPlayerId} not found at root decision.");
+
+            var evaluationContext = new PreflopLeafEvaluationContext(
+                stateBeforeAction,
+                afterActionState,
+                traversalPlayerId,
+                hero.Position,
+                heroCards,
+                ResolveEffectiveStackBb(stateBeforeAction, traversalPlayerId),
+                action,
+                null);
+
+            var rollout = _trajectoryTraverser.SampleTrajectory(afterActionState, rng, evaluationContext);
             var utility = rollout.UtilityByPlayer.TryGetValue(traversalPlayerId, out var value)
                 ? value
                 : 0d;
@@ -502,5 +518,21 @@ public sealed class PreflopRegretTrainer
         }
 
         return actionValues;
+    }
+
+    private static double ResolveEffectiveStackBb(SolverHandState state, PlayerId heroPlayerId)
+    {
+        var hero = state.Players.FirstOrDefault(player => player.PlayerId == heroPlayerId)
+            ?? throw new InvalidOperationException($"Hero player {heroPlayerId} was not found in state.");
+
+        var villainMaxContribution = state.Players
+            .Where(player => player.PlayerId != heroPlayerId && player.IsActive)
+            .Select(player => player.Stack.Value + player.CurrentStreetContribution.Value)
+            .DefaultIfEmpty(hero.Stack.Value + hero.CurrentStreetContribution.Value)
+            .Min();
+
+        var heroTotal = hero.Stack.Value + hero.CurrentStreetContribution.Value;
+        var effectiveChips = Math.Min(heroTotal, villainMaxContribution);
+        return effectiveChips / (double)Math.Max(1L, state.Config.BigBlind.Value);
     }
 }
