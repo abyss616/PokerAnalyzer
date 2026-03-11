@@ -52,6 +52,44 @@ public sealed class EquityBasedPreflopLeafEvaluatorTests
         Assert.Contains("heuristic preflop", result.Reason);
     }
 
+    [Fact]
+    public void TableDrivenOpponentRangeProvider_CachesBuiltRanges_ByContext()
+    {
+        var provider = new TableDrivenOpponentRangeProvider();
+        var request = new OpponentRangeRequest(
+            Position.BTN,
+            Position.BB,
+            PreflopNodeFamily.FacingRaise,
+            RaiseDepth: 1,
+            IsHeadsUp: true,
+            SolverKey: "v2/VS_OPEN/BTN/eff=100");
+
+        var first = provider.TryGetRange(request, out var rangeA, out _);
+        var second = provider.TryGetRange(request, out var rangeB, out _);
+
+        Assert.True(first);
+        Assert.True(second);
+        Assert.Equal(1, provider.RangeBuildCount);
+        Assert.Equal(1, provider.CachedRangeCount);
+        Assert.Same(rangeA.WeightedCombos, rangeB.WeightedCombos);
+    }
+
+    [Fact]
+    public void DeterministicPreflopEquity_CachesCanonicalMatchups()
+    {
+        var hero = HoleCards.Parse("AsKh");
+        var villain = HoleCards.Parse("QdJd");
+        var samples = 96;
+
+        var before = DeterministicPreflopEquity.MatchupComputationCount;
+        var heroVsVillain = DeterministicPreflopEquity.CalculateHeadsUpEquity(hero, villain, samples);
+        var villainVsHero = DeterministicPreflopEquity.CalculateHeadsUpEquity(villain, hero, samples);
+        var after = DeterministicPreflopEquity.MatchupComputationCount;
+
+        Assert.Equal(before + 1, after);
+        Assert.InRange(Math.Abs((heroVsVillain + villainVsHero) - 1d), 0d, 0.0000001d);
+    }
+
     private static PreflopLeafEvaluationContext CreateHeadsUpContext(HoleCards heroCards, HoleCards villainCards, ActionType rootAction, string solverKey)
     {
         var heroId = new PlayerId(Guid.Parse("11111111-1111-1111-1111-111111111111"));
