@@ -36,11 +36,7 @@ public interface IPreflopLeafDetector
 public interface IPreflopTrajectoryTraverser
 {
     TrajectorySample RunIteration(Random rng);
-    TrajectorySample SampleTrajectory(
-        SolverHandState rootState,
-        Random rng,
-        PlayerId? heroPlayerId = null,
-        PreflopLeafEvaluationContext? evaluationContext = null);
+    TrajectorySample SampleTrajectory(SolverHandState rootState, Random rng, PreflopLeafEvaluationContext? evaluationContext = null);
 }
 
 public sealed class PreflopTrajectoryTraverser : IPreflopTrajectoryTraverser
@@ -79,11 +75,7 @@ public sealed class PreflopTrajectoryTraverser : IPreflopTrajectoryTraverser
         return SampleTrajectory(_rootStateProvider.CreateRootState(), rng);
     }
 
-    public TrajectorySample SampleTrajectory(
-        SolverHandState rootState,
-        Random rng,
-        PlayerId? heroPlayerId = null,
-        PreflopLeafEvaluationContext? evaluationContext = null)
+    public TrajectorySample SampleTrajectory(SolverHandState rootState, Random rng, PreflopLeafEvaluationContext? evaluationContext = null)
     {
         ArgumentNullException.ThrowIfNull(rootState);
         ArgumentNullException.ThrowIfNull(rng);
@@ -98,8 +90,7 @@ public sealed class PreflopTrajectoryTraverser : IPreflopTrajectoryTraverser
 
             if (_leafDetector.IsLeaf(current))
             {
-                var resolvedHeroPlayerId = evaluationContext?.HeroPlayerId ?? heroPlayerId ?? rootState.ActingPlayerId;
-                var leafEvaluationContext = (evaluationContext ?? BuildContextFromSampledRootAction(rootState, current, visited, resolvedHeroPlayerId)) with { LeafState = current };
+                var leafEvaluationContext = (evaluationContext ?? BuildContextFromSampledRootAction(rootState, current, visited)) with { LeafState = current };
                 var leafEvaluation = _leafEvaluator.Evaluate(leafEvaluationContext);
                 visited.Add(VisitedNode.CreateLeaf(visited.Count, current.Street, leafEvaluation.Reason));
 
@@ -117,8 +108,7 @@ public sealed class PreflopTrajectoryTraverser : IPreflopTrajectoryTraverser
             var legalActions = current.GenerateLegalActions();
             if (legalActions.Count == 0)
             {
-                var resolvedHeroPlayerId = evaluationContext?.HeroPlayerId ?? heroPlayerId ?? rootState.ActingPlayerId;
-                var leafEvaluationContext = (evaluationContext ?? BuildContextFromSampledRootAction(rootState, current, visited, resolvedHeroPlayerId)) with { LeafState = current };
+                var leafEvaluationContext = (evaluationContext ?? BuildContextFromSampledRootAction(rootState, current, visited)) with { LeafState = current };
                 var noActionEvaluation = _leafEvaluator.Evaluate(leafEvaluationContext);
                 visited.Add(VisitedNode.CreateLeaf(visited.Count, current.Street, noActionEvaluation.Reason));
                 return new TrajectorySample(current, noActionEvaluation.UtilityByPlayer, visited);
@@ -140,29 +130,25 @@ public sealed class PreflopTrajectoryTraverser : IPreflopTrajectoryTraverser
     private static PreflopLeafEvaluationContext BuildContextFromSampledRootAction(
         SolverHandState rootState,
         SolverHandState leafState,
-        IReadOnlyList<VisitedNode> visited,
-        PlayerId heroPlayerId)
+        IReadOnlyList<VisitedNode> visited)
     {
         var firstActionNode = visited.FirstOrDefault(node => node.NodeKind == TraversalNodeKind.Action && node.SampledAction is not null);
         if (firstActionNode?.ActingPlayerId is not PlayerId actingPlayerId || firstActionNode.SampledAction is null)
             throw new InvalidOperationException("Cannot build preflop leaf evaluation context because the sampled trajectory does not contain an action node.");
 
-        var hero = rootState.Players.FirstOrDefault(player => player.PlayerId == heroPlayerId)
-            ?? throw new InvalidOperationException($"Hero player {heroPlayerId} was not found in the root state.");
+        var actingPlayer = rootState.Players.FirstOrDefault(player => player.PlayerId == actingPlayerId)
+            ?? throw new InvalidOperationException($"Sampled acting player {actingPlayerId} was not found in the root state.");
 
-        var hasHeroCards = leafState.PrivateCardsByPlayer.TryGetValue(heroPlayerId, out var heroCards)
-            || rootState.PrivateCardsByPlayer.TryGetValue(heroPlayerId, out heroCards);
+        if (!leafState.PrivateCardsByPlayer.TryGetValue(actingPlayerId, out var actingPlayerCards))
+            throw new InvalidOperationException($"Cannot build preflop leaf evaluation context because sampled leaf state is missing private cards for sampled acting player {actingPlayerId}.");
 
-        if (!hasHeroCards || heroCards is null)
-            throw new InvalidOperationException($"Cannot build preflop leaf evaluation context because hero player {heroPlayerId} is missing private cards.");
-
-        var rootEffectiveStackBb = ResolveEffectiveStackBb(rootState, heroPlayerId);
+        var rootEffectiveStackBb = ResolveEffectiveStackBb(rootState, actingPlayerId);
         return new PreflopLeafEvaluationContext(
             rootState,
             leafState,
-            heroPlayerId,
-            hero.Position,
-            heroCards,
+            actingPlayerId,
+            actingPlayer.Position,
+            actingPlayerCards,
             rootEffectiveStackBb,
             firstActionNode.SampledAction,
             firstActionNode.InfoSetKey);

@@ -467,7 +467,7 @@ public sealed class PreflopRegretTrainerTests
 
         public TrajectorySample RunIteration(Random rng) => SampleTrajectory(_root, rng);
 
-        public TrajectorySample SampleTrajectory(SolverHandState rootState, Random rng, PlayerId? heroPlayerId = null, PreflopLeafEvaluationContext? evaluationContext = null)
+        public TrajectorySample SampleTrajectory(SolverHandState rootState, Random rng)
         {
             if (!_returnedInitialTrajectory)
             {
@@ -563,7 +563,7 @@ public sealed class PreflopRegretTrainerTests
 
         public TrajectorySample RunIteration(Random rng) => SampleTrajectory(_root, rng);
 
-        public TrajectorySample SampleTrajectory(SolverHandState rootState, Random rng, PlayerId? heroPlayerId = null, PreflopLeafEvaluationContext? evaluationContext = null)
+        public TrajectorySample SampleTrajectory(SolverHandState rootState, Random rng)
         {
             if (rootState.ActionHistory.Count > _root.ActionHistory.Count)
             {
