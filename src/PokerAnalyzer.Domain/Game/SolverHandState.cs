@@ -170,8 +170,6 @@ public sealed record SolverHandState
     public SolverHandState Apply(LegalAction action)
         => SolverStateStepper.Step(this, action);
 
-    internal SolverHandState Apply(LegalAction action, IReadOnlyList<LegalAction> legalActions)
-        => SolverStateStepper.Step(this, action, legalActions);
 
     internal void ValidateNonNegativeStacks()
     {
