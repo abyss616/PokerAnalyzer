@@ -1,5 +1,7 @@
 using PokerAnalyzer.Domain.Cards;
 using PokerAnalyzer.Domain.Game;
+using System.Collections.Concurrent;
+using System.Threading;
 
 namespace PokerAnalyzer.Application.PreflopSolver;
 
@@ -42,11 +44,11 @@ public sealed class EquityBasedPreflopLeafEvaluator : IPreflopLeafEvaluator
     public EquityBasedPreflopLeafEvaluator(
         IOpponentRangeProvider rangeProvider,
         IPreflopLeafEvaluator fallbackEvaluator,
-        int samplesPerMatchup = 400)
+        int samplesPerMatchup = 160)
     {
         _rangeProvider = rangeProvider ?? throw new ArgumentNullException(nameof(rangeProvider));
         _fallbackEvaluator = fallbackEvaluator ?? throw new ArgumentNullException(nameof(fallbackEvaluator));
-        _samplesPerMatchup = Math.Max(100, samplesPerMatchup);
+        _samplesPerMatchup = Math.Max(32, samplesPerMatchup);
     }
 
     public PreflopLeafEvaluation Evaluate(PreflopLeafEvaluationContext context)
@@ -131,6 +133,12 @@ public sealed class TableDrivenOpponentRangeProvider : IOpponentRangeProvider
         [PreflopNodeFamily.Squeeze] = 0.06
     };
 
+    private readonly ConcurrentDictionary<RangeDefinitionKey, OpponentWeightedRange> _rangeCache = new();
+    private long _rangeBuildCount;
+
+    public long RangeBuildCount => Interlocked.Read(ref _rangeBuildCount);
+    public int CachedRangeCount => _rangeCache.Count;
+
     public bool TryGetRange(OpponentRangeRequest request, out OpponentWeightedRange range, out string reason)
     {
         if (!request.IsHeadsUp)
@@ -147,16 +155,38 @@ public sealed class TableDrivenOpponentRangeProvider : IOpponentRangeProvider
             return false;
         }
 
-        var weightedCombos = AllDistinctHoleCardsCache.AllCombos
-            .OrderByDescending(PreflopHandStrengthScorer.Score)
-            .Take(Math.Max(1, (int)Math.Round(AllDistinctHoleCardsCache.AllCombos.Count * percentile)))
-            .Select(c => new WeightedHoleCards(c, 1d))
-            .ToArray();
+        var cacheKey = new RangeDefinitionKey(
+            request.HeroPosition,
+            request.VillainPosition,
+            request.NodeFamily,
+            request.RaiseDepth,
+            request.IsHeadsUp,
+            request.SolverKey);
+
+        var rangeHit = _rangeCache.GetOrAdd(cacheKey, _ =>
+        {
+            Interlocked.Increment(ref _rangeBuildCount);
+            var rangeSize = Math.Max(1, (int)Math.Round(AllDistinctHoleCardsCache.RankedCombosByStrength.Count * percentile));
+            var weightedCombos = new WeightedHoleCards[rangeSize];
+
+            for (var i = 0; i < rangeSize; i++)
+                weightedCombos[i] = new WeightedHoleCards(AllDistinctHoleCardsCache.RankedCombosByStrength[i], 1d);
+
+            return new OpponentWeightedRange(weightedCombos, request.NodeFamily.ToString());
+        });
 
         reason = $"table-range percentile={percentile:0.00}";
-        range = new OpponentWeightedRange(weightedCombos, request.NodeFamily.ToString());
+        range = rangeHit;
         return true;
     }
+
+    private readonly record struct RangeDefinitionKey(
+        Position HeroPosition,
+        Position? VillainPosition,
+        PreflopNodeFamily NodeFamily,
+        int RaiseDepth,
+        bool IsHeadsUp,
+        string? SolverKey);
 }
 
 internal static class PreflopNodeFamilyClassifier
@@ -204,6 +234,7 @@ internal static class PreflopNodeFamilyClassifier
 internal static class AllDistinctHoleCardsCache
 {
     public static readonly IReadOnlyList<HoleCards> AllCombos = BuildAllCombos();
+    public static readonly IReadOnlyList<HoleCards> RankedCombosByStrength = AllCombos.OrderByDescending(PreflopHandStrengthScorer.Score).ToArray();
 
     private static IReadOnlyList<HoleCards> BuildAllCombos()
     {
@@ -254,8 +285,26 @@ internal static class PreflopHandStrengthScorer
 
 internal static class DeterministicPreflopEquity
 {
+    private static readonly ConcurrentDictionary<MatchupEquityCanonicalKey, double> HeadsUpEquityCache = new();
+    private static long _matchupComputationCount;
+
+    public static long MatchupComputationCount => Interlocked.Read(ref _matchupComputationCount);
+    public static int CachedMatchupCount => HeadsUpEquityCache.Count;
+
     public static double CalculateHeadsUpEquity(HoleCards hero, HoleCards villain, int samples)
     {
+        var key = MatchupEquityKey.Create(hero, villain, samples);
+        if (HeadsUpEquityCache.TryGetValue(key.CanonicalKey, out var cachedEquity))
+            return key.HeroMatchesCanonicalOrder ? cachedEquity : 1d - cachedEquity;
+
+        var canonicalEquity = CalculateHeadsUpEquityCore(key.CanonicalHero, key.CanonicalVillain, samples);
+        var cached = HeadsUpEquityCache.GetOrAdd(key.CanonicalKey, canonicalEquity);
+        return key.HeroMatchesCanonicalOrder ? cached : 1d - cached;
+    }
+
+    private static double CalculateHeadsUpEquityCore(HoleCards hero, HoleCards villain, int samples)
+    {
+        Interlocked.Increment(ref _matchupComputationCount);
         var deck = BuildDeckExcluding(hero, villain);
         var board = new Card[5];
         var cards = deck.ToArray();
@@ -426,4 +475,41 @@ internal static class DeterministicPreflopEquity
 
     private static long Key(int cat, int a, int b, int c, int d, int e)
         => ((long)cat << 24) | ((long)a << 20) | ((long)b << 16) | ((long)c << 12) | ((long)d << 8) | ((long)e << 4);
+
+    private readonly record struct MatchupEquityKey(MatchupEquityCanonicalKey CanonicalKey, HoleCards CanonicalHero, HoleCards CanonicalVillain, bool HeroMatchesCanonicalOrder)
+    {
+        public static MatchupEquityKey Create(HoleCards hero, HoleCards villain, int samples)
+        {
+            var heroKey = HoleCardsKey.Create(hero);
+            var villainKey = HoleCardsKey.Create(villain);
+
+            if (heroKey.CompareTo(villainKey) <= 0)
+                return new MatchupEquityKey(new MatchupEquityCanonicalKey(heroKey, villainKey, samples), hero, villain, HeroMatchesCanonicalOrder: true);
+
+            return new MatchupEquityKey(new MatchupEquityCanonicalKey(villainKey, heroKey, samples), villain, hero, HeroMatchesCanonicalOrder: false);
+        }
+    }
+
+    private readonly record struct MatchupEquityCanonicalKey(HoleCardsKey First, HoleCardsKey Second, int Samples);
+
+    private readonly record struct HoleCardsKey(int LowCard, int HighCard) : IComparable<HoleCardsKey>
+    {
+        public static HoleCardsKey Create(HoleCards cards)
+        {
+            var first = CardKey(cards.First);
+            var second = CardKey(cards.Second);
+            return first <= second
+                ? new HoleCardsKey(first, second)
+                : new HoleCardsKey(second, first);
+        }
+
+        public int CompareTo(HoleCardsKey other)
+        {
+            var lowCompare = LowCard.CompareTo(other.LowCard);
+            return lowCompare != 0 ? lowCompare : HighCard.CompareTo(other.HighCard);
+        }
+
+        private static int CardKey(Card card)
+            => ((int)card.Rank * 10) + (int)card.Suit;
+    }
 }
