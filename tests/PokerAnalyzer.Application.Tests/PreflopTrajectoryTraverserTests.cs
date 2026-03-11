@@ -57,8 +57,95 @@ public sealed class PreflopTrajectoryTraverserTests
         Assert.Contains(":4:5", afterRaise.ActionHistorySignature, StringComparison.Ordinal);
     }
 
+[Fact]
+    public void SampleTrajectory_WhenFirstSampledActionBelongsToVillain_UsesHeroCardsOnly()
+    {
+        var state = CreateHeadsUpPreflopState();
+        var sbId = state.Players.Single(p => p.Position == Position.SB).PlayerId;
+        var bbId = state.Players.Single(p => p.Position == Position.BB).PlayerId;
+        var heroCards = Domain.Cards.HoleCards.Parse("AsKd");
+        var evaluator = new CapturingLeafEvaluator();
+
+        var traverser = new PreflopTrajectoryTraverser(
+            new FixedRootStateProvider(state.With(privateCardsByPlayer: new Dictionary<PlayerId, Domain.Cards.HoleCards>
+            {
+                [sbId] = heroCards
+            })),
+            new ActingPlayerSwitchChanceSampler(state.With(
+                actingPlayerId: bbId,
+                privateCardsByPlayer: new Dictionary<PlayerId, Domain.Cards.HoleCards>())),
+            new PreflopInfoSetMapper(),
+            new InMemoryPolicyProvider(),
+            new CapturingActionSampler(),
+            evaluator,
+            new AfterFirstActionLeafDetector());
+
+        var result = traverser.RunIteration(new Random(23));
+
+        var firstAction = Assert.Single(result.Path.Where(node => node.NodeKind == TraversalNodeKind.Action));
+        Assert.Equal(bbId, firstAction.ActingPlayerId);
+
+        Assert.NotNull(evaluator.Context);
+        Assert.Equal(sbId, evaluator.Context!.HeroPlayerId);
+        Assert.Equal(heroCards, evaluator.Context.HeroCards);
+    }
+
     [Fact]
-    public void SampleTrajectory_WhenPreflopRoundAlreadyClosed_StopsAtPreflopTerminalWithoutChanceSampling()
+    public void SampleTrajectory_WhenHeroCardsMissing_ThrowsInvariantException()
+    {
+        var state = CreateHeadsUpPreflopState();
+        var sbId = state.Players.Single(p => p.Position == Position.SB).PlayerId;
+
+        var traverser = new PreflopTrajectoryTraverser(
+            new FixedRootStateProvider(state.With(privateCardsByPlayer: new Dictionary<PlayerId, Domain.Cards.HoleCards>())),
+            new SolverChanceSampler(),
+            new PreflopInfoSetMapper(),
+            new InMemoryPolicyProvider(),
+            new CapturingActionSampler(),
+            new PlaceholderPreflopLeafEvaluator(),
+            new AfterFirstActionLeafDetector());
+
+        var ex = Assert.Throws<InvalidOperationException>(() => traverser.SampleTrajectory(state, new Random(99), sbId));
+        Assert.Contains("hero player", ex.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("missing private cards", ex.Message, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void SampleTrajectory_WhenRootHeroExistsAndIsNotActingPlayer_BuildsContextWithHeroPerspective()
+    {
+        var state = CreateHeadsUpPreflopState();
+        var sbId = state.Players.Single(p => p.Position == Position.SB).PlayerId;
+        var bbId = state.Players.Single(p => p.Position == Position.BB).PlayerId;
+        var heroCards = Domain.Cards.HoleCards.Parse("QsQd");
+        var evaluator = new CapturingLeafEvaluator();
+
+        var traverser = new PreflopTrajectoryTraverser(
+            new FixedRootStateProvider(state.With(privateCardsByPlayer: new Dictionary<PlayerId, Domain.Cards.HoleCards>
+            {
+                [sbId] = heroCards
+            })),
+            new ActingPlayerSwitchChanceSampler(state.With(
+                actingPlayerId: bbId,
+                privateCardsByPlayer: new Dictionary<PlayerId, Domain.Cards.HoleCards>())),
+            new PreflopInfoSetMapper(),
+            new InMemoryPolicyProvider(),
+            new CapturingActionSampler(),
+            evaluator,
+            new AfterFirstActionLeafDetector());
+
+        traverser.SampleTrajectory(state.With(privateCardsByPlayer: new Dictionary<PlayerId, Domain.Cards.HoleCards>
+        {
+            [sbId] = heroCards
+        }), new Random(91), sbId);
+
+        Assert.NotNull(evaluator.Context);
+        Assert.Equal(sbId, evaluator.Context!.HeroPlayerId);
+        Assert.Equal(Position.SB, evaluator.Context.HeroPosition);
+        Assert.NotEqual(evaluator.Context.HeroPlayerId, bbId);
+    }
+
+    [Fact]
+    public void SampleTrajectory_WhenTrajectoryContainsNoSampledActionNode_ThrowsClearException()
     {
         var state = CreateClosedPreflopStateWithoutPrivateCards();
         var traverser = new PreflopTrajectoryTraverser(
@@ -74,61 +161,7 @@ public sealed class PreflopTrajectoryTraverserTests
 
         Assert.Contains("does not contain an action node", ex.Message, StringComparison.OrdinalIgnoreCase);
     }
-
-    [Fact]
-    public void SampleTrajectory_BuildsLeafEvaluationFromSampledActingPlayerUsingLeafStatePrivateCards()
-    {
-        var state = CreateHeadsUpPreflopState();
-        var bbId = state.Players.Single(p => p.Position == Position.BB).PlayerId;
-        var sampledLeafCards = Domain.Cards.HoleCards.Parse("AsKd");
-        var evaluator = new CapturingLeafEvaluator();
-
-        var traverser = new PreflopTrajectoryTraverser(
-            new FixedRootStateProvider(state),
-            new ActingPlayerSwitchChanceSampler(state.With(
-                actingPlayerId: bbId,
-                privateCardsByPlayer: new Dictionary<PlayerId, Domain.Cards.HoleCards>
-                {
-                    [bbId] = sampledLeafCards
-                })),
-            new PreflopInfoSetMapper(),
-            new InMemoryPolicyProvider(),
-            new CapturingActionSampler(),
-            evaluator,
-            new AfterFirstActionLeafDetector());
-
-        var result = traverser.RunIteration(new Random(23));
-
-        var firstAction = Assert.Single(result.Path.Where(node => node.NodeKind == TraversalNodeKind.Action));
-        Assert.Equal(bbId, firstAction.ActingPlayerId);
-
-        Assert.NotNull(evaluator.Context);
-        Assert.Equal(bbId, evaluator.Context!.HeroPlayerId);
-        Assert.Equal(sampledLeafCards, evaluator.Context.HeroCards);
-    }
-
-    [Fact]
-    public void SampleTrajectory_WhenSampledLeafStateMissesActingPlayerPrivateCards_ThrowsInvariantException()
-    {
-        var state = CreateHeadsUpPreflopState();
-        var bbId = state.Players.Single(p => p.Position == Position.BB).PlayerId;
-
-        var traverser = new PreflopTrajectoryTraverser(
-            new FixedRootStateProvider(state),
-            new ActingPlayerSwitchChanceSampler(state.With(
-                actingPlayerId: bbId,
-                privateCardsByPlayer: new Dictionary<PlayerId, Domain.Cards.HoleCards>())),
-            new PreflopInfoSetMapper(),
-            new InMemoryPolicyProvider(),
-            new CapturingActionSampler(),
-            new PlaceholderPreflopLeafEvaluator(),
-            new AfterFirstActionLeafDetector());
-
-        var ex = Assert.Throws<InvalidOperationException>(() => traverser.RunIteration(new Random(99)));
-        Assert.Contains("sampled leaf state is missing private cards for sampled acting player", ex.Message, StringComparison.OrdinalIgnoreCase);
-    }
-
-
+    
     [Fact]
     public void SampleTrajectory_WhenTraversalDoesNotProgress_ThrowsDepthGuardException()
     {
