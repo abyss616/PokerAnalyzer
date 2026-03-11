@@ -5,7 +5,8 @@ namespace PokerAnalyzer.Application.PreflopAnalysis;
 public sealed record PreflopStrategyRequestDto(
     string SolverKey,
     SolverHandState RootState,
-    IReadOnlyList<LegalAction> LegalActions);
+    IReadOnlyList<LegalAction> LegalActions,
+    bool UsePersistentTrainingState = false);
 
 public interface IPreflopStrategyProvider
 {

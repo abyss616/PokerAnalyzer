@@ -32,6 +32,10 @@ public sealed class LivePreflopSolveService : IPreflopStrategyProvider
         if (request.LegalActions.Count == 0)
             return Task.FromResult<PreflopStrategyResultDto?>(null);
 
+        var regretStore = request.UsePersistentTrainingState ? _regretStore : new InMemoryRegretStore();
+        var averageStrategyStore = request.UsePersistentTrainingState ? _averageStrategyStore : new InMemoryAverageStrategyStore();
+        var trainingProgressStore = request.UsePersistentTrainingState ? _trainingProgressStore : new InMemoryPreflopTrainingProgressStore();
+
         var trainer = new PreflopRegretTrainer(
             new FixedRootStateProvider(request.RootState),
             new SolverChanceSampler(),
@@ -40,20 +44,20 @@ public sealed class LivePreflopSolveService : IPreflopStrategyProvider
             new HeuristicPreflopLeafEvaluator(),
             new DefaultPreflopLeafDetector(),
             new FixedTraversalPlayerSelector(request.RootState.ActingPlayerId),
-            _regretStore,
-            _averageStrategyStore,
-            _trainingProgressStore,
+            regretStore,
+            averageStrategyStore,
+            trainingProgressStore,
             request.SolverKey);
 
         var trainingResult = trainer.RunTraining(DefaultOptions, ct);
 
-        var averagePolicy = _averageStrategyStore.GetAveragePolicy(request.SolverKey, request.LegalActions);
+        var averagePolicy = averageStrategyStore.GetAveragePolicy(request.SolverKey, request.LegalActions);
         var strategy = request.LegalActions.ToDictionary(
             ToActionKey,
             action => (decimal)(averagePolicy.TryGetValue(action, out var prob) ? prob : 0d),
             StringComparer.Ordinal);
 
-        var regretMagnitude = request.LegalActions.Sum(a => Math.Max(0d, _regretStore.Get(request.SolverKey, a)));
+        var regretMagnitude = request.LegalActions.Sum(a => Math.Max(0d, regretStore.Get(request.SolverKey, a)));
 
         return Task.FromResult<PreflopStrategyResultDto?>(new PreflopStrategyResultDto(
             request.SolverKey,
@@ -62,7 +66,7 @@ public sealed class LivePreflopSolveService : IPreflopStrategyProvider
             regretMagnitude,
             "LiveSolved",
             (long)trainingResult.Elapsed.TotalMilliseconds,
-            trainingResult.ModeUsed.ToString()));
+            request.UsePersistentTrainingState ? "Persistent" : "Fresh"));
     }
 
     private static string ToActionKey(LegalAction action)

@@ -85,7 +85,7 @@ public sealed class PreflopHandAnalysisService : IPreflopHandAnalysisService
         var snapshotState = BuildSnapshotState(request, extraction.Trace);
         var legalActions = BuildLegalActions(snapshotState, extraction.Trace);
 
-        var strategyResult = await ResolveStrategyAsync(extraction.Key.SolverKey, snapshotState, legalActions, ct);
+        var strategyResult = await ResolveStrategyAsync(extraction.Key.SolverKey, snapshotState, legalActions, request.UsePersistentTrainingState, ct);
         var recommendationResult = BuildRecommendations(
             legalActions,
             strategyResult.Strategy,
@@ -125,10 +125,11 @@ public sealed class PreflopHandAnalysisService : IPreflopHandAnalysisService
         string solverKey,
         SolverHandState snapshotState,
         IReadOnlyList<LegalAction> legalActions,
+        bool usePersistentTrainingState,
         CancellationToken ct)
     {
         var strategyResult = await _strategyProvider.GetStrategyResultAsync(
-            new PreflopStrategyRequestDto(solverKey, snapshotState, legalActions),
+            new PreflopStrategyRequestDto(solverKey, snapshotState, legalActions, usePersistentTrainingState),
             ct);
 
         if (strategyResult?.AverageStrategy is not { Count: > 0 } strategy)
