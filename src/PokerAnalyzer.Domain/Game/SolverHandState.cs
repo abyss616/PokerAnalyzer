@@ -438,15 +438,7 @@ public sealed record SolverHandState
         ValidatePotConsistency();
         ValidateNoDuplicateCards();
 
-        var activePlayers = Players.Count(p => p.IsActive);
-        var actionablePlayers = Players.Count(p => p.IsActive && !p.IsAllIn && p.Stack.Value > 0);
-
-        var isTerminalLikeState =
-            activePlayers <= 1 ||
-            actionablePlayers == 0 ||
-            SolverTraversalGuards.IsCompletedPreflopState(this);
-
-        if (!isTerminalLikeState)
+        if (!SolverTraversalGuards.IsTerminalLikeState(this))
             ValidateActingPlayerIsActive();
 
         ValidateBettingState();

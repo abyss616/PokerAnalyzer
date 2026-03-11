@@ -88,7 +88,7 @@ public sealed class PreflopTrajectoryTraverser : IPreflopTrajectoryTraverser
             if (visited.Count >= MaxTraversalDepth)
                 throw new InvalidOperationException($"Preflop traversal exceeded max depth of {MaxTraversalDepth}. This usually indicates a non-progress loop.");
 
-            if (_leafDetector.IsLeaf(current))
+            if (SolverTraversalGuards.IsTerminalLikeState(current) || _leafDetector.IsLeaf(current))
             {
                 var leafEvaluationContext = (evaluationContext ?? BuildContextFromSampledRootAction(rootState, current, visited)) with { LeafState = current };
                 var leafEvaluation = _leafEvaluator.Evaluate(leafEvaluationContext);
@@ -295,11 +295,7 @@ public sealed class DefaultPreflopLeafDetector : IPreflopLeafDetector
         if (state.Street != Street.Preflop)
             return true;
 
-        if (SolverTraversalGuards.IsCompletedPreflopState(state))
-            return true;
-
-        var activePlayers = state.Players.Count(p => p.IsActive);
-        return activePlayers <= 1;
+        return SolverTraversalGuards.IsTerminalLikeState(state);
     }
 }
 
