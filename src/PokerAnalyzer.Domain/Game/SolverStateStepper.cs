@@ -144,9 +144,10 @@ public static class SolverStateStepper
         }
 
         var nextActingPlayer = ResolveNextActingPlayer(state, players, acting.SeatIndex, bettingRoundComplete);
+        var nextActingPlayerId = nextActingPlayer?.PlayerId ?? state.ActingPlayerId;
 
         var nextState = state.With(
-            actingPlayerId: nextActingPlayer.PlayerId,
+            actingPlayerId: nextActingPlayerId,
             pot: nextPot,
             currentBetSize: nextCurrentBet,
             lastRaiseSize: nextLastRaiseSize,
@@ -267,19 +268,18 @@ public static class SolverStateStepper
         return trailingChecks >= actionablePlayers.Length;
     }
 
-    private static SolverPlayerState ResolveNextActingPlayer(
-        SolverHandState state,
-        IReadOnlyList<SolverPlayerState> players,
-        int actingSeatIndex,
-        bool bettingRoundComplete)
+    private static SolverPlayerState? ResolveNextActingPlayer(
+    SolverHandState state,
+    IReadOnlyList<SolverPlayerState> players,
+    int actingSeatIndex,
+    bool bettingRoundComplete)
     {
-        var activePlayers = players.Where(p => p.IsActive).ToArray();
-        if (activePlayers.Length == 1)
-            return activePlayers[0];
-
         var actionablePlayers = players.Where(p => p.IsActive && !p.IsAllIn && p.Stack.Value > 0).ToArray();
+        if (actionablePlayers.Length == 1)
+            return actionablePlayers[0];
+
         if (actionablePlayers.Length == 0)
-            throw new InvalidOperationException("No actionable players remain after transition.");
+            return null;
 
         var referenceSeat = bettingRoundComplete
             ? GetNextStreetReferenceSeat(state, players)
@@ -307,7 +307,7 @@ public static class SolverStateStepper
                 return next;
         }
 
-        throw new InvalidOperationException("Unable to resolve next acting player.");
+        return null;
     }
 
     private static int GetNextStreetReferenceSeat(SolverHandState state, IReadOnlyList<SolverPlayerState> players)

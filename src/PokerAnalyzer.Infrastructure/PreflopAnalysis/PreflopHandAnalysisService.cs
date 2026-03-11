@@ -404,11 +404,13 @@ public sealed class PreflopHandAnalysisService : IPreflopHandAnalysisService
                     currentBet = Math.Max(currentBet, contributions[playerId]);
                     actionHistory.Add(new SolverActionEntry(playerId, ActionType.PostSmallBlind, new ChipAmount(targetContribution)));
                     break;
+
                 case "POST_BB":
                     ApplyToContribution(playerId, targetContribution);
                     currentBet = Math.Max(currentBet, contributions[playerId]);
                     actionHistory.Add(new SolverActionEntry(playerId, ActionType.PostBigBlind, new ChipAmount(targetContribution)));
                     break;
+
                 case "RAISE_TO":
                 case "ALL_IN":
                     ApplyToContribution(playerId, targetContribution);
@@ -419,21 +421,28 @@ public sealed class PreflopHandAnalysisService : IPreflopHandAnalysisService
                         raisesThisStreet++;
                     }
 
-                    actionHistory.Add(new SolverActionEntry(playerId, action.ActionType == "ALL_IN" ? ActionType.AllIn : ActionType.Raise, new ChipAmount(targetContribution)));
+                    actionHistory.Add(new SolverActionEntry(
+                        playerId,
+                        action.ActionType == "ALL_IN" ? ActionType.AllIn : ActionType.Raise,
+                        new ChipAmount(targetContribution)));
                     break;
+
                 case "CALL":
                     ApplyToContribution(playerId, targetContribution);
                     actionHistory.Add(new SolverActionEntry(playerId, ActionType.Call, new ChipAmount(targetContribution)));
                     break;
+
                 case "FOLD":
                     folded[playerId] = true;
                     actionHistory.Add(new SolverActionEntry(playerId, ActionType.Fold, ChipAmount.Zero));
                     break;
+
                 case "CHECK":
                     actionHistory.Add(new SolverActionEntry(playerId, ActionType.Check, ChipAmount.Zero));
                     break;
             }
         }
+
         var players = seatsByPlayer
             .Select(kvp => new SolverPlayerState(
                 kvp.Key,
@@ -448,6 +457,13 @@ public sealed class PreflopHandAnalysisService : IPreflopHandAnalysisService
 
         var button = players.FirstOrDefault(p => p.Position == Position.BTN)?.SeatIndex ?? 0;
         var maxStartingStack = seatsByPlayer.Max(x => BbToSolverChips(x.Value.Seat.StartingStackBb));
+
+        var privateCardsByPlayer = new Dictionary<PlayerId, HoleCards>();
+        if (!string.IsNullOrWhiteSpace(request.HeroHoleCards))
+        {
+            var actingPlayerId = new PlayerId(request.ActingPlayerId);
+            privateCardsByPlayer[actingPlayerId] = HoleCards.Parse(request.HeroHoleCards!);
+        }
 
         var state = new SolverHandState(
             new GameConfig(
@@ -464,7 +480,8 @@ public sealed class PreflopHandAnalysisService : IPreflopHandAnalysisService
             new ChipAmount(lastRaise),
             raisesThisStreet,
             players,
-            actionHistory);
+            actionHistory,
+            privateCardsByPlayer: privateCardsByPlayer);
 
         return state;
     }

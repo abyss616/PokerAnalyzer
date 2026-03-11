@@ -7,7 +7,7 @@ namespace PokerAnalyzer.Infrastructure.Engines;
 public sealed class FlopContinuationValueCalculator : IFlopContinuationValueCalculator
 {
     private const int DefaultSeed = 12345;
-    private const int TurnRiverSamplesPerFlop = 3000;
+    private const int TurnRiverSamplesPerFlop = 300;
 
     public Task<FlopContinuationValueResult> ComputeAsync(
         IReadOnlyList<(PlayerId PlayerId, HoleCards Cards)> knownPlayers,
