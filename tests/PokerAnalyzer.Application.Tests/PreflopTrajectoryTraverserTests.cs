@@ -80,6 +80,66 @@ public sealed class PreflopTrajectoryTraverserTests
     }
 
 
+
+    [Fact]
+    public void SampleTrajectory_WhenOnlyOneActivePlayer_Remains_ExitsImmediatelyWithoutInvokingLeafDetector()
+    {
+        var state = CreateOneActivePlayerPreflopState();
+        var leafDetector = new CountingLeafDetector();
+        var traverser = new PreflopTrajectoryTraverser(
+            new FixedRootStateProvider(state),
+            new SolverChanceSampler(),
+            new PreflopInfoSetMapper(),
+            new InMemoryPolicyProvider(),
+            new WeightedRandomActionSampler(),
+            new PlaceholderPreflopLeafEvaluator(),
+            leafDetector);
+
+        var result = traverser.RunIteration(new Random(11));
+
+        Assert.Equal(0, leafDetector.Calls);
+        Assert.Equal(TraversalNodeKind.Leaf, result.Path[^1].NodeKind);
+    }
+
+    [Fact]
+    public void SampleTrajectory_WhenNoActionablePlayersRemain_ExitsImmediatelyWithoutInvokingLeafDetector()
+    {
+        var state = CreateNoActionablePlayersPreflopState();
+        var leafDetector = new CountingLeafDetector();
+        var traverser = new PreflopTrajectoryTraverser(
+            new FixedRootStateProvider(state),
+            new SolverChanceSampler(),
+            new PreflopInfoSetMapper(),
+            new InMemoryPolicyProvider(),
+            new WeightedRandomActionSampler(),
+            new PlaceholderPreflopLeafEvaluator(),
+            leafDetector);
+
+        var result = traverser.RunIteration(new Random(13));
+
+        Assert.Equal(0, leafDetector.Calls);
+        Assert.Equal(TraversalNodeKind.Leaf, result.Path[^1].NodeKind);
+    }
+
+    [Fact]
+    public void SampleTrajectory_WhenStateIsNonTerminal_StillUsesLeafDetectorPath()
+    {
+        var state = CreateHeadsUpPreflopState();
+        var leafDetector = new CountingLeafDetector();
+        var traverser = new PreflopTrajectoryTraverser(
+            new FixedRootStateProvider(state),
+            new SolverChanceSampler(),
+            new PreflopInfoSetMapper(),
+            new InMemoryPolicyProvider(),
+            new WeightedRandomActionSampler(),
+            new PlaceholderPreflopLeafEvaluator(),
+            leafDetector);
+
+        _ = traverser.RunIteration(new Random(19));
+
+        Assert.True(leafDetector.Calls > 0);
+    }
+
     [Fact]
     public void SampleTrajectory_WhenTraversalDoesNotProgress_ThrowsDepthGuardException()
     {
@@ -147,6 +207,73 @@ public sealed class PreflopTrajectoryTraverserTests
             players,
             actionHistory: [],
             privateCardsByPlayer: new Dictionary<PlayerId, Domain.Cards.HoleCards>());
+    }
+
+
+    private static SolverHandState CreateOneActivePlayerPreflopState()
+    {
+        var sbId = new PlayerId(Guid.Parse("cccccccc-cccc-cccc-cccc-cccccccccccc"));
+        var bbId = new PlayerId(Guid.Parse("dddddddd-dddd-dddd-dddd-dddddddddddd"));
+        var config = new GameConfig(MaxPlayers: 2, SmallBlind: new ChipAmount(1), BigBlind: new ChipAmount(2), Ante: ChipAmount.Zero, StartingStack: new ChipAmount(100));
+
+        var players = new[]
+        {
+            new SolverPlayerState(sbId, SeatIndex: 0, Position.SB, Stack: new ChipAmount(99), CurrentStreetContribution: new ChipAmount(1), TotalContribution: new ChipAmount(1), IsFolded: false, IsAllIn: false),
+            new SolverPlayerState(bbId, SeatIndex: 1, Position.BB, Stack: new ChipAmount(98), CurrentStreetContribution: new ChipAmount(2), TotalContribution: new ChipAmount(2), IsFolded: true, IsAllIn: false)
+        };
+
+        return new SolverHandState(
+            config,
+            street: Street.Preflop,
+            buttonSeatIndex: 0,
+            actingPlayerId: sbId,
+            pot: new ChipAmount(3),
+            currentBetSize: new ChipAmount(2),
+            lastRaiseSize: new ChipAmount(2),
+            raisesThisStreet: 0,
+            players,
+            actionHistory: [],
+            privateCardsByPlayer: new Dictionary<PlayerId, Domain.Cards.HoleCards>());
+    }
+
+    private static SolverHandState CreateNoActionablePlayersPreflopState()
+    {
+        var sbId = new PlayerId(Guid.Parse("eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee"));
+        var bbId = new PlayerId(Guid.Parse("ffffffff-ffff-ffff-ffff-ffffffffffff"));
+        var config = new GameConfig(MaxPlayers: 2, SmallBlind: new ChipAmount(1), BigBlind: new ChipAmount(2), Ante: ChipAmount.Zero, StartingStack: new ChipAmount(100));
+
+        var players = new[]
+        {
+            new SolverPlayerState(sbId, SeatIndex: 0, Position.SB, Stack: ChipAmount.Zero, CurrentStreetContribution: new ChipAmount(10), TotalContribution: new ChipAmount(10), IsFolded: false, IsAllIn: true),
+            new SolverPlayerState(bbId, SeatIndex: 1, Position.BB, Stack: ChipAmount.Zero, CurrentStreetContribution: new ChipAmount(10), TotalContribution: new ChipAmount(10), IsFolded: false, IsAllIn: true)
+        };
+
+        return new SolverHandState(
+            config,
+            street: Street.Preflop,
+            buttonSeatIndex: 0,
+            actingPlayerId: sbId,
+            pot: new ChipAmount(20),
+            currentBetSize: new ChipAmount(10),
+            lastRaiseSize: new ChipAmount(2),
+            raisesThisStreet: 1,
+            players,
+            actionHistory: [
+                new SolverActionEntry(sbId, ActionType.AllIn, new ChipAmount(10)),
+                new SolverActionEntry(bbId, ActionType.Call, new ChipAmount(10))
+            ],
+            privateCardsByPlayer: new Dictionary<PlayerId, Domain.Cards.HoleCards>());
+    }
+
+    private sealed class CountingLeafDetector : IPreflopLeafDetector
+    {
+        public int Calls { get; private set; }
+
+        public bool IsLeaf(SolverHandState state)
+        {
+            Calls++;
+            return false;
+        }
     }
 
     private sealed class NonProgressingChanceSampler : IChanceSampler
