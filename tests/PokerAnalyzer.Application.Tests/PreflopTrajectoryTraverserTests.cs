@@ -70,13 +70,62 @@ public sealed class PreflopTrajectoryTraverserTests
             new PlaceholderPreflopLeafEvaluator(),
             new DefaultPreflopLeafDetector());
 
-        var result = traverser.RunIteration(new Random(17));
+        var ex = Assert.Throws<InvalidOperationException>(() => traverser.RunIteration(new Random(17)));
 
-        Assert.Equal(Street.Preflop, result.FinalState.Street);
-        Assert.Empty(result.FinalState.BoardCards);
-        Assert.DoesNotContain(result.Path, node => node.NodeKind == TraversalNodeKind.Chance);
-        Assert.Equal(TraversalNodeKind.Leaf, result.Path[^1].NodeKind);
-        Assert.Equal("preflop terminal placeholder utility", result.Path[^1].Note);
+        Assert.Contains("does not contain an action node", ex.Message, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void SampleTrajectory_BuildsLeafEvaluationFromSampledActingPlayerUsingLeafStatePrivateCards()
+    {
+        var state = CreateHeadsUpPreflopState();
+        var bbId = state.Players.Single(p => p.Position == Position.BB).PlayerId;
+        var sampledLeafCards = Domain.Cards.HoleCards.Parse("AsKd");
+        var evaluator = new CapturingLeafEvaluator();
+
+        var traverser = new PreflopTrajectoryTraverser(
+            new FixedRootStateProvider(state),
+            new ActingPlayerSwitchChanceSampler(state.With(
+                actingPlayerId: bbId,
+                privateCardsByPlayer: new Dictionary<PlayerId, Domain.Cards.HoleCards>
+                {
+                    [bbId] = sampledLeafCards
+                })),
+            new PreflopInfoSetMapper(),
+            new InMemoryPolicyProvider(),
+            new CapturingActionSampler(),
+            evaluator,
+            new AfterFirstActionLeafDetector());
+
+        var result = traverser.RunIteration(new Random(23));
+
+        var firstAction = Assert.Single(result.Path.Where(node => node.NodeKind == TraversalNodeKind.Action));
+        Assert.Equal(bbId, firstAction.ActingPlayerId);
+
+        Assert.NotNull(evaluator.Context);
+        Assert.Equal(bbId, evaluator.Context!.HeroPlayerId);
+        Assert.Equal(sampledLeafCards, evaluator.Context.HeroCards);
+    }
+
+    [Fact]
+    public void SampleTrajectory_WhenSampledLeafStateMissesActingPlayerPrivateCards_ThrowsInvariantException()
+    {
+        var state = CreateHeadsUpPreflopState();
+        var bbId = state.Players.Single(p => p.Position == Position.BB).PlayerId;
+
+        var traverser = new PreflopTrajectoryTraverser(
+            new FixedRootStateProvider(state),
+            new ActingPlayerSwitchChanceSampler(state.With(
+                actingPlayerId: bbId,
+                privateCardsByPlayer: new Dictionary<PlayerId, Domain.Cards.HoleCards>())),
+            new PreflopInfoSetMapper(),
+            new InMemoryPolicyProvider(),
+            new CapturingActionSampler(),
+            new PlaceholderPreflopLeafEvaluator(),
+            new AfterFirstActionLeafDetector());
+
+        var ex = Assert.Throws<InvalidOperationException>(() => traverser.RunIteration(new Random(99)));
+        Assert.Contains("sampled leaf state is missing private cards for sampled acting player", ex.Message, StringComparison.OrdinalIgnoreCase);
     }
 
 
@@ -164,6 +213,35 @@ public sealed class PreflopTrajectoryTraverserTests
         {
             SampleCalls++;
             return legalActions[0];
+        }
+    }
+
+    private sealed class AfterFirstActionLeafDetector : IPreflopLeafDetector
+    {
+        public bool IsLeaf(SolverHandState state) => state.ActionHistory.Count > 0;
+    }
+
+    private sealed class ActingPlayerSwitchChanceSampler : IChanceSampler
+    {
+        private readonly SolverHandState _next;
+
+        public ActingPlayerSwitchChanceSampler(SolverHandState next) => _next = next;
+
+        public bool IsChanceNode(SolverHandState state) => state.ActionHistory.Count == 0;
+
+        public SolverHandState Sample(SolverHandState state, Random rng) => _next;
+    }
+
+    private sealed class CapturingLeafEvaluator : IPreflopLeafEvaluator
+    {
+        public PreflopLeafEvaluationContext? Context { get; private set; }
+
+        public PreflopLeafEvaluation Evaluate(PreflopLeafEvaluationContext context)
+        {
+            Context = context;
+            return new PreflopLeafEvaluation(
+                context.LeafState.Players.ToDictionary(p => p.PlayerId, _ => 0d),
+                "captured");
         }
     }
 }
