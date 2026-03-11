@@ -50,6 +50,39 @@ public sealed record SolverHandState
         IEnumerable<Card>? boardCards = null,
         IEnumerable<Card>? deadCards = null,
         IReadOnlyDictionary<PlayerId, HoleCards>? privateCardsByPlayer = null)
+        : this(
+            config,
+            street,
+            buttonSeatIndex,
+            actingPlayerId,
+            pot,
+            currentBetSize,
+            lastRaiseSize,
+            raisesThisStreet,
+            CreateNormalizedPlayers(players),
+            CreateNormalizedActions(actionHistory),
+            CreateNormalizedCards(boardCards),
+            CreateNormalizedCards(deadCards),
+            NormalizePrivateCardsByPlayer(privateCardsByPlayer),
+            assumeNormalizedCollections: true)
+    {
+    }
+
+    private SolverHandState(
+        GameConfig config,
+        Street street,
+        int buttonSeatIndex,
+        PlayerId actingPlayerId,
+        ChipAmount pot,
+        ChipAmount currentBetSize,
+        ChipAmount lastRaiseSize,
+        int raisesThisStreet,
+        IReadOnlyList<SolverPlayerState> players,
+        IReadOnlyList<SolverActionEntry> actionHistory,
+        IReadOnlyList<Card> boardCards,
+        IReadOnlyList<Card> deadCards,
+        IReadOnlyDictionary<PlayerId, HoleCards> privateCardsByPlayer,
+        bool assumeNormalizedCollections)
     {
         Config = config;
         Street = street;
@@ -60,16 +93,18 @@ public sealed record SolverHandState
         LastRaiseSize = lastRaiseSize;
         RaisesThisStreet = raisesThisStreet;
 
-        var orderedPlayers = players.OrderBy(p => p.SeatIndex).ToArray();
-        Players = Array.AsReadOnly(orderedPlayers);
+        if (!assumeNormalizedCollections)
+            throw new InvalidOperationException("Non-normalized collection construction must use the public constructor.");
 
-        var actions = (actionHistory ?? Array.Empty<SolverActionEntry>()).ToArray();
-        ActionHistory = Array.AsReadOnly(actions);
-        ActionHistorySignature = BuildActionHistorySignature(actions);
+        Players = players;
+        EnsurePlayersSeatOrdered(players);
 
-        BoardCards = Array.AsReadOnly((boardCards ?? Array.Empty<Card>()).ToArray());
-        DeadCards = Array.AsReadOnly((deadCards ?? Array.Empty<Card>()).ToArray());
-        PrivateCardsByPlayer = NormalizePrivateCardsByPlayer(privateCardsByPlayer);
+        ActionHistory = actionHistory;
+        ActionHistorySignature = BuildActionHistorySignature(actionHistory);
+
+        BoardCards = boardCards;
+        DeadCards = deadCards;
+        PrivateCardsByPlayer = privateCardsByPlayer;
 
         EnsureValid();
     }
@@ -101,11 +136,42 @@ public sealed record SolverHandState
             deadCards ?? DeadCards,
             privateCardsByPlayer ?? PrivateCardsByPlayer);
 
+    internal SolverHandState WithNormalized(
+        Street? street = null,
+        PlayerId? actingPlayerId = null,
+        ChipAmount? pot = null,
+        ChipAmount? currentBetSize = null,
+        ChipAmount? lastRaiseSize = null,
+        int? raisesThisStreet = null,
+        IReadOnlyList<SolverPlayerState>? players = null,
+        IReadOnlyList<SolverActionEntry>? actionHistory = null,
+        IReadOnlyList<Card>? boardCards = null,
+        IReadOnlyList<Card>? deadCards = null,
+        IReadOnlyDictionary<PlayerId, HoleCards>? privateCardsByPlayer = null)
+        => new(
+            Config,
+            street ?? Street,
+            ButtonSeatIndex,
+            actingPlayerId ?? ActingPlayerId,
+            pot ?? Pot,
+            currentBetSize ?? CurrentBetSize,
+            lastRaiseSize ?? LastRaiseSize,
+            raisesThisStreet ?? RaisesThisStreet,
+            players ?? Players,
+            actionHistory ?? ActionHistory,
+            boardCards ?? BoardCards,
+            deadCards ?? DeadCards,
+            privateCardsByPlayer ?? PrivateCardsByPlayer,
+            assumeNormalizedCollections: true);
+
     public IReadOnlyList<LegalAction> GenerateLegalActions(IBetSizeSetProvider? sizeProvider = null)
         => SolverLegalActionGenerator.GenerateLegalActions(this, sizeProvider);
 
     public SolverHandState Apply(LegalAction action)
         => SolverStateStepper.Step(this, action);
+
+    internal SolverHandState Apply(LegalAction action, IReadOnlyList<LegalAction> legalActions)
+        => SolverStateStepper.Step(this, action, legalActions);
 
     internal void ValidateNonNegativeStacks()
     {
@@ -406,6 +472,33 @@ public sealed record SolverHandState
         }
 
         return sb.ToString();
+    }
+
+    private static IReadOnlyList<SolverPlayerState> CreateNormalizedPlayers(IEnumerable<SolverPlayerState> players)
+    {
+        var orderedPlayers = players.OrderBy(p => p.SeatIndex).ToArray();
+        return Array.AsReadOnly(orderedPlayers);
+    }
+
+    private static IReadOnlyList<SolverActionEntry> CreateNormalizedActions(IEnumerable<SolverActionEntry>? actionHistory)
+    {
+        var actions = (actionHistory ?? Array.Empty<SolverActionEntry>()).ToArray();
+        return Array.AsReadOnly(actions);
+    }
+
+    private static IReadOnlyList<Card> CreateNormalizedCards(IEnumerable<Card>? cards)
+        => Array.AsReadOnly((cards ?? Array.Empty<Card>()).ToArray());
+
+    private static void EnsurePlayersSeatOrdered(IReadOnlyList<SolverPlayerState> players)
+    {
+        for (var i = 1; i < players.Count; i++)
+        {
+            if (players[i - 1].SeatIndex > players[i].SeatIndex)
+            {
+                throw new InvalidOperationException(
+                    "SolverHandState fast-path construction requires players to be pre-sorted by SeatIndex.");
+            }
+        }
     }
 
     private static IReadOnlyDictionary<PlayerId, HoleCards> NormalizePrivateCardsByPlayer(

@@ -3,6 +3,12 @@ namespace PokerAnalyzer.Domain.Game;
 public static class SolverStateStepper
 {
     public static SolverHandState Step(SolverHandState state, LegalAction action)
+        => Step(state, action, legalActions: null);
+
+    public static SolverHandState Step(
+        SolverHandState state,
+        LegalAction action,
+        IReadOnlyList<LegalAction>? legalActions)
     {
         ArgumentNullException.ThrowIfNull(state);
         ArgumentNullException.ThrowIfNull(action);
@@ -13,7 +19,7 @@ public static class SolverStateStepper
         if (!acting.IsActive || acting.IsAllIn || acting.Stack.Value <= 0)
             throw new InvalidOperationException($"Acting player {acting.PlayerId} is not able to act.");
 
-        EnsureActionIsLegal(state, action);
+        EnsureActionIsLegal(state, action, legalActions);
 
         var players = state.Players.ToArray();
         var actingIndex = acting.SeatIndex;
@@ -115,9 +121,7 @@ public static class SolverStateStepper
             default:
                 throw new InvalidOperationException($"Unsupported action type {action.ActionType} for solver traversal step.");
         }
-        var updatedHistory = state.ActionHistory
-            .Concat([new SolverActionEntry(acting.PlayerId, action.ActionType, actionAmount)])
-            .ToArray();
+        var updatedHistory = AppendAction(state.ActionHistory, new SolverActionEntry(acting.PlayerId, action.ActionType, actionAmount));
 
         var activePlayers = players.Where(p => p.IsActive).ToArray();
         if (activePlayers.Length == 0)
@@ -138,7 +142,7 @@ public static class SolverStateStepper
         var nextActingPlayer = ResolveNextActingPlayer(state, players, acting.SeatIndex, bettingRoundComplete);
         var nextActingPlayerId = nextActingPlayer?.PlayerId ?? state.ActingPlayerId;
 
-        var nextState = state.With(
+        var nextState = state.WithNormalized(
             actingPlayerId: nextActingPlayerId,
             pot: nextPot,
             currentBetSize: nextCurrentBet,
@@ -150,19 +154,29 @@ public static class SolverStateStepper
         return nextState;
     }
 
-    private static void EnsureActionIsLegal(SolverHandState state, LegalAction action)
+    private static void EnsureActionIsLegal(SolverHandState state, LegalAction action, IReadOnlyList<LegalAction>? legalActions)
     {
-        var legalActions = state.GenerateLegalActions();
-        if (legalActions.Contains(action))
+        var candidateActions = legalActions ?? state.GenerateLegalActions();
+        if (candidateActions.Contains(action))
             return;
 
-        if (action.Amount is not null && legalActions.Any(a => a.ActionType == action.ActionType && a.Amount is null))
+        if (action.Amount is not null && candidateActions.Any(a => a.ActionType == action.ActionType && a.Amount is null))
             return;
 
-        if (action.ActionType == ActionType.AllIn && IsEquivalentAllInActionLegal(state, legalActions))
+        if (action.ActionType == ActionType.AllIn && IsEquivalentAllInActionLegal(state, candidateActions))
             return;
 
         throw new InvalidOperationException($"Action {action} is not legal for acting player {state.ActingPlayerId}.");
+    }
+
+    private static SolverActionEntry[] AppendAction(IReadOnlyList<SolverActionEntry> history, SolverActionEntry nextAction)
+    {
+        var updatedHistory = new SolverActionEntry[history.Count + 1];
+        for (var i = 0; i < history.Count; i++)
+            updatedHistory[i] = history[i];
+
+        updatedHistory[^1] = nextAction;
+        return updatedHistory;
     }
 
     private static bool IsEquivalentAllInActionLegal(SolverHandState state, IReadOnlyList<LegalAction> legalActions)

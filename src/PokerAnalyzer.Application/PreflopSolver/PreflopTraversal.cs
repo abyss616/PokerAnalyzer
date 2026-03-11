@@ -123,7 +123,7 @@ public sealed class PreflopTrajectoryTraverser : IPreflopTrajectoryTraverser
             var sampledAction = _actionSampler.Sample(legalActions, policy, rng);
             visited.Add(VisitedNode.CreateAction(visited.Count, current.Street, actingPlayerId, infoSetKey, legalActions, policy, sampledAction, current));
 
-            current = current.Apply(sampledAction);
+            current = current.Apply(sampledAction, legalActions);
         }
     }
 
