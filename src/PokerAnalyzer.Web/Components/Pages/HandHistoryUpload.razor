@@ -38,7 +38,8 @@
     <h4>Preflop Analysis By Hand Number</h4>
     <div class="d-flex gap-2 align-items-center">
         <input class="form-control" style="max-width: 260px" @bind="_analysisHandNumberInput" placeholder="Enter hand number" />
-        <button class="btn btn-primary" @onclick="AnalyzePreflopByHandNumberAsync">Analyze</button>
+        <button class="btn btn-primary" @onclick="AnalyzePreflopByHandNumberAsync" disabled="@_isAnalyzing">Analyze</button>
+        <span class="text-muted">Timer: @_analysisElapsedDisplay</span>
     </div>
 
     @if (!string.IsNullOrWhiteSpace(_analysisError))
@@ -214,6 +215,10 @@
     private string? _error;
     private string _analysisHandNumberInput = string.Empty;
     private string? _analysisError;
+    private bool _isAnalyzing;
+    private TimeSpan _analysisElapsed = TimeSpan.Zero;
+    private string _analysisElapsedDisplay = "00:00.000";
+    private CancellationTokenSource? _analysisTimerCts;
     private PokerAnalyzer.Web.Services.ApiClient.PreflopHandAnalysisResult? _preflopAnalysis;
     private readonly List<string> _traceLines = new();
     private IReadOnlyList<PokerStatsGridModel> _playerStats = Array.Empty<PokerStatsGridModel>();
@@ -319,12 +324,18 @@
     {
         _analysisError = null;
         _preflopAnalysis = null;
+        ResetAnalysisTimer();
 
         if (!long.TryParse(_analysisHandNumberInput, out var handNumber) || handNumber <= 0)
         {
             _analysisError = "Please enter a valid positive hand number.";
             return;
         }
+
+        _isAnalyzing = true;
+        _analysisTimerCts = new CancellationTokenSource();
+        var startedAt = DateTime.UtcNow;
+        _ = RunAnalysisTimerAsync(startedAt, _analysisTimerCts.Token);
 
         try
         {
@@ -336,7 +347,47 @@
         {
             _analysisError = ex.Message;
         }
+        finally
+        {
+            _analysisTimerCts?.Cancel();
+            _analysisTimerCts?.Dispose();
+            _analysisTimerCts = null;
+            _analysisElapsed = DateTime.UtcNow - startedAt;
+            _analysisElapsedDisplay = FormatElapsed(_analysisElapsed);
+            _isAnalyzing = false;
+        }
     }
+
+    private void ResetAnalysisTimer()
+    {
+        _analysisTimerCts?.Cancel();
+        _analysisTimerCts?.Dispose();
+        _analysisTimerCts = null;
+        _analysisElapsed = TimeSpan.Zero;
+        _analysisElapsedDisplay = FormatElapsed(_analysisElapsed);
+        _isAnalyzing = false;
+    }
+
+    private async Task RunAnalysisTimerAsync(DateTime startedAt, CancellationToken cancellationToken)
+    {
+        using var timer = new PeriodicTimer(TimeSpan.FromMilliseconds(100));
+        try
+        {
+            while (await timer.WaitForNextTickAsync(cancellationToken))
+            {
+                _analysisElapsed = DateTime.UtcNow - startedAt;
+                _analysisElapsedDisplay = FormatElapsed(_analysisElapsed);
+                await InvokeAsync(StateHasChanged);
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            // Timer cancelled intentionally.
+        }
+    }
+
+    private static string FormatElapsed(TimeSpan elapsed)
+        => $"{(int)elapsed.TotalMinutes:00}:{elapsed.Seconds:00}.{elapsed.Milliseconds:000}";
 
 
     private static string GetStrategyBadgeClass(string? status)
