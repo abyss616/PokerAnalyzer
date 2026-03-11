@@ -66,9 +66,9 @@ public static class SolverLegalActionGenerator
             {
                 var defaultBetTarget = minTotalBetToCall <= maxTotalBet ? minTotalBetToCall : maxTotalBet;
                 actions.Add(new LegalAction(aggressiveActionType, defaultBetTarget));
-                Console.WriteLine(
-                    $"GenerateLegalActions: sizeProvider is null, added default {aggressiveActionType} " +
-                    $"to {defaultBetTarget.Value}.");
+                //Console.WriteLine(
+                //    $"GenerateLegalActions: sizeProvider is null, added default {aggressiveActionType} " +
+                //    $"to {defaultBetTarget.Value}.");
                 return actions.AsReadOnly();
             }
 
@@ -76,9 +76,9 @@ public static class SolverLegalActionGenerator
                 ? GetDistinctSortedSizes(sizeProvider.GetBetSizes(state))
                 : GetDistinctSortedSizes(sizeProvider.GetRaiseSizes(state));
 
-            Console.WriteLine(
-                "GenerateLegalActions: sizeProvider returned aggressive sizes = [" +
-                string.Join(", ", aggressiveSizes.Select(x => x.Value)) + "].");
+            //Console.WriteLine(
+            //    "GenerateLegalActions: sizeProvider returned aggressive sizes = [" +
+            //    string.Join(", ", aggressiveSizes.Select(x => x.Value)) + "].");
 
             AddSizedAggressionActions(
                 actions,
@@ -97,7 +97,7 @@ public static class SolverLegalActionGenerator
         }
 
         actions.Add(new LegalAction(ActionType.Fold));
-        Console.WriteLine("GenerateLegalActions: added Fold.");
+        //Console.WriteLine("GenerateLegalActions: added Fold.");
 
         // IMPORTANT: Call uses TO-AMOUNT semantics here, consistent with solver action history.
         var callDelta = toCall.Value > acting.Stack.Value ? acting.Stack : toCall;
