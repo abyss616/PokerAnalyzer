@@ -133,22 +133,22 @@ public sealed class PreflopTrajectoryTraverser : IPreflopTrajectoryTraverser
         IReadOnlyList<VisitedNode> visited)
     {
         var firstActionNode = visited.FirstOrDefault(node => node.NodeKind == TraversalNodeKind.Action && node.SampledAction is not null);
-        if (firstActionNode?.ActingPlayerId is not PlayerId heroPlayerId || firstActionNode.SampledAction is null)
-            throw new InvalidOperationException("Cannot build preflop leaf evaluation context because no sampled action node was visited.");
+        if (firstActionNode?.ActingPlayerId is not PlayerId actingPlayerId || firstActionNode.SampledAction is null)
+            throw new InvalidOperationException("Cannot build preflop leaf evaluation context because the sampled trajectory does not contain an action node.");
 
-        var hero = rootState.Players.FirstOrDefault(player => player.PlayerId == heroPlayerId)
-            ?? throw new InvalidOperationException($"Acting player {heroPlayerId} was not found in the root state.");
+        var actingPlayer = rootState.Players.FirstOrDefault(player => player.PlayerId == actingPlayerId)
+            ?? throw new InvalidOperationException($"Sampled acting player {actingPlayerId} was not found in the root state.");
 
-        if (!rootState.PrivateCardsByPlayer.TryGetValue(heroPlayerId, out var heroCards))
-            throw new InvalidOperationException($"Missing private cards for acting player {heroPlayerId}.");
+        if (!leafState.PrivateCardsByPlayer.TryGetValue(actingPlayerId, out var actingPlayerCards))
+            throw new InvalidOperationException($"Cannot build preflop leaf evaluation context because sampled leaf state is missing private cards for sampled acting player {actingPlayerId}.");
 
-        var rootEffectiveStackBb = ResolveEffectiveStackBb(rootState, heroPlayerId);
+        var rootEffectiveStackBb = ResolveEffectiveStackBb(rootState, actingPlayerId);
         return new PreflopLeafEvaluationContext(
             rootState,
             leafState,
-            heroPlayerId,
-            hero.Position,
-            heroCards,
+            actingPlayerId,
+            actingPlayer.Position,
+            actingPlayerCards,
             rootEffectiveStackBb,
             firstActionNode.SampledAction,
             firstActionNode.InfoSetKey);
