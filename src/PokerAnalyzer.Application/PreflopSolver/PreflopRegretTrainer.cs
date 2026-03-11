@@ -489,7 +489,7 @@ public sealed class PreflopRegretTrainer
 
         foreach (var action in legalActions)
         {
-            var afterActionState = stateBeforeAction.Apply(action);
+            var afterActionState = SolverStateStepper.Step(stateBeforeAction, action, legalActions);
             if (!stateBeforeAction.PrivateCardsByPlayer.TryGetValue(traversalPlayerId, out var heroCards))
                 throw new InvalidOperationException($"Missing private cards for traversal player {traversalPlayerId} at root decision.");
 
