@@ -9,7 +9,8 @@ public sealed record PreflopNodeQueryRequestDto(
     decimal SmallBlind,
     decimal BigBlind,
     IReadOnlyList<PreflopNodeSeatDto> Seats,
-    IReadOnlyList<PreflopNodeActionDto> PublicActionHistory);
+    IReadOnlyList<PreflopNodeActionDto> PublicActionHistory,
+    bool UsePersistentTrainingState = false);
 
 public sealed record PreflopNodeSeatDto(
     Guid PlayerId,
