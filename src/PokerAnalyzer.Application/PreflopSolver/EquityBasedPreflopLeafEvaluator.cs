@@ -1,0 +1,429 @@
+using PokerAnalyzer.Domain.Cards;
+using PokerAnalyzer.Domain.Game;
+
+namespace PokerAnalyzer.Application.PreflopSolver;
+
+public interface IOpponentRangeProvider
+{
+    bool TryGetRange(OpponentRangeRequest request, out OpponentWeightedRange range, out string reason);
+}
+
+public sealed record OpponentRangeRequest(
+    Position HeroPosition,
+    Position? VillainPosition,
+    PreflopNodeFamily NodeFamily,
+    int RaiseDepth,
+    bool IsHeadsUp,
+    string? SolverKey);
+
+public sealed record OpponentWeightedRange(
+    IReadOnlyList<WeightedHoleCards> WeightedCombos,
+    string Description);
+
+public readonly record struct WeightedHoleCards(HoleCards Cards, double Weight);
+
+public enum PreflopNodeFamily : byte
+{
+    Unknown = 0,
+    Unopened = 1,
+    FacingLimp = 2,
+    FacingRaise = 3,
+    Facing3Bet = 4,
+    Facing4Bet = 5,
+    Squeeze = 6
+}
+
+public sealed class EquityBasedPreflopLeafEvaluator : IPreflopLeafEvaluator
+{
+    private readonly IOpponentRangeProvider _rangeProvider;
+    private readonly IPreflopLeafEvaluator _fallbackEvaluator;
+    private readonly int _samplesPerMatchup;
+
+    public EquityBasedPreflopLeafEvaluator(
+        IOpponentRangeProvider rangeProvider,
+        IPreflopLeafEvaluator fallbackEvaluator,
+        int samplesPerMatchup = 400)
+    {
+        _rangeProvider = rangeProvider ?? throw new ArgumentNullException(nameof(rangeProvider));
+        _fallbackEvaluator = fallbackEvaluator ?? throw new ArgumentNullException(nameof(fallbackEvaluator));
+        _samplesPerMatchup = Math.Max(100, samplesPerMatchup);
+    }
+
+    public PreflopLeafEvaluation Evaluate(PreflopLeafEvaluationContext context)
+    {
+        ArgumentNullException.ThrowIfNull(context);
+
+        if (context.RootAction.ActionType == ActionType.Fold)
+            return EvaluateFold(context);
+
+        var activeOpponents = context.LeafState.Players.Where(p => p.PlayerId != context.HeroPlayerId && p.IsActive).ToArray();
+        if (activeOpponents.Length != 1)
+            return Fallback(context, $"expected heads-up leaf but found {activeOpponents.Length} active opponents");
+
+        var villain = activeOpponents[0];
+        var nodeFamily = PreflopNodeFamilyClassifier.Classify(context);
+        var request = new OpponentRangeRequest(
+            context.HeroPosition,
+            villain.Position,
+            nodeFamily,
+            context.RootState.RaisesThisStreet,
+            IsHeadsUp: true,
+            context.SolverKey);
+
+        if (!_rangeProvider.TryGetRange(request, out var range, out var rangeReason))
+            return Fallback(context, $"range provider miss ({rangeReason})");
+
+        var filteredRange = range.WeightedCombos
+            .Where(w => w.Weight > 0d && !SharesCard(w.Cards, context.HeroCards))
+            .ToArray();
+
+        if (filteredRange.Length == 0)
+            return Fallback(context, "range empty after blocker filtering");
+
+        var weightedTotal = filteredRange.Sum(w => w.Weight);
+        if (weightedTotal <= 0d)
+            return Fallback(context, "range has non-positive total weight");
+
+        var heroEquity = 0d;
+        foreach (var combo in filteredRange)
+        {
+            var matchupEquity = DeterministicPreflopEquity.CalculateHeadsUpEquity(context.HeroCards, combo.Cards, _samplesPerMatchup);
+            heroEquity += (combo.Weight / weightedTotal) * matchupEquity;
+        }
+
+        var heroUtility = (heroEquity - 0.5d) * 2d;
+        var utility = context.LeafState.Players.ToDictionary(player => player.PlayerId, _ => 0d);
+        utility[context.HeroPlayerId] = heroUtility;
+
+        return new PreflopLeafEvaluation(
+            utility,
+            $"equity leaf evaluator: family={nodeFamily}, villainPos={villain.Position}, range={range.Description}, filteredCombos={filteredRange.Length}, equity={heroEquity:0.000}, utility={heroUtility:0.000}, detail={rangeReason}");
+    }
+
+    private PreflopLeafEvaluation EvaluateFold(PreflopLeafEvaluationContext context)
+    {
+        var utility = context.LeafState.Players.ToDictionary(player => player.PlayerId, _ => 0d);
+        return new PreflopLeafEvaluation(utility, "equity leaf evaluator: root action fold -> utility 0");
+    }
+
+    private PreflopLeafEvaluation Fallback(PreflopLeafEvaluationContext context, string reason)
+    {
+        var evaluation = _fallbackEvaluator.Evaluate(context);
+        return evaluation with { Reason = $"equity evaluator fallback: {reason}; {evaluation.Reason}" };
+    }
+
+    private static bool SharesCard(HoleCards left, HoleCards right)
+        => left.First == right.First
+        || left.First == right.Second
+        || left.Second == right.First
+        || left.Second == right.Second;
+}
+
+public sealed class TableDrivenOpponentRangeProvider : IOpponentRangeProvider
+{
+    private readonly Dictionary<PreflopNodeFamily, double> _percentByFamily = new()
+    {
+        [PreflopNodeFamily.Unopened] = 0.45,
+        [PreflopNodeFamily.FacingLimp] = 0.35,
+        [PreflopNodeFamily.FacingRaise] = 0.18,
+        [PreflopNodeFamily.Facing3Bet] = 0.08,
+        [PreflopNodeFamily.Facing4Bet] = 0.03,
+        [PreflopNodeFamily.Squeeze] = 0.06
+    };
+
+    public bool TryGetRange(OpponentRangeRequest request, out OpponentWeightedRange range, out string reason)
+    {
+        if (!request.IsHeadsUp)
+        {
+            reason = "multiway context not yet modeled";
+            range = new OpponentWeightedRange(Array.Empty<WeightedHoleCards>(), "unsupported");
+            return false;
+        }
+
+        if (!_percentByFamily.TryGetValue(request.NodeFamily, out var percentile))
+        {
+            reason = $"unsupported node family {request.NodeFamily}";
+            range = new OpponentWeightedRange(Array.Empty<WeightedHoleCards>(), "unsupported");
+            return false;
+        }
+
+        var weightedCombos = AllDistinctHoleCardsCache.AllCombos
+            .OrderByDescending(PreflopHandStrengthScorer.Score)
+            .Take(Math.Max(1, (int)Math.Round(AllDistinctHoleCardsCache.AllCombos.Count * percentile)))
+            .Select(c => new WeightedHoleCards(c, 1d))
+            .ToArray();
+
+        reason = $"table-range percentile={percentile:0.00}";
+        range = new OpponentWeightedRange(weightedCombos, request.NodeFamily.ToString());
+        return true;
+    }
+}
+
+internal static class PreflopNodeFamilyClassifier
+{
+    public static PreflopNodeFamily Classify(PreflopLeafEvaluationContext context)
+    {
+        if (TryFromSolverKey(context.SolverKey, out var fromKey))
+            return fromKey;
+
+        return context.RootState.RaisesThisStreet switch
+        {
+            0 => PreflopNodeFamily.Unopened,
+            1 => PreflopNodeFamily.FacingRaise,
+            2 => PreflopNodeFamily.Facing3Bet,
+            3 => PreflopNodeFamily.Facing4Bet,
+            _ => PreflopNodeFamily.Unknown
+        };
+    }
+
+    private static bool TryFromSolverKey(string? solverKey, out PreflopNodeFamily family)
+    {
+        family = PreflopNodeFamily.Unknown;
+        if (string.IsNullOrWhiteSpace(solverKey))
+            return false;
+
+        var parts = solverKey.Split('/', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        if (parts.Length < 2)
+            return false;
+
+        family = parts[1] switch
+        {
+            "UNOPENED" or "UNOPENED_SB" or "UNOPENED_CHECK" or "UNOPENED_FOLD" => PreflopNodeFamily.Unopened,
+            "LIMP" => PreflopNodeFamily.FacingLimp,
+            "VS_OPEN" => PreflopNodeFamily.FacingRaise,
+            "VS_3BET" => PreflopNodeFamily.Facing3Bet,
+            "VS_4BET" => PreflopNodeFamily.Facing4Bet,
+            "SQUEEZE" => PreflopNodeFamily.Squeeze,
+            _ => PreflopNodeFamily.Unknown
+        };
+
+        return true;
+    }
+}
+
+internal static class AllDistinctHoleCardsCache
+{
+    public static readonly IReadOnlyList<HoleCards> AllCombos = BuildAllCombos();
+
+    private static IReadOnlyList<HoleCards> BuildAllCombos()
+    {
+        var deck = new List<Card>(52);
+        foreach (Rank rank in Enum.GetValues<Rank>())
+        foreach (Suit suit in Enum.GetValues<Suit>())
+            deck.Add(new Card(rank, suit));
+
+        var combos = new List<HoleCards>(1326);
+        for (var i = 0; i < deck.Count - 1; i++)
+        for (var j = i + 1; j < deck.Count; j++)
+            combos.Add(new HoleCards(deck[i], deck[j]));
+
+        return combos;
+    }
+}
+
+internal static class PreflopHandStrengthScorer
+{
+    public static double Score(HoleCards holeCards)
+    {
+        var first = holeCards.First;
+        var second = holeCards.Second;
+        var highRank = Math.Max((int)first.Rank, (int)second.Rank);
+        var lowRank = Math.Min((int)first.Rank, (int)second.Rank);
+        var highNorm = (highRank - 2d) / 12d;
+        var lowNorm = (lowRank - 2d) / 12d;
+
+        if (first.Rank == second.Rank)
+            return 0.45 + (0.35 * highNorm);
+
+        var score = (0.35 * highNorm) + (0.25 * lowNorm);
+        if (first.Suit == second.Suit)
+            score += 0.08;
+
+        var gap = Math.Max(0, highRank - lowRank - 1);
+        score += gap switch
+        {
+            0 => 0.07,
+            1 => 0.04,
+            2 => 0.01,
+            _ => Math.Max(-0.1, -0.02 * (gap - 2))
+        };
+
+        return score;
+    }
+}
+
+internal static class DeterministicPreflopEquity
+{
+    public static double CalculateHeadsUpEquity(HoleCards hero, HoleCards villain, int samples)
+    {
+        var deck = BuildDeckExcluding(hero, villain);
+        var board = new Card[5];
+        var cards = deck.ToArray();
+        var wins = 0d;
+        var seed = BuildSeed(hero, villain);
+        var rng = new Random(seed);
+
+        for (var i = 0; i < samples; i++)
+        {
+            for (var k = 0; k < 5; k++)
+            {
+                var swap = rng.Next(k, cards.Length);
+                (cards[k], cards[swap]) = (cards[swap], cards[k]);
+                board[k] = cards[k];
+            }
+
+            var heroRank = Evaluate7(hero, board);
+            var villainRank = Evaluate7(villain, board);
+
+            if (heroRank > villainRank)
+                wins += 1d;
+            else if (heroRank == villainRank)
+                wins += 0.5d;
+        }
+
+        return wins / samples;
+    }
+
+    private static List<Card> BuildDeckExcluding(HoleCards hero, HoleCards villain)
+    {
+        var excluded = new HashSet<Card> { hero.First, hero.Second, villain.First, villain.Second };
+        var deck = new List<Card>(48);
+        foreach (Rank rank in Enum.GetValues<Rank>())
+        foreach (Suit suit in Enum.GetValues<Suit>())
+        {
+            var card = new Card(rank, suit);
+            if (!excluded.Contains(card))
+                deck.Add(card);
+        }
+
+        return deck;
+    }
+
+    private static int BuildSeed(HoleCards hero, HoleCards villain)
+        => HashCode.Combine(hero.First, hero.Second, villain.First, villain.Second);
+
+    private static long Evaluate7(HoleCards hole, IReadOnlyList<Card> board)
+    {
+        var cards = new Card[7];
+        cards[0] = hole.First;
+        cards[1] = hole.Second;
+        for (var i = 0; i < 5; i++) cards[i + 2] = board[i];
+
+        var best = long.MinValue;
+        for (var a = 0; a < 3; a++)
+        for (var b = a + 1; b < 4; b++)
+        for (var c = b + 1; c < 5; c++)
+        for (var d = c + 1; d < 6; d++)
+        for (var e = d + 1; e < 7; e++)
+        {
+            var rank = Evaluate5(cards[a], cards[b], cards[c], cards[d], cards[e]);
+            if (rank > best) best = rank;
+        }
+
+        return best;
+    }
+
+    private static long Evaluate5(Card c1, Card c2, Card c3, Card c4, Card c5)
+    {
+        Span<int> counts = stackalloc int[15];
+        Span<int> suitCounts = stackalloc int[5];
+        Span<int> ranks = stackalloc int[5] { (int)c1.Rank, (int)c2.Rank, (int)c3.Rank, (int)c4.Rank, (int)c5.Rank };
+        for (var i = 0; i < 5; i++) counts[ranks[i]]++;
+        suitCounts[(int)c1.Suit]++; suitCounts[(int)c2.Suit]++; suitCounts[(int)c3.Suit]++; suitCounts[(int)c4.Suit]++; suitCounts[(int)c5.Suit]++;
+        var flush = suitCounts[1] == 5 || suitCounts[2] == 5 || suitCounts[3] == 5 || suitCounts[4] == 5;
+
+        var straightHigh = 0;
+        for (var h = 14; h >= 5; h--)
+            if (counts[h] > 0 && counts[h - 1] > 0 && counts[h - 2] > 0 && counts[h - 3] > 0 && counts[h - 4] > 0) { straightHigh = h; break; }
+        if (straightHigh == 0 && counts[14] > 0 && counts[2] > 0 && counts[3] > 0 && counts[4] > 0 && counts[5] > 0) straightHigh = 5;
+
+        if (flush && straightHigh > 0) return Key(8, straightHigh, 0, 0, 0, 0);
+
+        var fours = 0; var three = 0;
+        Span<int> pairs = stackalloc int[2]; var pairCount = 0;
+        for (var r = 14; r >= 2; r--)
+        {
+            if (counts[r] == 4) fours = r;
+            else if (counts[r] == 3) three = r;
+            else if (counts[r] == 2 && pairCount < 2) pairs[pairCount++] = r;
+        }
+
+        if (fours > 0)
+            return Key(7, fours, HighestExcluding(counts, fours), 0, 0, 0);
+
+        if (three > 0 && pairCount > 0)
+            return Key(6, three, pairs[0], 0, 0, 0);
+
+        if (flush)
+        {
+            var sorted = SortRanksDesc(ranks);
+            return Key(5, sorted[0], sorted[1], sorted[2], sorted[3], sorted[4]);
+        }
+
+        if (straightHigh > 0) return Key(4, straightHigh, 0, 0, 0, 0);
+
+        if (three > 0)
+            return Key(3, three, HighestExcluding(counts, three), HighestExcluding(counts, three, HighestExcluding(counts, three)), 0, 0);
+
+        if (pairCount >= 2)
+        {
+            var hp = Math.Max(pairs[0], pairs[1]);
+            var lp = Math.Min(pairs[0], pairs[1]);
+            return Key(2, hp, lp, HighestExcluding(counts, hp, lp), 0, 0);
+        }
+
+        if (pairCount == 1)
+        {
+            var p = pairs[0];
+            var k1 = HighestExcluding(counts, p);
+            var k2 = HighestExcluding(counts, p, k1);
+            var k3 = HighestExcluding(counts, p, k1, k2);
+            return Key(1, p, k1, k2, k3, 0);
+        }
+
+        var highCards = SortRanksDesc(ranks);
+        return Key(0, highCards[0], highCards[1], highCards[2], highCards[3], highCards[4]);
+    }
+
+    private static Span<int> SortRanksDesc(Span<int> ranks)
+    {
+        for (var i = 1; i < ranks.Length; i++)
+        {
+            var v = ranks[i];
+            var j = i - 1;
+            while (j >= 0 && ranks[j] < v)
+            {
+                ranks[j + 1] = ranks[j];
+                j--;
+            }
+
+            ranks[j + 1] = v;
+        }
+
+        return ranks;
+    }
+
+    private static int HighestExcluding(Span<int> counts, params int[] excludes)
+    {
+        for (var r = 14; r >= 2; r--)
+        {
+            if (counts[r] == 0) continue;
+            var isExcluded = false;
+            for (var i = 0; i < excludes.Length; i++)
+            {
+                if (r != excludes[i])
+                    continue;
+
+                isExcluded = true;
+                break;
+            }
+
+            if (!isExcluded) return r;
+        }
+
+        return 0;
+    }
+
+    private static long Key(int cat, int a, int b, int c, int d, int e)
+        => ((long)cat << 24) | ((long)a << 20) | ((long)b << 16) | ((long)c << 12) | ((long)d << 8) | ((long)e << 4);
+}

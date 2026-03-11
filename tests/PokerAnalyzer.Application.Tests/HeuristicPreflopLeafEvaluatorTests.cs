@@ -10,13 +10,12 @@ public sealed class HeuristicPreflopLeafEvaluatorTests
     [Fact]
     public void Evaluate_UnopenedButton_J9oRaise_IsBetterThanFold()
     {
-        var state = CreateUnopenedFirstInState(HoleCards.Parse("Jc9h"), Position.BTN, ActionType.Raise, 250);
+        var context = CreateContext(HoleCards.Parse("Jc9h"), Position.BTN, ActionType.Raise, 250);
         var evaluator = new HeuristicPreflopLeafEvaluator();
 
-        var evaluation = evaluator.Evaluate(state);
+        var evaluation = evaluator.Evaluate(context);
 
-        var heroId = state.ActionHistory.Last().PlayerId;
-        Assert.True(evaluation.UtilityByPlayer[heroId] > 0d);
+        Assert.True(evaluation.UtilityByPlayer[context.HeroPlayerId] > 0d);
         Assert.Contains("evRaise=", evaluation.Reason);
     }
 
@@ -24,16 +23,30 @@ public sealed class HeuristicPreflopLeafEvaluatorTests
     public void Evaluate_UnopenedButton_AARaise_IsHigherThan_SevenTwoOffsuitRaise()
     {
         var evaluator = new HeuristicPreflopLeafEvaluator();
-        var aaState = CreateUnopenedFirstInState(HoleCards.Parse("AsAh"), Position.BTN, ActionType.Raise, 250);
-        var seventyTwoState = CreateUnopenedFirstInState(HoleCards.Parse("7c2d"), Position.BTN, ActionType.Raise, 250);
+        var aaContext = CreateContext(HoleCards.Parse("AsAh"), Position.BTN, ActionType.Raise, 250);
+        var seventyTwoContext = CreateContext(HoleCards.Parse("7c2d"), Position.BTN, ActionType.Raise, 250);
 
-        var aaEval = evaluator.Evaluate(aaState);
-        var seventyTwoEval = evaluator.Evaluate(seventyTwoState);
+        var aaEval = evaluator.Evaluate(aaContext);
+        var seventyTwoEval = evaluator.Evaluate(seventyTwoContext);
 
-        var aaHero = aaState.ActionHistory.Last().PlayerId;
-        var seventyTwoHero = seventyTwoState.ActionHistory.Last().PlayerId;
+        Assert.True(aaEval.UtilityByPlayer[aaContext.HeroPlayerId] > seventyTwoEval.UtilityByPlayer[seventyTwoContext.HeroPlayerId]);
+    }
 
-        Assert.True(aaEval.UtilityByPlayer[aaHero] > seventyTwoEval.UtilityByPlayer[seventyTwoHero]);
+    private static PreflopLeafEvaluationContext CreateContext(HoleCards heroCards, Position heroPosition, ActionType firstAction, long raiseToAmount)
+    {
+        var state = CreateUnopenedFirstInState(heroCards, heroPosition, firstAction, raiseToAmount);
+        var heroId = state.ActionHistory.Last().PlayerId;
+        var hero = state.Players.First(player => player.PlayerId == heroId);
+
+        return new PreflopLeafEvaluationContext(
+            state,
+            state,
+            heroId,
+            hero.Position,
+            heroCards,
+            100,
+            new LegalAction(firstAction, firstAction == ActionType.Raise ? new ChipAmount(raiseToAmount) : ChipAmount.Zero),
+            "v2/UNOPENED/BTN/eff=100");
     }
 
     private static SolverHandState CreateUnopenedFirstInState(HoleCards heroCards, Position heroPosition, ActionType firstAction, long raiseToAmount)
