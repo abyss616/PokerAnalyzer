@@ -358,7 +358,7 @@ public sealed class PreflopRegretTrainer
 
         var rootState = _rootStateProvider.CreateRootState();
         var traversalPlayerId = _traversalPlayerSelector.Select(rootState);
-        var sample = _trajectoryTraverser.SampleTrajectory(rootState, rng);
+        var sample = _trajectoryTraverser.SampleTrajectory(rootState, rng, traversalPlayerId);
 
         foreach (var node in sample.Path)
         {
@@ -506,7 +506,7 @@ public sealed class PreflopRegretTrainer
                 action,
                 null);
 
-            var rollout = _trajectoryTraverser.SampleTrajectory(afterActionState, rng, evaluationContext);
+            var rollout = _trajectoryTraverser.SampleTrajectory(afterActionState, rng, traversalPlayerId, evaluationContext);
             var utility = rollout.UtilityByPlayer.TryGetValue(traversalPlayerId, out var value)
                 ? value
                 : 0d;
