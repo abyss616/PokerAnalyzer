@@ -1,0 +1,167 @@
+using PokerAnalyzer.Application.PreflopSolver;
+using PokerAnalyzer.Domain.Cards;
+using PokerAnalyzer.Domain.Game;
+using Xunit;
+
+namespace PokerAnalyzer.Application.Tests;
+
+public sealed class EquityBasedPreflopLeafEvaluatorTests
+{
+    [Theory]
+    [InlineData("v2/UNOPENED/BTN/eff=100", PreflopNodeFamily.Unopened)]
+    [InlineData("v2/VS_OPEN/BTN/eff=100", PreflopNodeFamily.FacingRaise)]
+    [InlineData("v2/VS_3BET/BTN/eff=100", PreflopNodeFamily.Facing3Bet)]
+    public void Evaluate_UsesSameEvaluatorPathAcrossFamilies(string solverKey, PreflopNodeFamily expectedFamily)
+    {
+        var fallback = new HeuristicPreflopLeafEvaluator();
+        var evaluator = new EquityBasedPreflopLeafEvaluator(new TableDrivenOpponentRangeProvider(), fallback, samplesPerMatchup: 120);
+        var context = CreateHeadsUpContext(HoleCards.Parse("AsKh"), HoleCards.Parse("QdJd"), ActionType.Raise, solverKey);
+
+        var result = evaluator.Evaluate(context);
+
+        Assert.Contains("equity leaf evaluator:", result.Reason);
+        Assert.Contains($"family={expectedFamily}", result.Reason);
+        Assert.DoesNotContain("fallback", result.Reason);
+    }
+
+    [Fact]
+    public void Evaluate_AppliesBlockerFiltering_BeforeEquity()
+    {
+        var provider = new StaticOpponentRangeProvider(
+            new WeightedHoleCards(HoleCards.Parse("AsAd"), 1d),
+            new WeightedHoleCards(HoleCards.Parse("KdQd"), 1d));
+
+        var evaluator = new EquityBasedPreflopLeafEvaluator(provider, new HeuristicPreflopLeafEvaluator(), samplesPerMatchup: 120);
+        var context = CreateHeadsUpContext(HoleCards.Parse("AsKh"), HoleCards.Parse("QcJc"), ActionType.Raise, "v2/UNOPENED/BTN/eff=100");
+
+        var result = evaluator.Evaluate(context);
+
+        Assert.Contains("filteredCombos=1", result.Reason);
+        Assert.DoesNotContain("fallback", result.Reason);
+    }
+
+    [Fact]
+    public void Evaluate_MultiwayContext_FallsBackToHeuristic()
+    {
+        var evaluator = new EquityBasedPreflopLeafEvaluator(new TableDrivenOpponentRangeProvider(), new HeuristicPreflopLeafEvaluator(), samplesPerMatchup: 120);
+        var context = CreateThreeWayContext();
+
+        var result = evaluator.Evaluate(context);
+
+        Assert.Contains("equity evaluator fallback", result.Reason);
+        Assert.Contains("heuristic preflop", result.Reason);
+    }
+
+    private static PreflopLeafEvaluationContext CreateHeadsUpContext(HoleCards heroCards, HoleCards villainCards, ActionType rootAction, string solverKey)
+    {
+        var heroId = new PlayerId(Guid.Parse("11111111-1111-1111-1111-111111111111"));
+        var villainId = new PlayerId(Guid.Parse("22222222-2222-2222-2222-222222222222"));
+
+        var config = new GameConfig(2, new ChipAmount(50), new ChipAmount(100), ChipAmount.Zero, new ChipAmount(10000));
+        var players = new[]
+        {
+            new SolverPlayerState(heroId, 0, Position.BTN, new ChipAmount(9900), new ChipAmount(100), new ChipAmount(100), false, false),
+            new SolverPlayerState(villainId, 1, Position.BB, new ChipAmount(9900), new ChipAmount(100), new ChipAmount(100), false, false)
+        };
+
+        var root = new SolverHandState(
+            config,
+            Street.Preflop,
+            buttonSeatIndex: 0,
+            actingPlayerId: heroId,
+            pot: new ChipAmount(200),
+            currentBetSize: new ChipAmount(100),
+            lastRaiseSize: new ChipAmount(100),
+            raisesThisStreet: 1,
+            players,
+            actionHistory: new[]
+            {
+                new SolverActionEntry(heroId, ActionType.PostSmallBlind, new ChipAmount(50)),
+                new SolverActionEntry(villainId, ActionType.PostBigBlind, new ChipAmount(100))
+            },
+            boardCards: Array.Empty<Card>(),
+            deadCards: Array.Empty<Card>(),
+            privateCardsByPlayer: new Dictionary<PlayerId, HoleCards>
+            {
+                [heroId] = heroCards,
+                [villainId] = villainCards
+            });
+
+        return new PreflopLeafEvaluationContext(
+            root,
+            root,
+            heroId,
+            Position.BTN,
+            heroCards,
+            100,
+            new LegalAction(rootAction, rootAction == ActionType.Raise ? new ChipAmount(250) : ChipAmount.Zero),
+            solverKey);
+    }
+
+    private static PreflopLeafEvaluationContext CreateThreeWayContext()
+    {
+        var heroId = new PlayerId(Guid.Parse("11111111-1111-1111-1111-111111111111"));
+        var v1 = new PlayerId(Guid.Parse("22222222-2222-2222-2222-222222222222"));
+        var v2 = new PlayerId(Guid.Parse("33333333-3333-3333-3333-333333333333"));
+
+        var config = new GameConfig(3, new ChipAmount(50), new ChipAmount(100), ChipAmount.Zero, new ChipAmount(10000));
+        var players = new[]
+        {
+            new SolverPlayerState(heroId, 0, Position.BTN, new ChipAmount(9900), new ChipAmount(100), new ChipAmount(100), false, false),
+            new SolverPlayerState(v1, 1, Position.SB, new ChipAmount(9900), new ChipAmount(100), new ChipAmount(100), false, false),
+            new SolverPlayerState(v2, 2, Position.BB, new ChipAmount(9900), new ChipAmount(100), new ChipAmount(100), false, false)
+        };
+
+        var state = new SolverHandState(
+            config,
+            Street.Preflop,
+            buttonSeatIndex: 0,
+            actingPlayerId: heroId,
+            pot: new ChipAmount(300),
+            currentBetSize: new ChipAmount(100),
+            lastRaiseSize: new ChipAmount(100),
+            raisesThisStreet: 1,
+            players,
+            actionHistory: new[]
+            {
+                new SolverActionEntry(heroId, ActionType.PostSmallBlind, new ChipAmount(50)),
+                new SolverActionEntry(v1, ActionType.PostBigBlind, new ChipAmount(100)),
+                new SolverActionEntry(v2, ActionType.Call, new ChipAmount(100))
+            },
+            boardCards: Array.Empty<Card>(),
+            deadCards: Array.Empty<Card>(),
+            privateCardsByPlayer: new Dictionary<PlayerId, HoleCards>
+            {
+                [heroId] = HoleCards.Parse("AsKh"),
+                [v1] = HoleCards.Parse("QdJd"),
+                [v2] = HoleCards.Parse("9c9d")
+            });
+
+        return new PreflopLeafEvaluationContext(
+            state,
+            state,
+            heroId,
+            Position.BTN,
+            HoleCards.Parse("AsKh"),
+            100,
+            new LegalAction(ActionType.Raise, new ChipAmount(250)),
+            "v2/VS_OPEN/BTN/eff=100");
+    }
+
+    private sealed class StaticOpponentRangeProvider : IOpponentRangeProvider
+    {
+        private readonly WeightedHoleCards[] _combos;
+
+        public StaticOpponentRangeProvider(params WeightedHoleCards[] combos)
+        {
+            _combos = combos;
+        }
+
+        public bool TryGetRange(OpponentRangeRequest request, out OpponentWeightedRange range, out string reason)
+        {
+            range = new OpponentWeightedRange(_combos, "static-test");
+            reason = "static-test";
+            return true;
+        }
+    }
+}

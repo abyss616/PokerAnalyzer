@@ -41,7 +41,7 @@ public sealed class LivePreflopSolveService : IPreflopStrategyProvider
             new SolverChanceSampler(),
             _infoSetMapper,
             new WeightedRandomActionSampler(),
-            new HeuristicPreflopLeafEvaluator(),
+            new EquityBasedPreflopLeafEvaluator(new TableDrivenOpponentRangeProvider(), new HeuristicPreflopLeafEvaluator()),
             new DefaultPreflopLeafDetector(),
             new FixedTraversalPlayerSelector(request.RootState.ActingPlayerId),
             regretStore,
