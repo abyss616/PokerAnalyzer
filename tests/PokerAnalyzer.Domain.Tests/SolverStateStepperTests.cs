@@ -114,6 +114,32 @@ public class SolverStateStepperTests
         Assert.Empty(next.GenerateLegalActions());
     }
 
+
+    [Fact]
+    public void Step_WithPlayersProvidedOutOfOrder_UsesSeatIndexedTraversal()
+    {
+        var p1 = Player(0, Position.SB, stack: 90, street: 10, total: 10);
+        var p2 = Player(1, Position.BB, stack: 80, street: 20, total: 20);
+        var p3 = Player(2, Position.BTN, stack: 100, street: 0, total: 0);
+
+        var state = CreateState(
+            p1.PlayerId,
+            [p3, p1, p2],
+            pot: 30,
+            currentBetSize: 20,
+            lastRaiseSize: 10,
+            raisesThisStreet: 1,
+            actionHistory:
+            [
+                new SolverActionEntry(p1.PlayerId, ActionType.PostSmallBlind, new ChipAmount(10)),
+                new SolverActionEntry(p2.PlayerId, ActionType.PostBigBlind, new ChipAmount(20))
+            ]);
+
+        var next = SolverStateStepper.Step(state, new LegalAction(ActionType.Call, new ChipAmount(20)));
+
+        Assert.Equal(p3.PlayerId, next.ActingPlayerId);
+    }
+
     [Fact]
     public void Step_ResultingState_RemainsValid()
     {

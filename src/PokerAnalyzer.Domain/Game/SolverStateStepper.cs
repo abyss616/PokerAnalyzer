@@ -16,7 +16,7 @@ public static class SolverStateStepper
         EnsureActionIsLegal(state, action);
 
         var players = state.Players.ToArray();
-        var actingIndex = Array.FindIndex(players, p => p.PlayerId == acting.PlayerId);
+        var actingIndex = acting.SeatIndex;
         var nextCurrentBet = state.CurrentBetSize;
         var nextLastRaiseSize = state.LastRaiseSize;
         var nextRaisesThisStreet = state.RaisesThisStreet;
@@ -115,18 +115,10 @@ public static class SolverStateStepper
             default:
                 throw new InvalidOperationException($"Unsupported action type {action.ActionType} for solver traversal step.");
         }
-        Console.WriteLine(
-    $"STEP APPLY: street={state.Street}, acting={acting.PlayerId.Value}, " +
-    $"currentBet={state.CurrentBetSize.Value}, toCall={state.ToCall.Value}, " +
-    $"inputActionType={action.ActionType}, inputActionAmount={action.Amount?.Value}");
-
         var updatedHistory = state.ActionHistory
             .Concat([new SolverActionEntry(acting.PlayerId, action.ActionType, actionAmount)])
             .ToArray();
 
-        var appended = updatedHistory[^1];
-        Console.WriteLine(
-            $"STEP APPENDED: player={appended.PlayerId.Value}, type={appended.ActionType}, amount={appended.Amount.Value}");
         var activePlayers = players.Where(p => p.IsActive).ToArray();
         if (activePlayers.Length == 0)
             throw new InvalidOperationException("State transition produced no active players.");
@@ -289,7 +281,7 @@ public static class SolverStateStepper
         for (var offset = 1; offset <= players.Count; offset++)
         {
             var seat = (referenceSeat + offset) % players.Count;
-            var next = players.First(p => p.SeatIndex == seat);
+            var next = players[seat];
             if (!next.IsActive || next.IsAllIn || next.Stack.Value <= 0)
                 continue;
 
@@ -302,7 +294,7 @@ public static class SolverStateStepper
         for (var offset = 1; offset <= players.Count; offset++)
         {
             var seat = (referenceSeat + offset) % players.Count;
-            var next = players.First(p => p.SeatIndex == seat);
+            var next = players[seat];
             if (next.IsActive && !next.IsAllIn && next.Stack.Value > 0)
                 return next;
         }

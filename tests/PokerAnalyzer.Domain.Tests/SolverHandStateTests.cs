@@ -1,3 +1,4 @@
+using System.Collections.ObjectModel;
 using PokerAnalyzer.Domain.Cards;
 using PokerAnalyzer.Domain.Game;
 using Xunit;
@@ -228,6 +229,55 @@ public class SolverHandStateTests
                 }));
 
         Assert.Contains("duplicate card", ex.Message, StringComparison.OrdinalIgnoreCase);
+    }
+
+
+    [Fact]
+    public void Constructor_ReadOnlyPrivateCardsMap_ReusesReference()
+    {
+        var p1 = new SolverPlayerState(PlayerId.New(), 0, Position.SB, new ChipAmount(100), ChipAmount.Zero, ChipAmount.Zero, false, false);
+        var p2 = new SolverPlayerState(PlayerId.New(), 1, Position.BB, new ChipAmount(100), ChipAmount.Zero, ChipAmount.Zero, false, false);
+        IReadOnlyDictionary<PlayerId, HoleCards> privateCards = new ReadOnlyDictionary<PlayerId, HoleCards>(
+            new Dictionary<PlayerId, HoleCards>
+            {
+                [p1.PlayerId] = new HoleCards(Card.Parse("As"), Card.Parse("Kd"))
+            });
+
+        var state = CreateState(
+            actingPlayerId: p1.PlayerId,
+            players: [p1, p2],
+            pot: ChipAmount.Zero,
+            currentBetSize: ChipAmount.Zero,
+            privateCardsByPlayer: privateCards);
+
+        Assert.Same(privateCards, state.PrivateCardsByPlayer);
+
+        var next = state.With(pot: new ChipAmount(1));
+        Assert.Same(state.PrivateCardsByPlayer, next.PrivateCardsByPlayer);
+    }
+
+    [Fact]
+    public void Constructor_NullOrEmptyPrivateCards_UsesSharedEmptyDictionary()
+    {
+        var p1 = new SolverPlayerState(PlayerId.New(), 0, Position.SB, new ChipAmount(100), ChipAmount.Zero, ChipAmount.Zero, false, false);
+        var p2 = new SolverPlayerState(PlayerId.New(), 1, Position.BB, new ChipAmount(100), ChipAmount.Zero, ChipAmount.Zero, false, false);
+
+        var stateFromNull = CreateState(
+            actingPlayerId: p1.PlayerId,
+            players: [p1, p2],
+            pot: ChipAmount.Zero,
+            currentBetSize: ChipAmount.Zero,
+            privateCardsByPlayer: null);
+
+        var stateFromEmpty = CreateState(
+            actingPlayerId: p1.PlayerId,
+            players: [p1, p2],
+            pot: ChipAmount.Zero,
+            currentBetSize: ChipAmount.Zero,
+            privateCardsByPlayer: new Dictionary<PlayerId, HoleCards>());
+
+        Assert.Same(stateFromNull.PrivateCardsByPlayer, stateFromEmpty.PrivateCardsByPlayer);
+        Assert.Empty(stateFromNull.PrivateCardsByPlayer);
     }
 
     [Fact]
