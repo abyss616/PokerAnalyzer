@@ -6,6 +6,9 @@ namespace PokerAnalyzer.Domain.Game;
 
 public sealed record SolverHandState
 {
+    private static readonly IReadOnlyDictionary<PlayerId, HoleCards> EmptyPrivateCardsByPlayer
+        = new ReadOnlyDictionary<PlayerId, HoleCards>(new Dictionary<PlayerId, HoleCards>());
+
     public GameConfig Config { get; }
     public Street Street { get; }
     public int ButtonSeatIndex { get; }
@@ -66,9 +69,7 @@ public sealed record SolverHandState
 
         BoardCards = Array.AsReadOnly((boardCards ?? Array.Empty<Card>()).ToArray());
         DeadCards = Array.AsReadOnly((deadCards ?? Array.Empty<Card>()).ToArray());
-        PrivateCardsByPlayer = privateCardsByPlayer is null
-            ? new ReadOnlyDictionary<PlayerId, HoleCards>(new Dictionary<PlayerId, HoleCards>())
-            : new ReadOnlyDictionary<PlayerId, HoleCards>(new Dictionary<PlayerId, HoleCards>(privateCardsByPlayer));
+        PrivateCardsByPlayer = NormalizePrivateCardsByPlayer(privateCardsByPlayer);
 
         EnsureValid();
     }
@@ -192,6 +193,15 @@ public sealed record SolverHandState
         var duplicateSeat = Players.GroupBy(p => p.SeatIndex).FirstOrDefault(g => g.Count() > 1);
         if (duplicateSeat is not null)
             throw new InvalidOperationException($"Duplicate seat index detected: {duplicateSeat.Key}.");
+
+        for (var seat = 0; seat < Players.Count; seat++)
+        {
+            if (Players[seat].SeatIndex != seat)
+            {
+                throw new InvalidOperationException(
+                    $"Players must be normalized to contiguous seat-order indexing. Expected seat {seat}, found {Players[seat].SeatIndex}.");
+            }
+        }
 
         var player = Players.FirstOrDefault(p => p.PlayerId == ActingPlayerId);
         if (player is null)
@@ -396,5 +406,17 @@ public sealed record SolverHandState
         }
 
         return sb.ToString();
+    }
+
+    private static IReadOnlyDictionary<PlayerId, HoleCards> NormalizePrivateCardsByPlayer(
+        IReadOnlyDictionary<PlayerId, HoleCards>? privateCardsByPlayer)
+    {
+        if (privateCardsByPlayer is null || privateCardsByPlayer.Count == 0)
+            return EmptyPrivateCardsByPlayer;
+
+        if (privateCardsByPlayer is ReadOnlyDictionary<PlayerId, HoleCards>)
+            return privateCardsByPlayer;
+
+        return new ReadOnlyDictionary<PlayerId, HoleCards>(new Dictionary<PlayerId, HoleCards>(privateCardsByPlayer));
     }
 }
