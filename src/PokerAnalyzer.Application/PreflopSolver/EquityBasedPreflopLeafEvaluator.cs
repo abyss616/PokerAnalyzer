@@ -389,9 +389,6 @@ public sealed class EquityBasedPreflopLeafEvaluator : IPreflopLeafEvaluator
         || left.Second == right.First
         || left.Second == right.Second;
 }
-        || left.Second == right.First
-        || left.Second == right.Second;
-}
 
 public sealed class TableDrivenOpponentRangeProvider : IOpponentRangeProvider
 {
