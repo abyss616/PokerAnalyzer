@@ -1,5 +1,6 @@
 using System.Globalization;
 using PokerAnalyzer.Application.PreflopAnalysis;
+using PokerAnalyzer.Domain.Cards;
 using PokerAnalyzer.Domain.Game;
 using PokerAnalyzer.Infrastructure.Engines;
 using PokerAnalyzer.Infrastructure.HandHistories;
