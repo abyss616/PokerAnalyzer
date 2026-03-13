@@ -92,6 +92,29 @@ public sealed class EquityBasedPreflopLeafEvaluatorTests
     }
 
 
+
+    [Fact]
+    public void Evaluate_SupportedAbstractionMode_IsStableAcrossLeafOpponentCounts()
+    {
+        var evaluator = new EquityBasedPreflopLeafEvaluator(new TableDrivenOpponentRangeProvider(), new HeuristicPreflopLeafEvaluator(), samplesPerMatchup: 120);
+        var leafTwoOpponents = evaluator.Evaluate(CreateThreeWayContextWithLeafActiveOpponents("v2/UNOPENED/BTN/eff=100", 2));
+        var leafZeroOpponents = evaluator.Evaluate(CreateThreeWayContextWithLeafActiveOpponents("v2/UNOPENED/BTN/eff=100", 0));
+
+        Assert.NotNull(leafTwoOpponents.Details);
+        Assert.NotNull(leafZeroOpponents.Details);
+        Assert.Equal("AbstractedHeadsUp", leafTwoOpponents.Details!.EvaluatorType);
+        Assert.Equal("AbstractedHeadsUp", leafZeroOpponents.Details!.EvaluatorType);
+        Assert.Equal("AbstractedHeadsUp", leafTwoOpponents.Details.RootEvaluatorMode);
+        Assert.Equal("AbstractedHeadsUp", leafZeroOpponents.Details.RootEvaluatorMode);
+        Assert.Equal(2, leafTwoOpponents.Details.RootActiveOpponentCount);
+        Assert.Equal(2, leafZeroOpponents.Details.RootActiveOpponentCount);
+        Assert.Equal(2, leafTwoOpponents.Details.LeafActiveOpponentCount);
+        Assert.Equal(0, leafZeroOpponents.Details.LeafActiveOpponentCount);
+        Assert.True(leafTwoOpponents.Details.UsedDirectAbstractionShortcut);
+        Assert.True(leafZeroOpponents.Details.UsedDirectAbstractionShortcut);
+        Assert.Equal(leafTwoOpponents.Details.HeroUtility, leafZeroOpponents.Details.HeroUtility);
+    }
+
     [Fact]
     public void Evaluate_UnopenedBtnRaise_IncludesFoldEquityComponents()
     {
@@ -141,7 +164,7 @@ public sealed class EquityBasedPreflopLeafEvaluatorTests
         Assert.Equal("HeuristicFallback", result.Details.EvaluatorType);
         Assert.Equal("AKo", result.Details.HeroHand);
         Assert.NotNull(result.Details.FallbackReason);
-        Assert.Contains("expected heads-up", result.Details.FallbackReason!);
+        Assert.Contains("unsupported root evaluator mode", result.Details.FallbackReason!);
     }
 
     [Fact]
@@ -276,6 +299,22 @@ public sealed class EquityBasedPreflopLeafEvaluatorTests
             100,
             new LegalAction(rootAction, rootAction == ActionType.Raise ? new ChipAmount(250) : ChipAmount.Zero),
             solverKey);
+    }
+
+
+    private static PreflopLeafEvaluationContext CreateThreeWayContextWithLeafActiveOpponents(string solverKey, int leafActiveOpponents)
+    {
+        var baseline = CreateThreeWayContext(solverKey, HoleCards.Parse("AsKh"));
+        var heroId = baseline.HeroPlayerId;
+
+        var updatedPlayers = baseline.LeafState.Players
+            .Select(player => player.PlayerId == heroId
+                ? player
+                : player with { IsFolded = leafActiveOpponents == 0 })
+            .ToArray();
+
+        var leaf = baseline.LeafState with { Players = updatedPlayers };
+        return baseline with { LeafState = leaf };
     }
 
     private sealed class StaticOpponentRangeProvider : IOpponentRangeProvider

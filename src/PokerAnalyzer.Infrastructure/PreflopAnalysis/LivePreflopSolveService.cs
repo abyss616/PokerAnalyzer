@@ -122,7 +122,14 @@ public sealed class LivePreflopSolveService : IPreflopStrategyProvider
             details.BlockerSummary,
             details.RationaleSummary,
             details.FallbackReason,
-            details.DisplaySummary);
+            details.DisplaySummary,
+            details.RootEvaluatorMode,
+            details.RootActiveOpponentCount,
+            details.LeafActiveOpponentCount,
+            details.SampledTrajectoryDepth,
+            details.UsedDirectAbstractionShortcut,
+            details.TraversalMilliseconds,
+            details.LeafEvaluationMilliseconds);
     }
 
     private static string ToActionKey(LegalAction action)
