@@ -1,4 +1,5 @@
 using PokerAnalyzer.Domain.Game;
+using System.Diagnostics;
 using System.Text.Json;
 
 namespace PokerAnalyzer.Application.PreflopSolver;
@@ -82,6 +83,7 @@ public sealed class PreflopTrajectoryTraverser : IPreflopTrajectoryTraverser
 
         var visited = new List<VisitedNode>();
         var current = rootState;
+        var traversalStopwatch = Stopwatch.StartNew();
 
         while (true)
         {
@@ -91,10 +93,12 @@ public sealed class PreflopTrajectoryTraverser : IPreflopTrajectoryTraverser
             if (SolverTraversalGuards.IsTerminalLikeState(current) || _leafDetector.IsLeaf(current))
             {
                 var leafEvaluationContext = (evaluationContext ?? BuildContextFromSampledRootAction(rootState, current, visited)) with { LeafState = current };
+                var leafStopwatch = Stopwatch.StartNew();
                 var leafEvaluation = _leafEvaluator.Evaluate(leafEvaluationContext);
+                leafStopwatch.Stop();
                 visited.Add(VisitedNode.CreateLeaf(visited.Count, current.Street, leafEvaluation.Reason));
 
-                return new TrajectorySample(current, leafEvaluation.UtilityByPlayer, visited, leafEvaluation.Details);
+                return BuildSampleWithDiagnostics(current, leafEvaluation, visited, traversalStopwatch.ElapsedMilliseconds, leafStopwatch.ElapsedMilliseconds);
             }
 
             if (_chanceSampler.IsChanceNode(current))
@@ -109,9 +113,11 @@ public sealed class PreflopTrajectoryTraverser : IPreflopTrajectoryTraverser
             if (legalActions.Count == 0)
             {
                 var leafEvaluationContext = (evaluationContext ?? BuildContextFromSampledRootAction(rootState, current, visited)) with { LeafState = current };
+                var leafStopwatch = Stopwatch.StartNew();
                 var noActionEvaluation = _leafEvaluator.Evaluate(leafEvaluationContext);
+                leafStopwatch.Stop();
                 visited.Add(VisitedNode.CreateLeaf(visited.Count, current.Street, noActionEvaluation.Reason));
-                return new TrajectorySample(current, noActionEvaluation.UtilityByPlayer, visited, noActionEvaluation.Details);
+                return BuildSampleWithDiagnostics(current, noActionEvaluation, visited, traversalStopwatch.ElapsedMilliseconds, leafStopwatch.ElapsedMilliseconds);
             }
 
             var actingPlayerId = current.ActingPlayerId;
@@ -125,6 +131,26 @@ public sealed class PreflopTrajectoryTraverser : IPreflopTrajectoryTraverser
 
             current = SolverStateStepper.Step(current, sampledAction, legalActions);
         }
+    }
+
+
+    private static TrajectorySample BuildSampleWithDiagnostics(
+        SolverHandState finalState,
+        PreflopLeafEvaluation evaluation,
+        IReadOnlyList<VisitedNode> visited,
+        long traversalMilliseconds,
+        long leafEvaluationMilliseconds)
+    {
+        var details = evaluation.Details is null
+            ? null
+            : evaluation.Details with
+            {
+                SampledTrajectoryDepth = visited.Count,
+                TraversalMilliseconds = traversalMilliseconds,
+                LeafEvaluationMilliseconds = leafEvaluationMilliseconds
+            };
+
+        return new TrajectorySample(finalState, evaluation.UtilityByPlayer, visited, details);
     }
 
     private static PreflopLeafEvaluationContext BuildContextFromSampledRootAction(
@@ -248,7 +274,14 @@ public sealed record PreflopLeafEvaluationDetails(
     string? BlockerSummary,
     string? RationaleSummary,
     string? FallbackReason,
-    string? DisplaySummary);
+    string? DisplaySummary,
+    string? RootEvaluatorMode = null,
+    int? RootActiveOpponentCount = null,
+    int? LeafActiveOpponentCount = null,
+    int? SampledTrajectoryDepth = null,
+    bool? UsedDirectAbstractionShortcut = null,
+    long? TraversalMilliseconds = null,
+    long? LeafEvaluationMilliseconds = null);
 
 public sealed record PreflopLeafEvaluationContext(
     SolverHandState RootState,

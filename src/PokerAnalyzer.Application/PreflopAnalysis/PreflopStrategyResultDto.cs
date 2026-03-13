@@ -50,4 +50,11 @@ public sealed record PreflopLeafEvaluationDetailsDto(
     string? BlockerSummary,
     string? RationaleSummary,
     string? FallbackReason,
-    string? DisplaySummary);
+    string? DisplaySummary,
+    string? RootEvaluatorMode = null,
+    int? RootActiveOpponentCount = null,
+    int? LeafActiveOpponentCount = null,
+    int? SampledTrajectoryDepth = null,
+    bool? UsedDirectAbstractionShortcut = null,
+    long? TraversalMilliseconds = null,
+    long? LeafEvaluationMilliseconds = null);

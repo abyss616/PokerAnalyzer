@@ -89,7 +89,14 @@ public sealed class ApiClient
         string? BlockerSummary,
         string? RationaleSummary,
         string? FallbackReason,
-        string? DisplaySummary);
+        string? DisplaySummary,
+        string? RootEvaluatorMode = null,
+        int? RootActiveOpponentCount = null,
+        int? LeafActiveOpponentCount = null,
+        int? SampledTrajectoryDepth = null,
+        bool? UsedDirectAbstractionShortcut = null,
+        long? TraversalMilliseconds = null,
+        long? LeafEvaluationMilliseconds = null);
     public sealed record PreflopTrace(
         string SolverKey,
         string HistorySignature,
