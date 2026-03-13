@@ -1,10 +1,8 @@
 using System.Globalization;
 using PokerAnalyzer.Application.PreflopAnalysis;
-using PokerAnalyzer.Domain.Cards;
 using PokerAnalyzer.Domain.Game;
 using PokerAnalyzer.Infrastructure.Engines;
 using PokerAnalyzer.Infrastructure.HandHistories;
-using System.Text.RegularExpressions;
 
 namespace PokerAnalyzer.Infrastructure.PreflopAnalysis;
 
@@ -86,7 +84,7 @@ public sealed class PreflopHandAnalysisService : IPreflopHandAnalysisService
         var snapshotState = BuildSnapshotState(request, extraction.Trace);
         var legalActions = BuildLegalActions(snapshotState, extraction.Trace);
 
-        var strategyResult = await ResolveStrategyAsync(extraction.Key.SolverKey, snapshotState, legalActions, request.ComparisonHeroHands, request.UsePersistentTrainingState, ct);
+        var strategyResult = await ResolveStrategyAsync(extraction.Key.SolverKey, snapshotState, legalActions, request.UsePersistentTrainingState, ct);
         var recommendationResult = BuildRecommendations(
             legalActions,
             strategyResult.Strategy,
@@ -123,16 +121,14 @@ public sealed class PreflopHandAnalysisService : IPreflopHandAnalysisService
             strategyResult.ActionValueSupport,
             strategyResult.BestActionMargin,
             strategyResult.SeparationScore,
-            strategyResult.HandComparisons,
             strategyResult.Metadata,
             ToTraceDto(extraction.Trace));
     }
 
-    private async Task<(IReadOnlyList<PreflopNodeStrategyItemDto> Strategy, PreflopNodeSolveMetadataDto Metadata, string StrategySource, int IterationsCompleted, double RegretMagnitude, string? HeroHand, IReadOnlyList<PreflopNodeActionDiagnosticDto> ActionDiagnostics, string? ActionValueSupport, decimal? BestActionMargin, decimal? SeparationScore, IReadOnlyList<PreflopHandComparisonDto> HandComparisons)> ResolveStrategyAsync(
+    private async Task<(IReadOnlyList<PreflopNodeStrategyItemDto> Strategy, PreflopNodeSolveMetadataDto Metadata, string StrategySource, int IterationsCompleted, double RegretMagnitude, string? HeroHand, IReadOnlyList<PreflopNodeActionDiagnosticDto> ActionDiagnostics, string? ActionValueSupport, decimal? BestActionMargin, decimal? SeparationScore)> ResolveStrategyAsync(
         string solverKey,
         SolverHandState snapshotState,
         IReadOnlyList<LegalAction> legalActions,
-        IReadOnlyList<string>? comparisonHeroHands,
         bool usePersistentTrainingState,
         CancellationToken ct)
     {
@@ -152,8 +148,7 @@ public sealed class PreflopHandAnalysisService : IPreflopHandAnalysisService
                 Array.Empty<PreflopNodeActionDiagnosticDto>(),
                 null,
                 null,
-                null,
-                Array.Empty<PreflopHandComparisonDto>());
+                null);
         }
 
         var items = strategy
@@ -166,7 +161,6 @@ public sealed class PreflopHandAnalysisService : IPreflopHandAnalysisService
             .ToList();
 
         var heroHand = strategyResult.LeafEvaluationDetails?.HeroHand;
-        var comparisons = await BuildHandComparisonsAsync(solverKey, snapshotState, legalActions, comparisonHeroHands, heroHand, usePersistentTrainingState, ct);
 
         return (
             items,
@@ -184,127 +178,7 @@ public sealed class PreflopHandAnalysisService : IPreflopHandAnalysisService
             actionDiagnostics,
             strategyResult.ActionValueSupport,
             strategyResult.BestActionMargin.HasValue ? decimal.Round((decimal)strategyResult.BestActionMargin.Value * 100m, 2) : null,
-            strategyResult.SeparationScore.HasValue ? decimal.Round((decimal)strategyResult.SeparationScore.Value, 4) : null,
-            comparisons);
-    }
-
-    private async Task<IReadOnlyList<PreflopHandComparisonDto>> BuildHandComparisonsAsync(
-        string solverKey,
-        SolverHandState snapshotState,
-        IReadOnlyList<LegalAction> legalActions,
-        IReadOnlyList<string>? comparisonHeroHands,
-        string? heroHand,
-        bool usePersistentTrainingState,
-        CancellationToken ct)
-    {
-        var targets = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        if (!string.IsNullOrWhiteSpace(heroHand))
-            targets.Add(heroHand);
-
-        foreach (var hand in comparisonHeroHands ?? Array.Empty<string>())
-            targets.Add(hand);
-
-        targets.Add("J9o");
-        targets.Add("Q4o");
-
-        var rows = new List<PreflopHandComparisonDto>();
-        foreach (var hand in targets.Take(6))
-        {
-            if (!TryApplyHeroHand(snapshotState, hand, out var stateForHand, out var normalized))
-                continue;
-
-            var result = await _strategyProvider.GetStrategyResultAsync(
-                new PreflopStrategyRequestDto(solverKey, stateForHand, legalActions, usePersistentTrainingState),
-                ct);
-
-            if (result?.AverageStrategy is null)
-                continue;
-
-            var diagnostics = (result.ActionDiagnostics ?? Array.Empty<PreflopActionDiagnosticDto>())
-                .Select(x => new PreflopNodeActionDiagnosticDto(x.ActionKey, decimal.Round(x.Frequency * 100m, 2), x.Regret, x.PositiveRegret, x.IsBestByFrequency))
-                .ToList();
-
-            rows.Add(new PreflopHandComparisonDto(
-                normalized,
-                ToPercent(result.AverageStrategy, "Raise"),
-                ToPercent(result.AverageStrategy, "Call"),
-                ToPercent(result.AverageStrategy, "Fold"),
-                result.LeafEvaluationDetails?.HeroEquity,
-                result.LeafEvaluationDetails?.HeroUtility,
-                result.LeafEvaluationDetails?.RangeDescription,
-                result.LeafEvaluationDetails?.EvaluatorType ?? "Unknown",
-                result.ActionValueSupport,
-                result.BestActionMargin.HasValue ? decimal.Round((decimal)result.BestActionMargin.Value * 100m, 2) : null,
-                result.SeparationScore.HasValue ? decimal.Round((decimal)result.SeparationScore.Value, 4) : null,
-                diagnostics));
-        }
-
-        return rows.OrderByDescending(x => x.RaiseFrequency).ToList();
-    }
-
-    private static decimal ToPercent(IReadOnlyDictionary<string, decimal> strategy, string prefix)
-    {
-        var sum = strategy.Where(x => x.Key.StartsWith(prefix, StringComparison.Ordinal)).Sum(x => x.Value);
-        return decimal.Round(sum * 100m, 2);
-    }
-
-    private static bool TryApplyHeroHand(SolverHandState state, string handLabel, out SolverHandState updatedState, out string normalized)
-    {
-        updatedState = state;
-        normalized = handLabel;
-        if (!TryParseHandLabel(handLabel, out var cards, out normalized))
-            return false;
-
-        var privateCards = new Dictionary<PlayerId, HoleCards>(state.PrivateCardsByPlayer);
-        privateCards[state.ActingPlayerId] = cards;
-        updatedState = state.With(privateCardsByPlayer: privateCards);
-        return true;
-    }
-
-    private static bool TryParseHandLabel(string label, out HoleCards cards, out string normalized)
-    {
-        cards = default;
-        normalized = label;
-        if (string.IsNullOrWhiteSpace(label))
-            return false;
-
-        var trimmed = label.Trim();
-        if (trimmed.Length == 4)
-        {
-            try
-            {
-                cards = HoleCards.Parse(trimmed);
-                normalized = trimmed;
-                return true;
-            }
-            catch
-            {
-                return false;
-            }
-        }
-
-        var match = Regex.Match(trimmed, "^(?<a>[AKQJT2-9])(?<b>[AKQJT2-9])(?<m>[so]?)$", RegexOptions.IgnoreCase);
-        if (!match.Success)
-            return false;
-
-        var a = match.Groups["a"].Value.ToUpperInvariant();
-        var b = match.Groups["b"].Value.ToUpperInvariant();
-        var m = match.Groups["m"].Value.ToLowerInvariant();
-
-        normalized = a == b ? $"{a}{b}" : $"{a}{b}{(string.IsNullOrEmpty(m) ? "o" : m)}";
-        var concrete = a == b
-            ? $"{a}s{b}h"
-            : (m == "s" ? $"{a}s{b}s" : $"{a}s{b}h");
-
-        try
-        {
-            cards = HoleCards.Parse(concrete);
-            return true;
-        }
-        catch
-        {
-            return false;
-        }
+            strategyResult.SeparationScore.HasValue ? decimal.Round((decimal)strategyResult.SeparationScore.Value, 4) : null);
     }
 
     private const decimal FrequencyEqualityTolerance = 0.0001m;
@@ -751,7 +625,6 @@ public sealed class PreflopHandAnalysisService : IPreflopHandAnalysisService
             null,
             null,
             null,
-            Array.Empty<PreflopHandComparisonDto>(),
             new PreflopNodeSolveMetadataDto("Unavailable", 0, 0, "None", null, null),
             ToTraceDto(trace ?? EmptyTrace()));
 
