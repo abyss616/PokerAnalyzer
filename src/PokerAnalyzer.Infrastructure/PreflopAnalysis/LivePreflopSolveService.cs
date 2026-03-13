@@ -82,7 +82,7 @@ public sealed class LivePreflopSolveService : IPreflopStrategyProvider
             request.UsePersistentTrainingState ? "Persistent" : "Fresh",
             MapLeafDetails(trainingResult.LastLeafEvaluationDetails),
             diagnostics,
-            "Derived from regret matching + average strategy over equity-based leaf utilities (no explicit postflop EV rollout).",
+            "Derived from regret matching over action-sensitive preflop leaf utilities (BTN unopened opens include fold-equity + continuation components; no explicit postflop EV rollout).",
             bestMargin,
             separation));
     }
@@ -110,6 +110,10 @@ public sealed class LivePreflopSolveService : IPreflopStrategyProvider
             details.RangeDetail,
             details.FoldProbability,
             details.ContinueProbability,
+            details.RootActionType,
+            details.ImmediateWinComponent,
+            details.ContinueComponent,
+            details.ContinueBranchUtility,
             details.FilteredCombos,
             details.HeroEquity,
             details.HeroUtility,
