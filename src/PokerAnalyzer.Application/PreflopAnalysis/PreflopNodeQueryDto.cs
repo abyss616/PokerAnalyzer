@@ -10,7 +10,6 @@ public sealed record PreflopNodeQueryRequestDto(
     decimal BigBlind,
     IReadOnlyList<PreflopNodeSeatDto> Seats,
     IReadOnlyList<PreflopNodeActionDto> PublicActionHistory,
-    IReadOnlyList<string>? ComparisonHeroHands = null,
     bool UsePersistentTrainingState = false);
 
 public sealed record PreflopNodeSeatDto(
@@ -53,7 +52,6 @@ public sealed record PreflopNodeQueryResultDto(
     string? ActionValueSupport,
     decimal? BestActionMargin,
     decimal? SeparationScore,
-    IReadOnlyList<PreflopHandComparisonDto> HandComparisons,
     PreflopNodeSolveMetadataDto SolveMetadata,
     PreflopNodeTraceDto Trace);
 
@@ -71,20 +69,6 @@ public sealed record PreflopNodeActionDiagnosticDto(
     double Regret,
     double PositiveRegret,
     bool IsBestByFrequency);
-
-public sealed record PreflopHandComparisonDto(
-    string HeroHand,
-    decimal RaiseFrequency,
-    decimal CallFrequency,
-    decimal FoldFrequency,
-    double? HeroEquity,
-    double? HeroUtility,
-    string? OpponentRangeDescription,
-    string EvaluatorType,
-    string? ActionValueSupport,
-    decimal? BestActionMargin,
-    decimal? SeparationScore,
-    IReadOnlyList<PreflopNodeActionDiagnosticDto> ActionDiagnostics);
 
 public sealed record PreflopNodeRecommendationItemDto(
     string ActionKey,
