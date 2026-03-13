@@ -94,7 +94,7 @@ public sealed class PreflopTrajectoryTraverser : IPreflopTrajectoryTraverser
                 var leafEvaluation = _leafEvaluator.Evaluate(leafEvaluationContext);
                 visited.Add(VisitedNode.CreateLeaf(visited.Count, current.Street, leafEvaluation.Reason));
 
-                return new TrajectorySample(current, leafEvaluation.UtilityByPlayer, visited);
+                return new TrajectorySample(current, leafEvaluation.UtilityByPlayer, visited, leafEvaluation.Details);
             }
 
             if (_chanceSampler.IsChanceNode(current))
@@ -111,7 +111,7 @@ public sealed class PreflopTrajectoryTraverser : IPreflopTrajectoryTraverser
                 var leafEvaluationContext = (evaluationContext ?? BuildContextFromSampledRootAction(rootState, current, visited)) with { LeafState = current };
                 var noActionEvaluation = _leafEvaluator.Evaluate(leafEvaluationContext);
                 visited.Add(VisitedNode.CreateLeaf(visited.Count, current.Street, noActionEvaluation.Reason));
-                return new TrajectorySample(current, noActionEvaluation.UtilityByPlayer, visited);
+                return new TrajectorySample(current, noActionEvaluation.UtilityByPlayer, visited, noActionEvaluation.Details);
             }
 
             var actingPlayerId = current.ActingPlayerId;
@@ -174,7 +174,8 @@ public sealed class PreflopTrajectoryTraverser : IPreflopTrajectoryTraverser
 public sealed record TrajectorySample(
     SolverHandState FinalState,
     IReadOnlyDictionary<PlayerId, double> UtilityByPlayer,
-    IReadOnlyList<VisitedNode> Path);
+    IReadOnlyList<VisitedNode> Path,
+    PreflopLeafEvaluationDetails? LeafEvaluationDetails = null);
 
 public enum TraversalNodeKind : byte
 {
@@ -215,7 +216,24 @@ public sealed record VisitedNode(
 
 public sealed record PreflopLeafEvaluation(
     IReadOnlyDictionary<PlayerId, double> UtilityByPlayer,
-    string Reason);
+    string Reason,
+    PreflopLeafEvaluationDetails? Details = null);
+
+public sealed record PreflopLeafEvaluationDetails(
+    bool UsedEquityEvaluator,
+    bool UsedFallbackEvaluator,
+    string EvaluatorType,
+    string? NodeFamily,
+    string? HeroPosition,
+    string? VillainPosition,
+    bool IsHeadsUp,
+    string? RangeDescription,
+    string? RangeDetail,
+    int? FilteredCombos,
+    double? HeroEquity,
+    double? HeroUtility,
+    string? FallbackReason,
+    string? DisplaySummary);
 
 public sealed record PreflopLeafEvaluationContext(
     SolverHandState RootState,

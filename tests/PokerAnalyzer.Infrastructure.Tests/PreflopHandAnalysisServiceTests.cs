@@ -125,6 +125,35 @@ public sealed class PreflopHandAnalysisServiceTests
             result.LegalActions.Select(a => a.ActionKey).ToArray());
     }
 
+
+    [Fact]
+    public async Task QueryPreflopNodeByHandNumberAsync_MapsLeafEvaluationDetailsIntoSolveMetadata()
+    {
+        var hand = BuildStandardHeroFacingOpenHand();
+        var details = new PreflopLeafEvaluationDetailsDto(
+            true,
+            false,
+            "EquityBased",
+            "FacingRaise",
+            "BTN",
+            "BB",
+            true,
+            "FacingRaise",
+            "table-range percentile=0.18",
+            120,
+            0.57,
+            0.14,
+            null,
+            "level-2 test summary");
+
+        var strategyProvider = new TestStrategyProvider(new Dictionary<string, decimal> { ["Fold"] = 0.1m }, details);
+        var result = await BuildService(hand, strategyProvider).QueryPreflopNodeByHandNumberAsync(1, CancellationToken.None);
+
+        Assert.NotNull(result);
+        Assert.NotNull(result!.SolveMetadata.LeafEvaluationDetails);
+        Assert.Equal("EquityBased", result.SolveMetadata.LeafEvaluationDetails!.EvaluatorType);
+        Assert.Equal(0.57, result.SolveMetadata.LeafEvaluationDetails.HeroEquity);
+    }
     [Fact]
     public async Task QueryPreflopNodeByHandNumberAsync_UsesLiveSolverAndReturnsSolveMetadata()
     {
@@ -308,10 +337,12 @@ public sealed class PreflopHandAnalysisServiceTests
     private sealed class TestStrategyProvider : IPreflopStrategyProvider
     {
         private readonly IReadOnlyDictionary<string, decimal>? _strategy;
+        private readonly PreflopLeafEvaluationDetailsDto? _details;
 
-        public TestStrategyProvider(IReadOnlyDictionary<string, decimal>? strategy)
+        public TestStrategyProvider(IReadOnlyDictionary<string, decimal>? strategy, PreflopLeafEvaluationDetailsDto? details = null)
         {
             _strategy = strategy;
+            _details = details;
         }
 
         public Task<PreflopStrategyResultDto?> GetStrategyResultAsync(PreflopStrategyRequestDto request, CancellationToken ct)
@@ -323,7 +354,7 @@ public sealed class PreflopHandAnalysisServiceTests
                 .Where(kv => request.LegalActions.Select(ToActionKey).Contains(kv.Key, StringComparer.Ordinal))
                 .ToDictionary(kv => kv.Key, kv => kv.Value, StringComparer.Ordinal);
 
-            return Task.FromResult<PreflopStrategyResultDto?>(new PreflopStrategyResultDto(request.SolverKey, selected, 0, 0d, "TestProvider", 0, "None"));
+            return Task.FromResult<PreflopStrategyResultDto?>(new PreflopStrategyResultDto(request.SolverKey, selected, 0, 0d, "TestProvider", 0, "None", _details));
         }
 
         private static string ToActionKey(LegalAction action)

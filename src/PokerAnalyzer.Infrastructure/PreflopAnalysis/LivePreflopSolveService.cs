@@ -66,7 +66,31 @@ public sealed class LivePreflopSolveService : IPreflopStrategyProvider
             regretMagnitude,
             "LiveSolved",
             (long)trainingResult.Elapsed.TotalMilliseconds,
-            request.UsePersistentTrainingState ? "Persistent" : "Fresh"));
+            request.UsePersistentTrainingState ? "Persistent" : "Fresh",
+            MapLeafDetails(trainingResult.LastLeafEvaluationDetails)));
+    }
+
+
+    private static PreflopLeafEvaluationDetailsDto? MapLeafDetails(PreflopLeafEvaluationDetails? details)
+    {
+        if (details is null)
+            return null;
+
+        return new PreflopLeafEvaluationDetailsDto(
+            details.UsedEquityEvaluator,
+            details.UsedFallbackEvaluator,
+            details.EvaluatorType,
+            details.NodeFamily,
+            details.HeroPosition,
+            details.VillainPosition,
+            details.IsHeadsUp,
+            details.RangeDescription,
+            details.RangeDetail,
+            details.FilteredCombos,
+            details.HeroEquity,
+            details.HeroUtility,
+            details.FallbackReason,
+            details.DisplaySummary);
     }
 
     private static string ToActionKey(LegalAction action)

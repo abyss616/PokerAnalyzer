@@ -22,6 +22,15 @@ public sealed class EquityBasedPreflopLeafEvaluatorTests
         Assert.Contains("equity leaf evaluator:", result.Reason);
         Assert.Contains($"family={expectedFamily}", result.Reason);
         Assert.DoesNotContain("fallback", result.Reason);
+        Assert.NotNull(result.Details);
+        Assert.True(result.Details!.UsedEquityEvaluator);
+        Assert.False(result.Details.UsedFallbackEvaluator);
+        Assert.Equal("EquityBased", result.Details.EvaluatorType);
+        Assert.Equal(expectedFamily.ToString(), result.Details.NodeFamily);
+        Assert.Equal("BTN", result.Details.HeroPosition);
+        Assert.Equal("BB", result.Details.VillainPosition);
+        Assert.NotNull(result.Details.HeroEquity);
+        Assert.NotNull(result.Details.HeroUtility);
     }
 
     [Fact]
@@ -38,6 +47,10 @@ public sealed class EquityBasedPreflopLeafEvaluatorTests
 
         Assert.Contains("filteredCombos=1", result.Reason);
         Assert.DoesNotContain("fallback", result.Reason);
+        Assert.NotNull(result.Details);
+        Assert.Equal(1, result.Details!.FilteredCombos);
+        Assert.Equal("static-test", result.Details.RangeDescription);
+        Assert.Equal("static-test", result.Details.RangeDetail);
     }
 
     [Fact]
@@ -50,6 +63,11 @@ public sealed class EquityBasedPreflopLeafEvaluatorTests
 
         Assert.Contains("equity evaluator fallback", result.Reason);
         Assert.Contains("heuristic preflop", result.Reason);
+        Assert.NotNull(result.Details);
+        Assert.True(result.Details!.UsedFallbackEvaluator);
+        Assert.Equal("HeuristicFallback", result.Details.EvaluatorType);
+        Assert.NotNull(result.Details.FallbackReason);
+        Assert.Contains("expected heads-up", result.Details.FallbackReason!);
     }
 
     [Fact]
