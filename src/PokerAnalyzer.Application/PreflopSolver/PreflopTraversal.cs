@@ -220,6 +220,7 @@ public sealed record PreflopLeafEvaluation(
     PreflopLeafEvaluationDetails? Details = null);
 
 public sealed record PreflopLeafEvaluationDetails(
+    string HeroHand,
     bool UsedEquityEvaluator,
     bool UsedFallbackEvaluator,
     string EvaluatorType,
@@ -232,6 +233,10 @@ public sealed record PreflopLeafEvaluationDetails(
     int? FilteredCombos,
     double? HeroEquity,
     double? HeroUtility,
+    double? EquityVsRangePercentile,
+    string? HandClass,
+    string? BlockerSummary,
+    string? RationaleSummary,
     string? FallbackReason,
     string? DisplaySummary);
 

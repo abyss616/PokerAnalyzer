@@ -131,6 +131,7 @@ public sealed class PreflopHandAnalysisServiceTests
     {
         var hand = BuildStandardHeroFacingOpenHand();
         var details = new PreflopLeafEvaluationDetailsDto(
+            "AsKh",
             true,
             false,
             "EquityBased",
@@ -143,6 +144,10 @@ public sealed class PreflopHandAnalysisServiceTests
             120,
             0.57,
             0.14,
+            0.71,
+            "Offsuit broadway",
+            "Contains A/K blockers",
+            "test rationale",
             null,
             "level-2 test summary");
 
@@ -151,6 +156,7 @@ public sealed class PreflopHandAnalysisServiceTests
 
         Assert.NotNull(result);
         Assert.NotNull(result!.SolveMetadata.LeafEvaluationDetails);
+        Assert.Equal("AsKh", result.HeroHand);
         Assert.Equal("EquityBased", result.SolveMetadata.LeafEvaluationDetails!.EvaluatorType);
         Assert.Equal(0.57, result.SolveMetadata.LeafEvaluationDetails.HeroEquity);
     }

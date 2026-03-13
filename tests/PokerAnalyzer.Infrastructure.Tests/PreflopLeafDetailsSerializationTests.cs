@@ -32,13 +32,21 @@ public sealed class PreflopLeafDetailsSerializationTests
   "isUniformStrategy": false,
   "strategyStatus": "Solved",
   "strategyExplanation": null,
+  "heroHand": "AsKh",
   "strategy": [],
+  "actionDiagnostics": [],
+  "actionValueSupport": "Regret diagnostics",
+  "bestActionMargin": 12.3,
+  "separationScore": 1.44,
+  "handComparisons": [],
   "solveMetadata": {
     "strategySource": "LiveSolved",
     "iterationsCompleted": 300,
     "elapsedMilliseconds": 25,
     "solveMode": "Fresh",
+    "heroHand": "AsKh",
     "leafEvaluationDetails": {
+      "heroHand": "AsKh",
       "usedEquityEvaluator": true,
       "usedFallbackEvaluator": false,
       "evaluatorType": "EquityBased",
@@ -51,6 +59,10 @@ public sealed class PreflopLeafDetailsSerializationTests
       "filteredCombos": 121,
       "heroEquity": 0.571,
       "heroUtility": 0.142,
+      "equityVsRangePercentile": 0.68,
+      "handClass": "Offsuit broadway",
+      "blockerSummary": "A/K blockers",
+      "rationaleSummary": "summary",
       "fallbackReason": null,
       "displaySummary": "Level-2 equity leaf"
     }

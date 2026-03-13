@@ -94,14 +94,20 @@ public sealed class EquityBasedPreflopLeafEvaluator : IPreflopLeafEvaluator
         }
 
         var heroUtility = (heroEquity - 0.5d) * 2d;
+        var heroHand = ToHandLabel(context.HeroCards);
+        var handClass = ClassifyHand(context.HeroCards);
+        var percentile = Math.Clamp((heroEquity - 0.30d) / 0.40d, 0d, 1d);
+        var blockerSummary = BuildBlockerSummary(context.HeroCards, villain.Position);
         var utility = context.LeafState.Players.ToDictionary(player => player.PlayerId, _ => 0d);
         utility[context.HeroPlayerId] = heroUtility;
 
-        var summary = $"Level-2 equity leaf: {context.HeroCards} vs {range.Description} ({villain.Position}) -> equity {heroEquity:0.000}, utility {heroUtility:0.000}";
+        var summary = $"Level-2 equity leaf: {heroHand} vs {range.Description} ({villain.Position}) -> equity {heroEquity:0.000}, utility {heroUtility:0.000}";
+        var rationaleSummary = $"{heroHand} is classified as {handClass}. Strategy is primarily driven by equity {heroEquity:0.000} against the weighted {range.Description} range.";
         return new PreflopLeafEvaluation(
             utility,
             $"equity leaf evaluator: family={nodeFamily}, villainPos={villain.Position}, range={range.Description}, filteredCombos={filteredRange.Length}, equity={heroEquity:0.000}, utility={heroUtility:0.000}, detail={rangeReason}",
             new PreflopLeafEvaluationDetails(
+                HeroHand: heroHand,
                 UsedEquityEvaluator: true,
                 UsedFallbackEvaluator: false,
                 EvaluatorType: "EquityBased",
@@ -114,6 +120,10 @@ public sealed class EquityBasedPreflopLeafEvaluator : IPreflopLeafEvaluator
                 FilteredCombos: filteredRange.Length,
                 HeroEquity: heroEquity,
                 HeroUtility: heroUtility,
+                EquityVsRangePercentile: percentile,
+                HandClass: handClass,
+                BlockerSummary: blockerSummary,
+                RationaleSummary: rationaleSummary,
                 FallbackReason: null,
                 DisplaySummary: summary));
     }
@@ -125,6 +135,7 @@ public sealed class EquityBasedPreflopLeafEvaluator : IPreflopLeafEvaluator
             utility,
             "equity leaf evaluator: root action fold -> utility 0",
             new PreflopLeafEvaluationDetails(
+                HeroHand: ToHandLabel(context.HeroCards),
                 UsedEquityEvaluator: false,
                 UsedFallbackEvaluator: true,
                 EvaluatorType: "FoldZeroUtility",
@@ -137,6 +148,10 @@ public sealed class EquityBasedPreflopLeafEvaluator : IPreflopLeafEvaluator
                 FilteredCombos: null,
                 HeroEquity: null,
                 HeroUtility: 0d,
+                EquityVsRangePercentile: null,
+                HandClass: ClassifyHand(context.HeroCards),
+                BlockerSummary: BuildBlockerSummary(context.HeroCards, null),
+                RationaleSummary: "Fold action terminates the branch so utility is fixed at zero.",
                 FallbackReason: "root action fold",
                 DisplaySummary: "Leaf utility is zero because root action is fold."));
     }
@@ -151,6 +166,7 @@ public sealed class EquityBasedPreflopLeafEvaluator : IPreflopLeafEvaluator
         {
             Reason = $"equity evaluator fallback: {reason}; {evaluation.Reason}",
             Details = new PreflopLeafEvaluationDetails(
+                HeroHand: ToHandLabel(context.HeroCards),
                 UsedEquityEvaluator: false,
                 UsedFallbackEvaluator: true,
                 EvaluatorType: "HeuristicFallback",
@@ -163,10 +179,60 @@ public sealed class EquityBasedPreflopLeafEvaluator : IPreflopLeafEvaluator
                 FilteredCombos: existingDetails?.FilteredCombos,
                 HeroEquity: existingDetails?.HeroEquity,
                 HeroUtility: evaluation.UtilityByPlayer.TryGetValue(context.HeroPlayerId, out var heroUtility) ? heroUtility : existingDetails?.HeroUtility,
+                EquityVsRangePercentile: existingDetails?.EquityVsRangePercentile,
+                HandClass: existingDetails?.HandClass ?? ClassifyHand(context.HeroCards),
+                BlockerSummary: existingDetails?.BlockerSummary ?? BuildBlockerSummary(context.HeroCards, null),
+                RationaleSummary: existingDetails?.RationaleSummary ?? "Heuristic fallback used because equity range evaluation was unavailable.",
                 FallbackReason: reason,
                 DisplaySummary: existingDetails?.DisplaySummary ?? summary)
         };
     }
+
+    private static string ToHandLabel(HoleCards cards)
+    {
+        var ranks = new[] { cards.First.Rank, cards.Second.Rank }.OrderByDescending(ToRankValue).ToArray();
+        if (ranks[0] == ranks[1])
+            return $"{ToRankChar(ranks[0])}{ToRankChar(ranks[1])}";
+
+        var suited = cards.First.Suit == cards.Second.Suit;
+        return $"{ToRankChar(ranks[0])}{ToRankChar(ranks[1])}{(suited ? 's' : 'o')}";
+    }
+
+    private static string ClassifyHand(HoleCards cards)
+    {
+        var ranks = new[] { cards.First.Rank, cards.Second.Rank }.OrderByDescending(ToRankValue).ToArray();
+        var high = ToRankValue(ranks[0]);
+        var low = ToRankValue(ranks[1]);
+        var suited = cards.First.Suit == cards.Second.Suit;
+
+        if (high == low)
+            return "Pair";
+
+        if (suited && low <= 5)
+            return "Suited wheel";
+
+        if (high >= 11 && low >= 9)
+            return suited ? "Suited broadway" : "Offsuit broadway";
+
+        if (!suited && high <= 10 && low <= 6)
+            return "Offsuit trash";
+
+        return suited ? "Suited connector/gapper" : "Offsuit connector/gapper";
+    }
+
+    private static string BuildBlockerSummary(HoleCards cards, Position? villainPosition)
+        => $"Contains {cards.First.Rank}/{cards.Second.Rank} blockers versus {(villainPosition?.ToString() ?? "opponent")} continuing range.";
+
+    private static int ToRankValue(Rank rank) => (int)rank;
+    private static char ToRankChar(Rank rank) => rank switch
+    {
+        Rank.Ten => 'T',
+        Rank.Jack => 'J',
+        Rank.Queen => 'Q',
+        Rank.King => 'K',
+        Rank.Ace => 'A',
+        _ => ((int)rank).ToString()[0]
+    };
 
     private static bool SharesCard(HoleCards left, HoleCards right)
         => left.First == right.First

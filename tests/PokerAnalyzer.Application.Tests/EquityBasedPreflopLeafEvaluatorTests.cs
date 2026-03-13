@@ -31,6 +31,9 @@ public sealed class EquityBasedPreflopLeafEvaluatorTests
         Assert.Equal("BB", result.Details.VillainPosition);
         Assert.NotNull(result.Details.HeroEquity);
         Assert.NotNull(result.Details.HeroUtility);
+        Assert.Equal("AKo", result.Details.HeroHand);
+        Assert.NotNull(result.Details.HandClass);
+        Assert.NotNull(result.Details.RationaleSummary);
     }
 
     [Fact]
@@ -66,6 +69,7 @@ public sealed class EquityBasedPreflopLeafEvaluatorTests
         Assert.NotNull(result.Details);
         Assert.True(result.Details!.UsedFallbackEvaluator);
         Assert.Equal("HeuristicFallback", result.Details.EvaluatorType);
+        Assert.Equal("AKo", result.Details.HeroHand);
         Assert.NotNull(result.Details.FallbackReason);
         Assert.Contains("expected heads-up", result.Details.FallbackReason!);
     }

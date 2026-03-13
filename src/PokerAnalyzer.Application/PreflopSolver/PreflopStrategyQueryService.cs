@@ -40,8 +40,19 @@ public sealed class PreflopStrategyQueryService : IPreflopStrategyQueryService
         }
 
         var regretMagnitude = 0d;
+        var diagnostics = new List<PreflopActionDiagnosticDto>(legalActions.Count);
         foreach (var action in legalActions)
-            regretMagnitude += Math.Max(0d, _regretStore.Get(infoSetKey, action));
+        {
+            var regret = _regretStore.Get(infoSetKey, action);
+            regretMagnitude += Math.Max(0d, regret);
+            var actionKey = ToActionKey(action);
+            var frequency = averageStrategy.TryGetValue(actionKey, out var value) ? value : 0m;
+            diagnostics.Add(new PreflopActionDiagnosticDto(actionKey, frequency, regret, Math.Max(0d, regret), false));
+        }
+
+        var ordered = diagnostics.OrderByDescending(x => x.Frequency).ToList();
+        var bestMargin = ordered.Count > 1 ? (double)(ordered[0].Frequency - ordered[1].Frequency) : 0d;
+        var separation = diagnostics.Sum(x => x.PositiveRegret);
 
         return new PreflopStrategyResultDto(
             infoSetKey,
@@ -50,7 +61,12 @@ public sealed class PreflopStrategyQueryService : IPreflopStrategyQueryService
             regretMagnitude,
             "StoreBacked",
             0,
-            "None");
+            "None",
+            null,
+            diagnostics,
+            "Regret/average strategy only (no explicit per-action EV rollouts stored).",
+            bestMargin,
+            separation);
     }
 
     private static string ToActionKey(LegalAction action)

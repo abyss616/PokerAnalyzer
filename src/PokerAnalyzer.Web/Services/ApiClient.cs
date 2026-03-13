@@ -39,21 +39,43 @@ public sealed class ApiClient
         bool IsUniformStrategy,
         string? StrategyStatus,
         string? StrategyExplanation,
+        string? HeroHand,
         IReadOnlyList<PreflopStrategyItem> Strategy,
+        IReadOnlyList<PreflopActionDiagnostic> ActionDiagnostics,
+        string? ActionValueSupport,
+        decimal? BestActionMargin,
+        decimal? SeparationScore,
+        IReadOnlyList<PreflopHandComparison> HandComparisons,
         PreflopSolveMetadata SolveMetadata,
         PreflopTrace Trace);
 
     public sealed record PreflopLegalAction(string ActionKey, string ActionType, decimal? SizeBb, bool IsFacingAllIn);
     public sealed record PreflopRecommendationItem(string ActionKey, string DisplayLabel, decimal Frequency, bool IsBestAction);
     public sealed record PreflopStrategyItem(string ActionKey, decimal Frequency);
+    public sealed record PreflopActionDiagnostic(string ActionKey, decimal Frequency, double Regret, double PositiveRegret, bool IsBestByFrequency);
+    public sealed record PreflopHandComparison(
+        string HeroHand,
+        decimal RaiseFrequency,
+        decimal CallFrequency,
+        decimal FoldFrequency,
+        double? HeroEquity,
+        double? HeroUtility,
+        string? OpponentRangeDescription,
+        string EvaluatorType,
+        string? ActionValueSupport,
+        decimal? BestActionMargin,
+        decimal? SeparationScore,
+        IReadOnlyList<PreflopActionDiagnostic> ActionDiagnostics);
     public sealed record PreflopSolveMetadata(
         string StrategySource,
         int IterationsCompleted,
         long ElapsedMilliseconds,
         string SolveMode,
-        PreflopLeafEvaluationDetails? LeafEvaluationDetails);
+        PreflopLeafEvaluationDetails? LeafEvaluationDetails,
+        string? HeroHand);
 
     public sealed record PreflopLeafEvaluationDetails(
+        string HeroHand,
         bool UsedEquityEvaluator,
         bool UsedFallbackEvaluator,
         string EvaluatorType,
@@ -66,6 +88,10 @@ public sealed class ApiClient
         int? FilteredCombos,
         double? HeroEquity,
         double? HeroUtility,
+        double? EquityVsRangePercentile,
+        string? HandClass,
+        string? BlockerSummary,
+        string? RationaleSummary,
         string? FallbackReason,
         string? DisplaySummary);
     public sealed record PreflopTrace(
