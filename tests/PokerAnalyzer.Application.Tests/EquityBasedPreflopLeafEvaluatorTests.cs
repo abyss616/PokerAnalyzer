@@ -25,7 +25,7 @@ public sealed class EquityBasedPreflopLeafEvaluatorTests
         Assert.NotNull(result.Details);
         Assert.True(result.Details!.UsedEquityEvaluator);
         Assert.False(result.Details.UsedFallbackEvaluator);
-        Assert.Equal("EquityBased", result.Details.EvaluatorType);
+        Assert.Equal("TrueHeadsUp", result.Details.EvaluatorType);
         Assert.Equal(expectedFamily.ToString(), result.Details.NodeFamily);
         Assert.Equal("BTN", result.Details.HeroPosition);
         Assert.Equal("BB", result.Details.VillainPosition);
@@ -54,6 +54,41 @@ public sealed class EquityBasedPreflopLeafEvaluatorTests
         Assert.Equal(1, result.Details!.FilteredCombos);
         Assert.Equal("static-test", result.Details.RangeDescription);
         Assert.Equal("static-test", result.Details.RangeDetail);
+    }
+
+
+    [Fact]
+    public void Evaluate_UnopenedBtnMultiway_UsesAbstractedHeadsUp()
+    {
+        var evaluator = new EquityBasedPreflopLeafEvaluator(new TableDrivenOpponentRangeProvider(), new HeuristicPreflopLeafEvaluator(), samplesPerMatchup: 120);
+        var context = CreateThreeWayContext("v2/UNOPENED/BTN/eff=100", HoleCards.Parse("AsKh"));
+
+        var result = evaluator.Evaluate(context);
+
+        Assert.NotNull(result.Details);
+        Assert.Equal("AbstractedHeadsUp", result.Details!.EvaluatorType);
+        Assert.True(result.Details.UsedEquityEvaluator);
+        Assert.False(result.Details.UsedFallbackEvaluator);
+        Assert.Equal("WeightedBlindsBTNUnopened", result.Details.AbstractionSource);
+        Assert.Equal(2, result.Details.ActualActiveOpponentCount);
+        Assert.Equal(1, result.Details.AbstractedOpponentCount);
+        Assert.NotNull(result.Details.FoldProbability);
+        Assert.NotNull(result.Details.ContinueProbability);
+    }
+
+    [Fact]
+    public void Evaluate_UnopenedBtnMultiway_SeparatesDifferentHands()
+    {
+        var evaluator = new EquityBasedPreflopLeafEvaluator(new TableDrivenOpponentRangeProvider(), new HeuristicPreflopLeafEvaluator(), samplesPerMatchup: 120);
+        var j9Result = evaluator.Evaluate(CreateThreeWayContext("v2/UNOPENED/BTN/eff=100", HoleCards.Parse("Jc9d")));
+        var q4Result = evaluator.Evaluate(CreateThreeWayContext("v2/UNOPENED/BTN/eff=100", HoleCards.Parse("Qc4d")));
+
+        Assert.NotNull(j9Result.Details);
+        Assert.NotNull(q4Result.Details);
+        Assert.Equal("AbstractedHeadsUp", j9Result.Details!.EvaluatorType);
+        Assert.Equal("AbstractedHeadsUp", q4Result.Details!.EvaluatorType);
+        Assert.NotEqual(j9Result.Details.HeroUtility, q4Result.Details.HeroUtility);
+        Assert.NotEqual(j9Result.Details.HeroEquity, q4Result.Details.HeroEquity);
     }
 
     [Fact]
@@ -158,7 +193,7 @@ public sealed class EquityBasedPreflopLeafEvaluatorTests
             solverKey);
     }
 
-    private static PreflopLeafEvaluationContext CreateThreeWayContext()
+    private static PreflopLeafEvaluationContext CreateThreeWayContext(string solverKey = "v2/VS_OPEN/BTN/eff=100", HoleCards? heroCards = null)
     {
         var heroId = new PlayerId(Guid.Parse("11111111-1111-1111-1111-111111111111"));
         var v1 = new PlayerId(Guid.Parse("22222222-2222-2222-2222-222222222222"));
@@ -192,7 +227,7 @@ public sealed class EquityBasedPreflopLeafEvaluatorTests
             deadCards: Array.Empty<Card>(),
             privateCardsByPlayer: new Dictionary<PlayerId, HoleCards>
             {
-                [heroId] = HoleCards.Parse("AsKh"),
+                [heroId] = heroCards ?? HoleCards.Parse("AsKh"),
                 [v1] = HoleCards.Parse("QdJd"),
                 [v2] = HoleCards.Parse("9c9d")
             });
@@ -202,10 +237,10 @@ public sealed class EquityBasedPreflopLeafEvaluatorTests
             state,
             heroId,
             Position.BTN,
-            HoleCards.Parse("AsKh"),
+            heroCards ?? HoleCards.Parse("AsKh"),
             100,
             new LegalAction(ActionType.Raise, new ChipAmount(250)),
-            "v2/VS_OPEN/BTN/eff=100");
+            solverKey);
     }
 
     private sealed class StaticOpponentRangeProvider : IOpponentRangeProvider

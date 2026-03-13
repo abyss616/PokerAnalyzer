@@ -49,13 +49,19 @@ public sealed class PreflopLeafDetailsSerializationTests
       "heroHand": "AsKh",
       "usedEquityEvaluator": true,
       "usedFallbackEvaluator": false,
-      "evaluatorType": "EquityBased",
+      "evaluatorType": "AbstractedHeadsUp",
+      "abstractionSource": "WeightedBlindsBTNUnopened",
+      "actualActiveOpponentCount": 2,
+      "abstractedOpponentCount": 1,
+      "syntheticDefenderLabel": "SyntheticBlindDefender",
       "nodeFamily": "FacingRaise",
       "heroPosition": "BTN",
       "villainPosition": "BB",
       "isHeadsUp": true,
       "rangeDescription": "FacingRaise",
       "rangeDetail": "table-range percentile=0.18",
+      "foldProbability": 0.51,
+      "continueProbability": 0.49,
       "filteredCombos": 121,
       "heroEquity": 0.571,
       "heroUtility": 0.142,
@@ -90,7 +96,9 @@ public sealed class PreflopLeafDetailsSerializationTests
 
         Assert.NotNull(result);
         Assert.NotNull(result!.SolveMetadata.LeafEvaluationDetails);
-        Assert.Equal("EquityBased", result.SolveMetadata.LeafEvaluationDetails!.EvaluatorType);
+        Assert.Equal("AbstractedHeadsUp", result.SolveMetadata.LeafEvaluationDetails!.EvaluatorType);
         Assert.Equal(0.571, result.SolveMetadata.LeafEvaluationDetails.HeroEquity);
     }
 }
+
+
