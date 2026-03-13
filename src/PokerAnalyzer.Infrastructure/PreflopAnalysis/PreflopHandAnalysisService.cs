@@ -136,7 +136,7 @@ public sealed class PreflopHandAnalysisService : IPreflopHandAnalysisService
         {
             return (
                 Array.Empty<PreflopNodeStrategyItemDto>(),
-                new PreflopNodeSolveMetadataDto("Unavailable", 0, 0, "None"),
+                new PreflopNodeSolveMetadataDto("Unavailable", 0, 0, "None", null),
                 "Unavailable",
                 0,
                 0d);
@@ -153,7 +153,8 @@ public sealed class PreflopHandAnalysisService : IPreflopHandAnalysisService
                 strategyResult.StrategySource,
                 strategyResult.IterationsCompleted,
                 strategyResult.ElapsedMilliseconds,
-                strategyResult.SolveMode),
+                strategyResult.SolveMode,
+                strategyResult.LeafEvaluationDetails),
             strategyResult.StrategySource,
             strategyResult.IterationsCompleted,
             strategyResult.RegretMagnitude);
@@ -598,7 +599,7 @@ public sealed class PreflopHandAnalysisService : IPreflopHandAnalysisService
             "Unsupported",
             "This node is not supported by the current solver.",
             Array.Empty<PreflopNodeStrategyItemDto>(),
-            new PreflopNodeSolveMetadataDto("Unavailable", 0, 0, "None"),
+            new PreflopNodeSolveMetadataDto("Unavailable", 0, 0, "None", null),
             ToTraceDto(trace ?? EmptyTrace()));
 
     private static PreflopQueryTrace EmptyTrace()

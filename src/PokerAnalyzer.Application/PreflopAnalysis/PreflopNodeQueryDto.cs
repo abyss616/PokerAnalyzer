@@ -68,7 +68,8 @@ public sealed record PreflopNodeSolveMetadataDto(
     string StrategySource,
     int IterationsCompleted,
     long ElapsedMilliseconds,
-    string SolveMode);
+    string SolveMode,
+    PreflopLeafEvaluationDetailsDto? LeafEvaluationDetails = null);
 
 public sealed record PreflopNodeTraceDto(
     string SolverKey,

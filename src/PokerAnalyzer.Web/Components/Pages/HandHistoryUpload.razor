@@ -64,8 +64,54 @@
             <div><strong>Sizing buckets:</strong> @_preflopAnalysis.SizingBucketSummary</div>
             <div><strong>Strategy source:</strong> @_preflopAnalysis.SolveMetadata.StrategySource</div>
             <div><strong>Solve mode:</strong> @_preflopAnalysis.SolveMetadata.SolveMode</div>
+            <div class="text-muted small mt-1">Level-2 leaf values are derived from hero hole cards, node family, position/heads-up context, weighted opponent range, and computed equity.</div>
             <div><strong>Iterations:</strong> @_preflopAnalysis.SolveMetadata.IterationsCompleted</div>
             <div><strong>Elapsed:</strong> @_preflopAnalysis.SolveMetadata.ElapsedMilliseconds ms</div>
+
+
+            @if (_preflopAnalysis.SolveMetadata.LeafEvaluationDetails is not null)
+            {
+                var leaf = _preflopAnalysis.SolveMetadata.LeafEvaluationDetails;
+                <div class="card mt-3 border-info">
+                    <div class="card-body">
+                        <div class="d-flex align-items-center justify-content-between">
+                            <strong>Level-2 leaf evaluation</strong>
+                            <span class="badge bg-info text-dark">@leaf.EvaluatorType</span>
+                        </div>
+
+                        @if (leaf.UsedFallbackEvaluator)
+                        {
+                            <div class="alert alert-warning mt-2 mb-2">
+                                Fallback evaluator used.
+                                @if (!string.IsNullOrWhiteSpace(leaf.FallbackReason))
+                                {
+                                    <span> Reason: @leaf.FallbackReason</span>
+                                }
+                            </div>
+                        }
+                        else if (leaf.UsedEquityEvaluator)
+                        {
+                            <div class="alert alert-success mt-2 mb-2">
+                                Equity-based leaf utility computed from weighted opponent range.
+                            </div>
+                        }
+
+                        <table class="table table-sm mb-0">
+                            <tbody>
+                                <tr><th>Hero position</th><td>@leaf.HeroPosition</td><th>Villain position</th><td>@leaf.VillainPosition</td></tr>
+                                <tr><th>Node family</th><td>@leaf.NodeFamily</td><th>Heads-up</th><td>@(leaf.IsHeadsUp ? "Yes" : "No")</td></tr>
+                                <tr><th>Range description</th><td>@leaf.RangeDescription</td><th>Range detail</th><td>@leaf.RangeDetail</td></tr>
+                                <tr><th>Filtered combos</th><td>@leaf.FilteredCombos</td><th>Hero equity</th><td>@(leaf.HeroEquity?.ToString("0.000") ?? "n/a")</td></tr>
+                                <tr><th>Hero utility</th><td>@(leaf.HeroUtility?.ToString("0.000") ?? "n/a")</td><th>Fallback reason</th><td>@leaf.FallbackReason</td></tr>
+                            </tbody>
+                        </table>
+                        @if (!string.IsNullOrWhiteSpace(leaf.DisplaySummary))
+                        {
+                            <div class="text-muted small mt-2">@leaf.DisplaySummary</div>
+                        }
+                    </div>
+                </div>
+            }
 
             <div class="row mt-2 g-3">
                 <div class="col-md-6">

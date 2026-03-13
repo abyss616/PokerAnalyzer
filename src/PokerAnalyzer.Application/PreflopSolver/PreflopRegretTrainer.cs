@@ -251,6 +251,7 @@ public sealed class PreflopTrainingResult
     public required bool StoppedByCancellation { get; init; }
     public required bool ReachedTimeLimit { get; init; }
     public required bool ReachedIterationLimit { get; init; }
+    public PreflopLeafEvaluationDetails? LastLeafEvaluationDetails { get; init; }
 }
 
 public interface IPreflopTrainingProgressStore
@@ -299,6 +300,7 @@ public sealed class PreflopRegretTrainer
     private readonly IPreflopTrainingProgressStore _trainingProgressStore;
     private readonly string? _canonicalStorageKey;
     private readonly RegretMatchingPolicyProvider _policyProvider;
+    private PreflopLeafEvaluationDetails? _latestLeafEvaluationDetails;
 
 
     public PreflopRegretTrainer(
@@ -371,7 +373,8 @@ public sealed class PreflopRegretTrainer
             if (string.IsNullOrWhiteSpace(node.InfoSetKey) || node.StateBeforeAction is null || node.LegalActions.Count == 0)
                 continue;
 
-            var actionValues = EvaluateActionValues(node.StateBeforeAction, traversalPlayerId, node.LegalActions, rng);
+            var (actionValues, leafDetails) = EvaluateActionValues(node.StateBeforeAction, traversalPlayerId, node.LegalActions, rng);
+            _latestLeafEvaluationDetails = leafDetails ?? _latestLeafEvaluationDetails;
             var nodeValue = 0d;
 
             var storageKey = _canonicalStorageKey ?? node.InfoSetKey;
@@ -475,17 +478,19 @@ public sealed class PreflopRegretTrainer
             ModeUsed = options.Mode,
             StoppedByCancellation = cancellationToken.IsCancellationRequested,
             ReachedTimeLimit = reachedTimeLimit,
-            ReachedIterationLimit = reachedIterationLimit
+            ReachedIterationLimit = reachedIterationLimit,
+            LastLeafEvaluationDetails = _latestLeafEvaluationDetails
         };
     }
 
-    private Dictionary<LegalAction, double> EvaluateActionValues(
+    private (Dictionary<LegalAction, double> Values, PreflopLeafEvaluationDetails? LeafDetails) EvaluateActionValues(
         SolverHandState stateBeforeAction,
         PlayerId traversalPlayerId,
         IReadOnlyList<LegalAction> legalActions,
         Random rng)
     {
         var actionValues = new Dictionary<LegalAction, double>(legalActions.Count);
+        PreflopLeafEvaluationDetails? latestDetails = null;
 
         foreach (var action in legalActions)
         {
@@ -512,12 +517,13 @@ public sealed class PreflopRegretTrainer
                 : 0d;
 
             actionValues[action] = utility;
+            latestDetails = rollout.LeafEvaluationDetails ?? latestDetails;
 
             //var leafReason = rollout.Path.LastOrDefault(node => node.NodeKind == TraversalNodeKind.Leaf)?.Note ?? "unknown leaf";
             //Trace.WriteLine($"preflop-eval action={action}, utility={utility:0.000}, reason={leafReason}");
         }
 
-        return actionValues;
+        return (actionValues, latestDetails);
     }
 
     private static double ResolveEffectiveStackBb(SolverHandState state, PlayerId heroPlayerId)

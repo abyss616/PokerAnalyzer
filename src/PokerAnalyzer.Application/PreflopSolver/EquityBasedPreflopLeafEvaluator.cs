@@ -97,21 +97,75 @@ public sealed class EquityBasedPreflopLeafEvaluator : IPreflopLeafEvaluator
         var utility = context.LeafState.Players.ToDictionary(player => player.PlayerId, _ => 0d);
         utility[context.HeroPlayerId] = heroUtility;
 
+        var summary = $"Level-2 equity leaf: {context.HeroCards} vs {range.Description} ({villain.Position}) -> equity {heroEquity:0.000}, utility {heroUtility:0.000}";
         return new PreflopLeafEvaluation(
             utility,
-            $"equity leaf evaluator: family={nodeFamily}, villainPos={villain.Position}, range={range.Description}, filteredCombos={filteredRange.Length}, equity={heroEquity:0.000}, utility={heroUtility:0.000}, detail={rangeReason}");
+            $"equity leaf evaluator: family={nodeFamily}, villainPos={villain.Position}, range={range.Description}, filteredCombos={filteredRange.Length}, equity={heroEquity:0.000}, utility={heroUtility:0.000}, detail={rangeReason}",
+            new PreflopLeafEvaluationDetails(
+                UsedEquityEvaluator: true,
+                UsedFallbackEvaluator: false,
+                EvaluatorType: "EquityBased",
+                NodeFamily: nodeFamily.ToString(),
+                HeroPosition: context.HeroPosition.ToString(),
+                VillainPosition: villain.Position.ToString(),
+                IsHeadsUp: true,
+                RangeDescription: range.Description,
+                RangeDetail: rangeReason,
+                FilteredCombos: filteredRange.Length,
+                HeroEquity: heroEquity,
+                HeroUtility: heroUtility,
+                FallbackReason: null,
+                DisplaySummary: summary));
     }
 
     private PreflopLeafEvaluation EvaluateFold(PreflopLeafEvaluationContext context)
     {
         var utility = context.LeafState.Players.ToDictionary(player => player.PlayerId, _ => 0d);
-        return new PreflopLeafEvaluation(utility, "equity leaf evaluator: root action fold -> utility 0");
+        return new PreflopLeafEvaluation(
+            utility,
+            "equity leaf evaluator: root action fold -> utility 0",
+            new PreflopLeafEvaluationDetails(
+                UsedEquityEvaluator: false,
+                UsedFallbackEvaluator: true,
+                EvaluatorType: "FoldZeroUtility",
+                NodeFamily: PreflopNodeFamilyClassifier.Classify(context).ToString(),
+                HeroPosition: context.HeroPosition.ToString(),
+                VillainPosition: null,
+                IsHeadsUp: context.LeafState.Players.Count(p => p.IsActive) == 2,
+                RangeDescription: null,
+                RangeDetail: null,
+                FilteredCombos: null,
+                HeroEquity: null,
+                HeroUtility: 0d,
+                FallbackReason: "root action fold",
+                DisplaySummary: "Leaf utility is zero because root action is fold."));
     }
 
     private PreflopLeafEvaluation Fallback(PreflopLeafEvaluationContext context, string reason)
     {
         var evaluation = _fallbackEvaluator.Evaluate(context);
-        return evaluation with { Reason = $"equity evaluator fallback: {reason}; {evaluation.Reason}" };
+        var existingDetails = evaluation.Details;
+        var summary = $"Fallback leaf evaluator used: {reason}";
+
+        return evaluation with
+        {
+            Reason = $"equity evaluator fallback: {reason}; {evaluation.Reason}",
+            Details = new PreflopLeafEvaluationDetails(
+                UsedEquityEvaluator: false,
+                UsedFallbackEvaluator: true,
+                EvaluatorType: "HeuristicFallback",
+                NodeFamily: PreflopNodeFamilyClassifier.Classify(context).ToString(),
+                HeroPosition: context.HeroPosition.ToString(),
+                VillainPosition: context.LeafState.Players.FirstOrDefault(p => p.PlayerId != context.HeroPlayerId && p.IsActive)?.Position.ToString(),
+                IsHeadsUp: context.LeafState.Players.Count(p => p.IsActive) == 2,
+                RangeDescription: existingDetails?.RangeDescription,
+                RangeDetail: existingDetails?.RangeDetail,
+                FilteredCombos: existingDetails?.FilteredCombos,
+                HeroEquity: existingDetails?.HeroEquity,
+                HeroUtility: evaluation.UtilityByPlayer.TryGetValue(context.HeroPlayerId, out var heroUtility) ? heroUtility : existingDetails?.HeroUtility,
+                FallbackReason: reason,
+                DisplaySummary: existingDetails?.DisplaySummary ?? summary)
+        };
     }
 
     private static bool SharesCard(HoleCards left, HoleCards right)

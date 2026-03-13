@@ -46,7 +46,28 @@ public sealed class ApiClient
     public sealed record PreflopLegalAction(string ActionKey, string ActionType, decimal? SizeBb, bool IsFacingAllIn);
     public sealed record PreflopRecommendationItem(string ActionKey, string DisplayLabel, decimal Frequency, bool IsBestAction);
     public sealed record PreflopStrategyItem(string ActionKey, decimal Frequency);
-    public sealed record PreflopSolveMetadata(string StrategySource, int IterationsCompleted, long ElapsedMilliseconds, string SolveMode);
+    public sealed record PreflopSolveMetadata(
+        string StrategySource,
+        int IterationsCompleted,
+        long ElapsedMilliseconds,
+        string SolveMode,
+        PreflopLeafEvaluationDetails? LeafEvaluationDetails);
+
+    public sealed record PreflopLeafEvaluationDetails(
+        bool UsedEquityEvaluator,
+        bool UsedFallbackEvaluator,
+        string EvaluatorType,
+        string? NodeFamily,
+        string? HeroPosition,
+        string? VillainPosition,
+        bool IsHeadsUp,
+        string? RangeDescription,
+        string? RangeDetail,
+        int? FilteredCombos,
+        double? HeroEquity,
+        double? HeroUtility,
+        string? FallbackReason,
+        string? DisplaySummary);
     public sealed record PreflopTrace(
         string SolverKey,
         string HistorySignature,
