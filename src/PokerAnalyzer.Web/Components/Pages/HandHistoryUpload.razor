@@ -107,6 +107,8 @@
                                 <tr><th>Range description</th><td>@leaf.RangeDescription</td><th>Range detail</th><td>@leaf.RangeDetail</td></tr>
                                 <tr><th>Filtered combos</th><td>@leaf.FilteredCombos</td><th>Hero equity</th><td>@(leaf.HeroEquity?.ToString("0.000") ?? "n/a")</td></tr>
                                 <tr><th>Fold probability</th><td>@(leaf.FoldProbability?.ToString("0.000") ?? "n/a")</td><th>Continue probability</th><td>@(leaf.ContinueProbability?.ToString("0.000") ?? "n/a")</td></tr>
+                                <tr><th>Root action</th><td>@(leaf.RootActionType ?? "n/a")</td><th>Immediate win component</th><td>@(leaf.ImmediateWinComponent?.ToString("0.000") ?? "n/a")</td></tr>
+                                <tr><th>Continue component</th><td>@(leaf.ContinueComponent?.ToString("0.000") ?? "n/a")</td><th>Continue branch utility</th><td>@(leaf.ContinueBranchUtility?.ToString("0.000") ?? "n/a")</td></tr>
                                 <tr><th>Hero utility</th><td>@(leaf.HeroUtility?.ToString("0.000") ?? "n/a")</td><th>Fallback reason</th><td>@leaf.FallbackReason</td></tr>
                                 <tr><th>Equity percentile</th><td>@(leaf.EquityVsRangePercentile?.ToString("P0") ?? "n/a")</td><th>Blockers</th><td>@leaf.BlockerSummary</td></tr>
                             </tbody>

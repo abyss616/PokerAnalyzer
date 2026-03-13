@@ -58,16 +58,117 @@ public sealed class EquityBasedPreflopLeafEvaluator : IPreflopLeafEvaluator
         if (context.RootAction.ActionType == ActionType.Fold)
             return EvaluateFold(context);
 
+        if (TryEvaluateBtnUnopenedActionAware(context, out var btnActionAware))
+            return btnActionAware;
+
         var activeOpponents = context.LeafState.Players.Where(p => p.PlayerId != context.HeroPlayerId && p.IsActive).ToArray();
         var nodeFamily = PreflopNodeFamilyClassifier.Classify(context);
 
         if (activeOpponents.Length == 1)
             return EvaluateHeadsUp(context, nodeFamily, activeOpponents[0]);
 
-        if (TryBuildBtnUnopenedAbstraction(context, nodeFamily, activeOpponents, out var abstractionResult))
-            return abstractionResult;
-
         return Fallback(context, $"expected heads-up leaf but found {activeOpponents.Length} active opponents");
+    }
+
+    private bool TryEvaluateBtnUnopenedActionAware(PreflopLeafEvaluationContext context, out PreflopLeafEvaluation evaluation)
+    {
+        evaluation = default!;
+        var nodeFamily = PreflopNodeFamilyClassifier.Classify(context);
+        if (context.HeroPosition != Position.BTN || nodeFamily != PreflopNodeFamily.Unopened)
+            return false;
+
+        var activeOpponents = context.LeafState.Players.Where(p => p.PlayerId != context.HeroPlayerId && p.IsActive).ToArray();
+        var sb = activeOpponents.FirstOrDefault(p => p.Position == Position.SB);
+        var bb = activeOpponents.FirstOrDefault(p => p.Position == Position.BB);
+        if (sb is null || bb is null)
+            return false;
+
+        const double sbContinue = 0.23;
+        const double bbContinue = 0.34;
+        var allFold = Math.Clamp((1d - sbContinue) * (1d - bbContinue), 0d, 1d);
+        var sbOnly = sbContinue * (1d - bbContinue);
+        var bbOnly = (1d - sbContinue) * bbContinue;
+        var bothContinue = sbContinue * bbContinue;
+        var continueProbability = Math.Clamp(1d - allFold, 0d, 1d);
+
+        var sbWeight = continueProbability > 0d ? (sbOnly + 0.5d * bothContinue) / continueProbability : 0.5d;
+        var bbWeight = continueProbability > 0d ? (bbOnly + 0.5d * bothContinue) / continueProbability : 0.5d;
+
+        var sbReq = new OpponentRangeRequest(context.HeroPosition, Position.SB, nodeFamily, context.RootState.RaisesThisStreet, true, context.SolverKey);
+        var bbReq = new OpponentRangeRequest(context.HeroPosition, Position.BB, nodeFamily, context.RootState.RaisesThisStreet, true, context.SolverKey);
+
+        if (!_rangeProvider.TryGetRange(sbReq, out var sbRange, out var sbReason))
+            return false;
+        if (!_rangeProvider.TryGetRange(bbReq, out var bbRange, out var bbReason))
+            return false;
+
+        var combined = BlendRanges(sbRange, sbWeight, bbRange, bbWeight);
+        var detail = $"BTN unopened weighted-blind abstraction: P(all fold)={allFold:0.000}, P(continue)={continueProbability:0.000}, SBw={sbWeight:0.000}, BBw={bbWeight:0.000}; sb={sbReason}; bb={bbReason}";
+        var baseEval = EvaluateAgainstRange(
+            context,
+            nodeFamily,
+            villainPosition: null,
+            combined,
+            detail,
+            activeOpponentCount: activeOpponents.Length,
+            evaluatorType: "AbstractedHeadsUp",
+            abstractionSource: "WeightedBlindsBTNUnopened",
+            abstractedOpponentCount: 1,
+            syntheticDefenderLabel: "SyntheticBlindDefender",
+            foldProbability: allFold,
+            continueProbability: continueProbability,
+            summaryPrefix: "Level-2 BTN unopened abstraction");
+
+        if (!baseEval.UtilityByPlayer.TryGetValue(context.HeroPlayerId, out var continueBranchUtility))
+            continueBranchUtility = 0d;
+
+        var immediateWinBb = 1.5d;
+        var openSizeBb = 2.5d;
+        var immediateComponent = 0d;
+        var continueComponent = 0d;
+        var heroUtility = continueBranchUtility;
+        var actionType = context.RootAction.ActionType;
+
+        if (actionType == ActionType.Raise)
+        {
+            immediateComponent = allFold * immediateWinBb;
+            continueComponent = continueProbability * continueBranchUtility;
+            var riskPenalty = continueProbability * 0.08d * openSizeBb;
+            heroUtility = immediateComponent + continueComponent - riskPenalty;
+        }
+        else if (actionType is ActionType.Call or ActionType.Check)
+        {
+            var limpPenalty = 0.04d;
+            heroUtility = continueBranchUtility - limpPenalty;
+            continueComponent = heroUtility;
+            immediateComponent = 0d;
+        }
+
+        var utility = baseEval.UtilityByPlayer.ToDictionary(kvp => kvp.Key, kvp => kvp.Value);
+        utility[context.HeroPlayerId] = heroUtility;
+
+        var actionLabel = actionType.ToString();
+        var summary = actionType == ActionType.Raise
+            ? $"{baseEval.Details!.DisplaySummary} Action={actionLabel}, EV={heroUtility:0.000} = fold({allFold:0.000})*pot({immediateWinBb:0.00}) + continue({continueProbability:0.000})*Vcont({continueBranchUtility:0.000})."
+            : $"{baseEval.Details!.DisplaySummary} Action={actionLabel}, utility {heroUtility:0.000} from limp/check continuation approximation.";
+
+        evaluation = baseEval with
+        {
+            UtilityByPlayer = utility,
+            Reason = $"{baseEval.Reason}, actionAware={actionLabel}, utility={heroUtility:0.000}",
+            Details = baseEval.Details! with
+            {
+                HeroUtility = heroUtility,
+                RootActionType = actionLabel,
+                ImmediateWinComponent = immediateComponent,
+                ContinueComponent = continueComponent,
+                ContinueBranchUtility = continueBranchUtility,
+                DisplaySummary = summary,
+                RationaleSummary = $"Unopened BTN {actionLabel} uses action-sensitive utility: fold-equity immediate component + continuation branch utility."
+            }
+        };
+
+        return true;
     }
 
     private PreflopLeafEvaluation EvaluateHeadsUp(PreflopLeafEvaluationContext context, PreflopNodeFamily nodeFamily, SolverPlayerState villain)
@@ -97,85 +198,6 @@ public sealed class EquityBasedPreflopLeafEvaluator : IPreflopLeafEvaluator
             foldProbability: null,
             continueProbability: null,
             summaryPrefix: $"Level-2 equity leaf");
-    }
-
-    private bool TryBuildBtnUnopenedAbstraction(
-        PreflopLeafEvaluationContext context,
-        PreflopNodeFamily nodeFamily,
-        IReadOnlyList<SolverPlayerState> activeOpponents,
-        out PreflopLeafEvaluation evaluation)
-    {
-        evaluation = default!;
-        if (context.HeroPosition != Position.BTN || nodeFamily != PreflopNodeFamily.Unopened || activeOpponents.Count < 2)
-            return false;
-
-        var sb = activeOpponents.FirstOrDefault(p => p.Position == Position.SB);
-        var bb = activeOpponents.FirstOrDefault(p => p.Position == Position.BB);
-        if (sb is null || bb is null)
-            return false;
-
-        const double sbContinue = 0.23;
-        const double bbContinue = 0.34;
-        var allFold = Math.Clamp((1d - sbContinue) * (1d - bbContinue), 0d, 1d);
-        var sbOnly = sbContinue * (1d - bbContinue);
-        var bbOnly = (1d - sbContinue) * bbContinue;
-        var bothContinue = sbContinue * bbContinue;
-
-        var continueProbability = Math.Clamp(1d - allFold, 0d, 1d);
-        if (continueProbability <= 0d)
-            return false;
-
-        var sbWeight = (sbOnly + 0.5d * bothContinue) / continueProbability;
-        var bbWeight = (bbOnly + 0.5d * bothContinue) / continueProbability;
-
-        var sbReq = new OpponentRangeRequest(context.HeroPosition, Position.SB, nodeFamily, context.RootState.RaisesThisStreet, true, context.SolverKey);
-        var bbReq = new OpponentRangeRequest(context.HeroPosition, Position.BB, nodeFamily, context.RootState.RaisesThisStreet, true, context.SolverKey);
-
-        if (!_rangeProvider.TryGetRange(sbReq, out var sbRange, out var sbReason))
-            return false;
-        if (!_rangeProvider.TryGetRange(bbReq, out var bbRange, out var bbReason))
-            return false;
-
-        var combined = BlendRanges(sbRange, sbWeight, bbRange, bbWeight);
-        var detail = $"BTN unopened weighted-blind abstraction: P(all fold)={allFold:0.000}, P(continue)={continueProbability:0.000}, SBw={sbWeight:0.000}, BBw={bbWeight:0.000}; sb={sbReason}; bb={bbReason}";
-
-        var baseEval = EvaluateAgainstRange(
-            context,
-            nodeFamily,
-            villainPosition: null,
-            combined,
-            detail,
-            activeOpponentCount: activeOpponents.Count,
-            evaluatorType: "AbstractedHeadsUp",
-            abstractionSource: "WeightedBlindsBTNUnopened",
-            abstractedOpponentCount: 1,
-            syntheticDefenderLabel: "SyntheticBlindDefender",
-            foldProbability: allFold,
-            continueProbability: continueProbability,
-            summaryPrefix: "Level-2 abstracted leaf");
-
-        if (!baseEval.UtilityByPlayer.TryGetValue(context.HeroPlayerId, out var huUtility))
-            huUtility = 0d;
-
-        var immediateWinBb = 1.5d;
-        var openSizeBb = 2.5d;
-        var openEv = (allFold * immediateWinBb) + (continueProbability * huUtility) - ((1d - allFold) * 0.08d * openSizeBb);
-
-        var utility = baseEval.UtilityByPlayer.ToDictionary(kvp => kvp.Key, kvp => kvp.Value);
-        utility[context.HeroPlayerId] = openEv;
-
-        evaluation = baseEval with
-        {
-            UtilityByPlayer = utility,
-            Reason = $"{baseEval.Reason}, foldAwareUtility={openEv:0.000}",
-            Details = baseEval.Details! with
-            {
-                HeroUtility = openEv,
-                DisplaySummary = $"{baseEval.Details!.DisplaySummary} Fold-aware open EV={openEv:0.000} (all-fold {allFold:0.000}, continue {continueProbability:0.000})."
-            }
-        };
-
-        return true;
     }
 
     private PreflopLeafEvaluation EvaluateAgainstRange(
@@ -241,6 +263,10 @@ public sealed class EquityBasedPreflopLeafEvaluator : IPreflopLeafEvaluator
                 RangeDetail: rangeReason,
                 FoldProbability: foldProbability,
                 ContinueProbability: continueProbability,
+                RootActionType: context.RootAction.ActionType.ToString(),
+                ImmediateWinComponent: null,
+                ContinueComponent: null,
+                ContinueBranchUtility: null,
                 FilteredCombos: filteredRange.Length,
                 HeroEquity: heroEquity,
                 HeroUtility: heroUtility,
@@ -288,6 +314,10 @@ public sealed class EquityBasedPreflopLeafEvaluator : IPreflopLeafEvaluator
                 RangeDetail: null,
                 FoldProbability: null,
                 ContinueProbability: null,
+                RootActionType: context.RootAction.ActionType.ToString(),
+                ImmediateWinComponent: null,
+                ContinueComponent: null,
+                ContinueBranchUtility: null,
                 FilteredCombos: null,
                 HeroEquity: null,
                 HeroUtility: 0d,
@@ -325,6 +355,10 @@ public sealed class EquityBasedPreflopLeafEvaluator : IPreflopLeafEvaluator
                 RangeDetail: existingDetails?.RangeDetail,
                 FoldProbability: existingDetails?.FoldProbability,
                 ContinueProbability: existingDetails?.ContinueProbability,
+                RootActionType: existingDetails?.RootActionType ?? context.RootAction.ActionType.ToString(),
+                ImmediateWinComponent: existingDetails?.ImmediateWinComponent,
+                ContinueComponent: existingDetails?.ContinueComponent,
+                ContinueBranchUtility: existingDetails?.ContinueBranchUtility,
                 FilteredCombos: existingDetails?.FilteredCombos,
                 HeroEquity: existingDetails?.HeroEquity,
                 HeroUtility: evaluation.UtilityByPlayer.TryGetValue(context.HeroPlayerId, out var heroUtility) ? heroUtility : existingDetails?.HeroUtility,
