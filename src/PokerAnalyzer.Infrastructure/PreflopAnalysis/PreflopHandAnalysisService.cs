@@ -257,7 +257,7 @@ public sealed class PreflopHandAnalysisService : IPreflopHandAnalysisService
 
         var privateCards = new Dictionary<PlayerId, HoleCards>(state.PrivateCardsByPlayer);
         privateCards[state.ActingPlayerId] = cards;
-        updatedState = state with { PrivateCardsByPlayer = privateCards };
+        updatedState = state.With(privateCardsByPlayer: privateCards);
         return true;
     }
 
