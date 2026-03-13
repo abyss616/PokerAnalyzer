@@ -64,7 +64,8 @@
             <div><strong>Sizing buckets:</strong> @_preflopAnalysis.SizingBucketSummary</div>
             <div><strong>Strategy source:</strong> @_preflopAnalysis.SolveMetadata.StrategySource</div>
             <div><strong>Solve mode:</strong> @_preflopAnalysis.SolveMetadata.SolveMode</div>
-            <div class="text-muted small mt-1">Level-2 leaf values are derived from hero hole cards, node family, position/heads-up context, weighted opponent range, and computed equity.</div>
+            <div><strong>Hero hand:</strong> @(_preflopAnalysis.HeroHand ?? _preflopAnalysis.SolveMetadata.HeroHand ?? _preflopAnalysis.SolveMetadata.LeafEvaluationDetails?.HeroHand ?? "n/a")</div>
+            <div class="text-muted small mt-1">Level-2 values are driven by hero hole cards, node family, positions/heads-up context, weighted opponent range, and computed equity. Similar frequencies do not necessarily mean hands are strategically identical.</div>
             <div><strong>Iterations:</strong> @_preflopAnalysis.SolveMetadata.IterationsCompleted</div>
             <div><strong>Elapsed:</strong> @_preflopAnalysis.SolveMetadata.ElapsedMilliseconds ms</div>
 
@@ -98,17 +99,74 @@
 
                         <table class="table table-sm mb-0">
                             <tbody>
+                                <tr><th>Hero hand</th><td>@leaf.HeroHand</td><th>Hand class</th><td>@leaf.HandClass</td></tr>
                                 <tr><th>Hero position</th><td>@leaf.HeroPosition</td><th>Villain position</th><td>@leaf.VillainPosition</td></tr>
                                 <tr><th>Node family</th><td>@leaf.NodeFamily</td><th>Heads-up</th><td>@(leaf.IsHeadsUp ? "Yes" : "No")</td></tr>
                                 <tr><th>Range description</th><td>@leaf.RangeDescription</td><th>Range detail</th><td>@leaf.RangeDetail</td></tr>
                                 <tr><th>Filtered combos</th><td>@leaf.FilteredCombos</td><th>Hero equity</th><td>@(leaf.HeroEquity?.ToString("0.000") ?? "n/a")</td></tr>
                                 <tr><th>Hero utility</th><td>@(leaf.HeroUtility?.ToString("0.000") ?? "n/a")</td><th>Fallback reason</th><td>@leaf.FallbackReason</td></tr>
+                                <tr><th>Equity percentile</th><td>@(leaf.EquityVsRangePercentile?.ToString("P0") ?? "n/a")</td><th>Blockers</th><td>@leaf.BlockerSummary</td></tr>
                             </tbody>
                         </table>
                         @if (!string.IsNullOrWhiteSpace(leaf.DisplaySummary))
                         {
                             <div class="text-muted small mt-2">@leaf.DisplaySummary</div>
                         }
+                        @if (!string.IsNullOrWhiteSpace(leaf.RationaleSummary))
+                        {
+                            <div class="text-muted small mt-1">@leaf.RationaleSummary</div>
+                        }
+                        <div class="alert alert-secondary mt-2 mb-0 small">
+                            This strategy is being driven by equity vs a weighted opponent range. Hands with similar equity against this range may receive similar raise frequencies, even when ranks look different. If iterations are low, outcomes can remain coarse/noisy because values are regret/average-strategy driven rather than exact per-action EV rollouts.
+                        </div>
+                    </div>
+                </div>
+            }
+
+            @if (_preflopAnalysis.ActionDiagnostics.Count > 0)
+            {
+                <div class="card mt-3 border-secondary">
+                    <div class="card-body">
+                        <strong>Action diagnostics</strong>
+                        <div class="text-muted small">@_preflopAnalysis.ActionValueSupport</div>
+                        <div class="small">Best action margin: @(_preflopAnalysis.BestActionMargin?.ToString("0.##") ?? "n/a")%</div>
+                        <div class="small">Separation score: @(_preflopAnalysis.SeparationScore?.ToString("0.####") ?? "n/a")</div>
+                        <table class="table table-sm mb-0 mt-2">
+                            <thead><tr><th>Action</th><th class="text-end">Freq</th><th class="text-end">Regret</th></tr></thead>
+                            <tbody>
+                                @foreach (var d in _preflopAnalysis.ActionDiagnostics)
+                                {
+                                    <tr><td>@d.ActionKey</td><td class="text-end">@d.Frequency.ToString("0.##")%</td><td class="text-end">@d.Regret.ToString("0.000")</td></tr>
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            }
+
+            @if (_preflopAnalysis.HandComparisons.Count > 0)
+            {
+                <div class="card mt-3 border-primary">
+                    <div class="card-body">
+                        <strong>Why are J9 and Q4 both ~90% raise?</strong>
+                        <table class="table table-sm mt-2 mb-0">
+                            <thead><tr><th>Hand</th><th class="text-end">Raise</th><th class="text-end">Call</th><th class="text-end">Fold</th><th class="text-end">Equity</th><th class="text-end">Utility</th><th>Range</th><th>Eval</th></tr></thead>
+                            <tbody>
+                                @foreach (var row in _preflopAnalysis.HandComparisons)
+                                {
+                                    <tr>
+                                        <td>@row.HeroHand</td>
+                                        <td class="text-end">@row.RaiseFrequency.ToString("0.##")%</td>
+                                        <td class="text-end">@row.CallFrequency.ToString("0.##")%</td>
+                                        <td class="text-end">@row.FoldFrequency.ToString("0.##")%</td>
+                                        <td class="text-end">@(row.HeroEquity?.ToString("0.000") ?? "n/a")</td>
+                                        <td class="text-end">@(row.HeroUtility?.ToString("0.000") ?? "n/a")</td>
+                                        <td>@row.OpponentRangeDescription</td>
+                                        <td>@row.EvaluatorType</td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
                     </div>
                 </div>
             }

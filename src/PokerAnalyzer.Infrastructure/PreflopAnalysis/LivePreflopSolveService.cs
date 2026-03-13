@@ -58,6 +58,19 @@ public sealed class LivePreflopSolveService : IPreflopStrategyProvider
             StringComparer.Ordinal);
 
         var regretMagnitude = request.LegalActions.Sum(a => Math.Max(0d, regretStore.Get(request.SolverKey, a)));
+        var diagnostics = request.LegalActions
+            .Select(action =>
+            {
+                var key = ToActionKey(action);
+                var frequency = strategy.TryGetValue(key, out var f) ? f : 0m;
+                var regret = regretStore.Get(request.SolverKey, action);
+                return new PreflopActionDiagnosticDto(key, frequency, regret, Math.Max(0d, regret), false);
+            })
+            .OrderByDescending(x => x.Frequency)
+            .ToList();
+
+        var bestMargin = diagnostics.Count > 1 ? (double)(diagnostics[0].Frequency - diagnostics[1].Frequency) : 0d;
+        var separation = diagnostics.Sum(x => x.PositiveRegret);
 
         return Task.FromResult<PreflopStrategyResultDto?>(new PreflopStrategyResultDto(
             request.SolverKey,
@@ -67,7 +80,11 @@ public sealed class LivePreflopSolveService : IPreflopStrategyProvider
             "LiveSolved",
             (long)trainingResult.Elapsed.TotalMilliseconds,
             request.UsePersistentTrainingState ? "Persistent" : "Fresh",
-            MapLeafDetails(trainingResult.LastLeafEvaluationDetails)));
+            MapLeafDetails(trainingResult.LastLeafEvaluationDetails),
+            diagnostics,
+            "Derived from regret matching + average strategy over equity-based leaf utilities (no explicit postflop EV rollout).",
+            bestMargin,
+            separation));
     }
 
 
@@ -77,6 +94,7 @@ public sealed class LivePreflopSolveService : IPreflopStrategyProvider
             return null;
 
         return new PreflopLeafEvaluationDetailsDto(
+            details.HeroHand,
             details.UsedEquityEvaluator,
             details.UsedFallbackEvaluator,
             details.EvaluatorType,
@@ -89,6 +107,10 @@ public sealed class LivePreflopSolveService : IPreflopStrategyProvider
             details.FilteredCombos,
             details.HeroEquity,
             details.HeroUtility,
+            details.EquityVsRangePercentile,
+            details.HandClass,
+            details.BlockerSummary,
+            details.RationaleSummary,
             details.FallbackReason,
             details.DisplaySummary);
     }
