@@ -8,9 +8,21 @@ public sealed record PreflopStrategyResultDto(
     string StrategySource = "Unknown",
     long ElapsedMilliseconds = 0,
     string SolveMode = "None",
-    PreflopLeafEvaluationDetailsDto? LeafEvaluationDetails = null);
+    PreflopLeafEvaluationDetailsDto? LeafEvaluationDetails = null,
+    IReadOnlyList<PreflopActionDiagnosticDto>? ActionDiagnostics = null,
+    string? ActionValueSupport = null,
+    double? BestActionMargin = null,
+    double? SeparationScore = null);
+
+public sealed record PreflopActionDiagnosticDto(
+    string ActionKey,
+    decimal Frequency,
+    double Regret,
+    double PositiveRegret,
+    bool IsBestByFrequency);
 
 public sealed record PreflopLeafEvaluationDetailsDto(
+    string HeroHand,
     bool UsedEquityEvaluator,
     bool UsedFallbackEvaluator,
     string EvaluatorType,
@@ -23,5 +35,9 @@ public sealed record PreflopLeafEvaluationDetailsDto(
     int? FilteredCombos,
     double? HeroEquity,
     double? HeroUtility,
+    double? EquityVsRangePercentile,
+    string? HandClass,
+    string? BlockerSummary,
+    string? RationaleSummary,
     string? FallbackReason,
     string? DisplaySummary);

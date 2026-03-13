@@ -10,6 +10,7 @@ public sealed record PreflopNodeQueryRequestDto(
     decimal BigBlind,
     IReadOnlyList<PreflopNodeSeatDto> Seats,
     IReadOnlyList<PreflopNodeActionDto> PublicActionHistory,
+    IReadOnlyList<string>? ComparisonHeroHands = null,
     bool UsePersistentTrainingState = false);
 
 public sealed record PreflopNodeSeatDto(
@@ -46,7 +47,13 @@ public sealed record PreflopNodeQueryResultDto(
     bool IsUniformStrategy,
     string? StrategyStatus,
     string? StrategyExplanation,
+    string? HeroHand,
     IReadOnlyList<PreflopNodeStrategyItemDto> Strategy,
+    IReadOnlyList<PreflopNodeActionDiagnosticDto> ActionDiagnostics,
+    string? ActionValueSupport,
+    decimal? BestActionMargin,
+    decimal? SeparationScore,
+    IReadOnlyList<PreflopHandComparisonDto> HandComparisons,
     PreflopNodeSolveMetadataDto SolveMetadata,
     PreflopNodeTraceDto Trace);
 
@@ -57,6 +64,27 @@ public sealed record PreflopNodeLegalActionDto(
     bool IsFacingAllIn);
 
 public sealed record PreflopNodeStrategyItemDto(string ActionKey, decimal Frequency);
+
+public sealed record PreflopNodeActionDiagnosticDto(
+    string ActionKey,
+    decimal Frequency,
+    double Regret,
+    double PositiveRegret,
+    bool IsBestByFrequency);
+
+public sealed record PreflopHandComparisonDto(
+    string HeroHand,
+    decimal RaiseFrequency,
+    decimal CallFrequency,
+    decimal FoldFrequency,
+    double? HeroEquity,
+    double? HeroUtility,
+    string? OpponentRangeDescription,
+    string EvaluatorType,
+    string? ActionValueSupport,
+    decimal? BestActionMargin,
+    decimal? SeparationScore,
+    IReadOnlyList<PreflopNodeActionDiagnosticDto> ActionDiagnostics);
 
 public sealed record PreflopNodeRecommendationItemDto(
     string ActionKey,
@@ -69,7 +97,8 @@ public sealed record PreflopNodeSolveMetadataDto(
     int IterationsCompleted,
     long ElapsedMilliseconds,
     string SolveMode,
-    PreflopLeafEvaluationDetailsDto? LeafEvaluationDetails = null);
+    PreflopLeafEvaluationDetailsDto? LeafEvaluationDetails = null,
+    string? HeroHand = null);
 
 public sealed record PreflopNodeTraceDto(
     string SolverKey,
