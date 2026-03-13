@@ -91,6 +91,41 @@ public sealed class EquityBasedPreflopLeafEvaluatorTests
         Assert.NotEqual(j9Result.Details.HeroEquity, q4Result.Details.HeroEquity);
     }
 
+
+    [Fact]
+    public void Evaluate_UnopenedBtnRaise_IncludesFoldEquityComponents()
+    {
+        var evaluator = new EquityBasedPreflopLeafEvaluator(new TableDrivenOpponentRangeProvider(), new HeuristicPreflopLeafEvaluator(), samplesPerMatchup: 120);
+        var result = evaluator.Evaluate(CreateThreeWayContext("v2/UNOPENED/BTN/eff=100", HoleCards.Parse("Jc9d"), ActionType.Raise));
+
+        Assert.NotNull(result.Details);
+        Assert.Equal("Raise", result.Details!.RootActionType);
+        Assert.NotNull(result.Details.FoldProbability);
+        Assert.NotNull(result.Details.ContinueProbability);
+        Assert.True(result.Details.ImmediateWinComponent > 0d);
+        Assert.NotNull(result.Details.ContinueBranchUtility);
+        Assert.NotNull(result.Details.ContinueComponent);
+        Assert.Contains("Action=Raise", result.Details.DisplaySummary);
+    }
+
+    [Fact]
+    public void Evaluate_UnopenedBtn_ActionUtilitiesDifferAcrossRaiseCallFold()
+    {
+        var evaluator = new EquityBasedPreflopLeafEvaluator(new TableDrivenOpponentRangeProvider(), new HeuristicPreflopLeafEvaluator(), samplesPerMatchup: 120);
+        var raise = evaluator.Evaluate(CreateThreeWayContext("v2/UNOPENED/BTN/eff=100", HoleCards.Parse("Jc9d"), ActionType.Raise));
+        var call = evaluator.Evaluate(CreateThreeWayContext("v2/UNOPENED/BTN/eff=100", HoleCards.Parse("Jc9d"), ActionType.Call));
+        var fold = evaluator.Evaluate(CreateThreeWayContext("v2/UNOPENED/BTN/eff=100", HoleCards.Parse("Jc9d"), ActionType.Fold));
+
+        Assert.NotNull(raise.Details);
+        Assert.NotNull(call.Details);
+        Assert.NotNull(fold.Details);
+        Assert.NotEqual(raise.Details!.HeroUtility, call.Details!.HeroUtility);
+        Assert.Equal(0d, fold.Details!.HeroUtility);
+        Assert.Equal("Raise", raise.Details.RootActionType);
+        Assert.Equal("Call", call.Details.RootActionType);
+        Assert.Equal("Fold", fold.Details.RootActionType);
+    }
+
     [Fact]
     public void Evaluate_MultiwayContext_FallsBackToHeuristic()
     {
@@ -193,7 +228,7 @@ public sealed class EquityBasedPreflopLeafEvaluatorTests
             solverKey);
     }
 
-    private static PreflopLeafEvaluationContext CreateThreeWayContext(string solverKey = "v2/VS_OPEN/BTN/eff=100", HoleCards? heroCards = null)
+    private static PreflopLeafEvaluationContext CreateThreeWayContext(string solverKey = "v2/VS_OPEN/BTN/eff=100", HoleCards? heroCards = null, ActionType rootAction = ActionType.Raise)
     {
         var heroId = new PlayerId(Guid.Parse("11111111-1111-1111-1111-111111111111"));
         var v1 = new PlayerId(Guid.Parse("22222222-2222-2222-2222-222222222222"));
@@ -239,7 +274,7 @@ public sealed class EquityBasedPreflopLeafEvaluatorTests
             Position.BTN,
             heroCards ?? HoleCards.Parse("AsKh"),
             100,
-            new LegalAction(ActionType.Raise, new ChipAmount(250)),
+            new LegalAction(rootAction, rootAction == ActionType.Raise ? new ChipAmount(250) : ChipAmount.Zero),
             solverKey);
     }
 
