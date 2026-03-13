@@ -45,7 +45,6 @@ public sealed class ApiClient
         string? ActionValueSupport,
         decimal? BestActionMargin,
         decimal? SeparationScore,
-        IReadOnlyList<PreflopHandComparison> HandComparisons,
         PreflopSolveMetadata SolveMetadata,
         PreflopTrace Trace);
 
@@ -53,19 +52,6 @@ public sealed class ApiClient
     public sealed record PreflopRecommendationItem(string ActionKey, string DisplayLabel, decimal Frequency, bool IsBestAction);
     public sealed record PreflopStrategyItem(string ActionKey, decimal Frequency);
     public sealed record PreflopActionDiagnostic(string ActionKey, decimal Frequency, double Regret, double PositiveRegret, bool IsBestByFrequency);
-    public sealed record PreflopHandComparison(
-        string HeroHand,
-        decimal RaiseFrequency,
-        decimal CallFrequency,
-        decimal FoldFrequency,
-        double? HeroEquity,
-        double? HeroUtility,
-        string? OpponentRangeDescription,
-        string EvaluatorType,
-        string? ActionValueSupport,
-        decimal? BestActionMargin,
-        decimal? SeparationScore,
-        IReadOnlyList<PreflopActionDiagnostic> ActionDiagnostics);
     public sealed record PreflopSolveMetadata(
         string StrategySource,
         int IterationsCompleted,

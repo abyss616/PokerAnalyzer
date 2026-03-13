@@ -12,7 +12,7 @@ namespace PokerAnalyzer.Web.Tests;
 public sealed class HandHistoryUploadTests : TestContext
 {
     [Fact]
-    public void RendersLevel2LeafEvaluationSection_WhenMetadataIsPresent()
+    public void RendersSingleHandRationaleSection_WhenMetadataIsPresent()
     {
         Services.AddSingleton(new ApiClient(new HttpClient { BaseAddress = new Uri("http://localhost") }));
         Services.AddScoped<TooltipService>(_ => null!);
@@ -47,11 +47,6 @@ public sealed class HandHistoryUploadTests : TestContext
             "Regret diagnostics",
             12m,
             1.23m,
-            new[]
-            {
-                new ApiClient.PreflopHandComparison("J9o", 90m, 10m, 0m, 0.52, 0.04, "FacingRaise", "EquityBased", "Regret diagnostics", 5m, 0.9m, Array.Empty<ApiClient.PreflopActionDiagnostic>()),
-                new ApiClient.PreflopHandComparison("Q4o", 89m, 11m, 0m, 0.519, 0.038, "FacingRaise", "EquityBased", "Regret diagnostics", 4m, 0.8m, Array.Empty<ApiClient.PreflopActionDiagnostic>())
-            },
             new ApiClient.PreflopSolveMetadata(
                 "LiveSolved",
                 300,
@@ -63,15 +58,21 @@ public sealed class HandHistoryUploadTests : TestContext
                     false,
                     "EquityBased",
                     "FacingRaise",
+                    2,
+                    2,
+                    null,
+                    "FacingRaise",
                     "BTN",
                     "BB",
                     true,
-                    "FacingRaise",
                     "table-range percentile=0.18",
-                    121,
+                    "weighted combos",
                     0.571,
-                    0.142,
+                    0.429,
+                    121,
                     0.68,
+                    0.142,
+                    0.85,
                     "Offsuit broadway",
                     "A/K blockers",
                     "rationale",
@@ -84,9 +85,13 @@ public sealed class HandHistoryUploadTests : TestContext
         field!.SetValue(cut.Instance, analysis);
         cut.Render();
 
-        Assert.Contains("Level-2 leaf evaluation", cut.Markup);
+        Assert.Contains("Why this hand got this strategy", cut.Markup);
+        Assert.Contains("Hero hand", cut.Markup);
+        Assert.Contains("AsKh", cut.Markup);
         Assert.Contains("Equity-based leaf utility computed from weighted opponent range", cut.Markup);
-        Assert.Contains("0.571", cut.Markup);
-        Assert.Contains("Why are J9 and Q4 both ~90% raise?", cut.Markup);
+        Assert.DoesNotContain("Why are J9 and Q4 both ~90% raise?", cut.Markup);
+        Assert.DoesNotContain("J9", cut.Markup);
+        Assert.DoesNotContain("Q4", cut.Markup);
+        Assert.DoesNotContain("90% raise", cut.Markup);
     }
 }
