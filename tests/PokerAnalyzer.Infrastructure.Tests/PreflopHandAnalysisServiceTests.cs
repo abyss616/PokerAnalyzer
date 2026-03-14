@@ -140,7 +140,7 @@ public sealed class PreflopHandAnalysisServiceTests
             "BB",
             true,
             "FacingRaise",
-            "table-range percentile=0.18",
+            "table-range percentile=0.18 source=table-default",
             120,
             0.57,
             0.14,
