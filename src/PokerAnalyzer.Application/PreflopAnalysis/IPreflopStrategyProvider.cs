@@ -6,7 +6,8 @@ public sealed record PreflopStrategyRequestDto(
     string SolverKey,
     SolverHandState RootState,
     IReadOnlyList<LegalAction> LegalActions,
-    bool UsePersistentTrainingState = false);
+    bool UsePersistentTrainingState = false,
+    string? PopulationProfileName = null);
 
 public interface IPreflopStrategyProvider
 {

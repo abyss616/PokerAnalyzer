@@ -10,7 +10,8 @@ public sealed record PreflopNodeQueryRequestDto(
     decimal BigBlind,
     IReadOnlyList<PreflopNodeSeatDto> Seats,
     IReadOnlyList<PreflopNodeActionDto> PublicActionHistory,
-    bool UsePersistentTrainingState = false);
+    bool UsePersistentTrainingState = false,
+    string? PopulationProfileName = null);
 
 public sealed record PreflopNodeSeatDto(
     Guid PlayerId,
