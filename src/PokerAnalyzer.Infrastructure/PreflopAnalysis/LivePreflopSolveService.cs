@@ -6,7 +6,7 @@ namespace PokerAnalyzer.Infrastructure.PreflopAnalysis;
 
 public sealed class LivePreflopSolveService : IPreflopStrategyProvider
 {
-    private static readonly PreflopTrainingOptions DefaultOptions = PreflopTrainingOptions.ForIterations(600);
+    private static readonly PreflopTrainingOptions DefaultOptions = PreflopTrainingOptions.ForIterations(300);
 
     private readonly IRegretStore _regretStore;
     private readonly IAverageStrategyStore _averageStrategyStore;
