@@ -2,6 +2,8 @@ namespace PokerAnalyzer.Domain.Game;
 
 public static class SolverStateStepper
 {
+    private const string DebugEnvironmentVariable = "PA_SOLVER_DEBUG_STEPPER";
+
     public static SolverHandState Step(SolverHandState state, LegalAction action)
         => Step(state, action, legalActions: null);
 
@@ -20,6 +22,13 @@ public static class SolverStateStepper
             throw new InvalidOperationException($"Acting player {acting.PlayerId} is not able to act.");
 
         EnsureActionIsLegal(state, action, legalActions);
+        LogStepTransition(
+            "before",
+            state,
+            action,
+            legalActions,
+            bettingRoundComplete: null,
+            "Applying action.");
 
         var players = state.Players.ToArray();
         var actingIndex = acting.SeatIndex;
@@ -158,6 +167,14 @@ public static class SolverStateStepper
             raisesThisStreet: nextRaisesThisStreet,
             players: players,
             actionHistory: updatedHistory);
+
+        LogStepTransition(
+            "after",
+            nextState,
+            action,
+            legalActions,
+            bettingRoundComplete,
+            "Completed action transition.");
 
         return nextState;
     }
@@ -301,10 +318,24 @@ public static class SolverStateStepper
         var currentBet = players.Max(p => p.CurrentStreetContribution.Value);
         var anyOutstandingCall = actionablePlayers.Any(p => p.CurrentStreetContribution.Value < currentBet);
         if (anyOutstandingCall)
+        {
+            LogRoundCompletionDecision(previousState, players, updatedHistory, false, "At least one actionable player is still behind the current bet.");
             return false;
+        }
 
         if (currentBet > 0)
-            return true;
+        {
+            var roundClosed = HasActionReturnedAfterCurrentBetWasEstablished(actionablePlayers, updatedHistory, currentBet);
+            LogRoundCompletionDecision(
+                previousState,
+                players,
+                updatedHistory,
+                roundClosed,
+                roundClosed
+                    ? "No outstanding call and all actionable players have responded since the current bet was established."
+                    : "No outstanding call but at least one actionable player has not yet responded since the current bet was established.");
+            return roundClosed;
+        }
 
         var trailingChecks = 0;
         for (var i = updatedHistory.Count - 1; i >= 0; i--)
@@ -316,7 +347,121 @@ public static class SolverStateStepper
             trailingChecks++;
         }
 
-        return trailingChecks >= actionablePlayers.Length;
+        var checksCloseRound = trailingChecks >= actionablePlayers.Length;
+        LogRoundCompletionDecision(
+            previousState,
+            players,
+            updatedHistory,
+            checksCloseRound,
+            $"Zero-bet street closure check with trailingChecks={trailingChecks} and actionablePlayers={actionablePlayers.Length}.");
+        return checksCloseRound;
+    }
+
+    private static bool HasActionReturnedAfterCurrentBetWasEstablished(
+        IReadOnlyList<SolverPlayerState> actionablePlayers,
+        IReadOnlyList<SolverActionEntry> updatedHistory,
+        long currentBet)
+    {
+        var currentBetSetterIndex = -1;
+        for (var i = updatedHistory.Count - 1; i >= 0; i--)
+        {
+            var entry = updatedHistory[i];
+            if (entry.Amount.Value != currentBet)
+                continue;
+
+            if (entry.ActionType is ActionType.Bet
+                or ActionType.Raise
+                or ActionType.AllIn
+                or ActionType.PostSmallBlind
+                or ActionType.PostBigBlind)
+            {
+                currentBetSetterIndex = i;
+                break;
+            }
+        }
+
+        if (currentBetSetterIndex < 0)
+            return true;
+
+        var mostRecentActionIndexByPlayer = new Dictionary<PlayerId, int>();
+        for (var i = 0; i < updatedHistory.Count; i++)
+            mostRecentActionIndexByPlayer[updatedHistory[i].PlayerId] = i;
+
+        var betSetterEntry = updatedHistory[currentBetSetterIndex];
+        var betSetterPlayerId = betSetterEntry.PlayerId;
+        var requiresBetSetterOptionClosure = betSetterEntry.ActionType is ActionType.PostSmallBlind or ActionType.PostBigBlind;
+        foreach (var player in actionablePlayers)
+        {
+            if (player.PlayerId == betSetterPlayerId && !requiresBetSetterOptionClosure)
+                continue;
+
+            if (!mostRecentActionIndexByPlayer.TryGetValue(player.PlayerId, out var lastActionIndex))
+                return false;
+
+            if (lastActionIndex <= currentBetSetterIndex)
+                return false;
+        }
+
+        return true;
+    }
+
+    private static void LogStepTransition(
+        string phase,
+        SolverHandState state,
+        LegalAction action,
+        IReadOnlyList<LegalAction>? legalActions,
+        bool? bettingRoundComplete,
+        string note)
+    {
+        if (!IsDebugLoggingEnabled())
+            return;
+
+        var playerSnapshot = string.Join(
+            " | ",
+            state.Players.Select(p =>
+                $"id={p.PlayerId.Value},seat={p.SeatIndex},pos={p.Position},active={p.IsActive},allIn={p.IsAllIn},stack={p.Stack.Value},street={p.CurrentStreetContribution.Value},total={p.TotalContribution.Value}"));
+
+        var legalActionsText = legalActions is null
+            ? "<not provided>"
+            : string.Join(", ", legalActions.Select(a => $"{a.ActionType}:{a.Amount?.Value}"));
+
+        Console.WriteLine(
+            $"[SolverStateStepper:{phase}] note={note} street={state.Street} acting={state.ActingPlayerId.Value} " +
+            $"action={action.ActionType}:{action.Amount?.Value} currentBet={state.CurrentBetSize.Value} toCall={state.ToCall.Value} " +
+            $"pot={state.Pot.Value} bettingRoundComplete={bettingRoundComplete?.ToString() ?? "n/a"} " +
+            $"legalActions=[{legalActionsText}] players=[{playerSnapshot}]");
+    }
+
+    private static void LogRoundCompletionDecision(
+        SolverHandState previousState,
+        IReadOnlyList<SolverPlayerState> players,
+        IReadOnlyList<SolverActionEntry> updatedHistory,
+        bool decision,
+        string reason)
+    {
+        if (!IsDebugLoggingEnabled())
+            return;
+
+        var contributions = string.Join(
+            " | ",
+            players.Select(p =>
+                $"id={p.PlayerId.Value},active={p.IsActive},allIn={p.IsAllIn},stack={p.Stack.Value},street={p.CurrentStreetContribution.Value}"));
+
+        var trailingActions = string.Join(
+            ", ",
+            updatedHistory.TakeLast(Math.Min(5, updatedHistory.Count)).Select(a => $"{a.PlayerId.Value}:{a.ActionType}:{a.Amount.Value}"));
+
+        Console.WriteLine(
+            $"[SolverStateStepper:round-complete] street={previousState.Street} acting={previousState.ActingPlayerId.Value} " +
+            $"previousCurrentBet={previousState.CurrentBetSize.Value} decision={decision} reason={reason} " +
+            $"players=[{contributions}] recentHistory=[{trailingActions}]");
+    }
+
+    private static bool IsDebugLoggingEnabled()
+    {
+        var flag = Environment.GetEnvironmentVariable(DebugEnvironmentVariable);
+        return string.Equals(flag, "1", StringComparison.Ordinal)
+            || string.Equals(flag, "true", StringComparison.OrdinalIgnoreCase);
     }
 
     private static SolverPlayerState? ResolveNextActingPlayer(
