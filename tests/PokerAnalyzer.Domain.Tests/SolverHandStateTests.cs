@@ -327,6 +327,32 @@ public class SolverHandStateTests
         Assert.Equal(3, state.ActionHistory.Count);
     }
 
+
+    [Fact]
+    public void Constructor_ActionHistory_BigBlindOptionVsLimpRaise_DoesNotThrow()
+    {
+        var sb = new SolverPlayerState(PlayerId.New(), 0, Position.SB, new ChipAmount(90), new ChipAmount(10), new ChipAmount(10), false, false);
+        var bb = new SolverPlayerState(PlayerId.New(), 1, Position.BB, new ChipAmount(45), new ChipAmount(55), new ChipAmount(55), false, false);
+
+        var actions = new[]
+        {
+            new SolverActionEntry(sb.PlayerId, ActionType.PostSmallBlind, new ChipAmount(5)),
+            new SolverActionEntry(bb.PlayerId, ActionType.PostBigBlind, new ChipAmount(10)),
+            new SolverActionEntry(sb.PlayerId, ActionType.Call, new ChipAmount(10)),
+            new SolverActionEntry(bb.PlayerId, ActionType.Raise, new ChipAmount(55))
+        };
+
+        var ex = Record.Exception(() =>
+            CreateState(
+                actingPlayerId: sb.PlayerId,
+                players: [sb, bb],
+                pot: new ChipAmount(65),
+                currentBetSize: new ChipAmount(55),
+                actionHistory: actions));
+
+        Assert.Null(ex);
+    }
+
     [Fact]
     public void Constructor_ActionHistoryActionAfterFold_ShouldThrow()
     {
