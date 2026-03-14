@@ -40,6 +40,7 @@ public sealed class EquityBasedPreflopLeafEvaluator : IPreflopLeafEvaluator
     private readonly IOpponentRangeProvider _rangeProvider;
     private readonly IPreflopLeafEvaluator _fallbackEvaluator;
     private readonly int _samplesPerMatchup;
+    private readonly IPreflopPopulationProfileProvider _populationProfileProvider;
 
 
     private enum RootEvaluatorMode
@@ -52,11 +53,13 @@ public sealed class EquityBasedPreflopLeafEvaluator : IPreflopLeafEvaluator
     public EquityBasedPreflopLeafEvaluator(
         IOpponentRangeProvider rangeProvider,
         IPreflopLeafEvaluator fallbackEvaluator,
-        int samplesPerMatchup = 160)
+        int samplesPerMatchup = 160,
+        IPreflopPopulationProfileProvider? populationProfileProvider = null)
     {
         _rangeProvider = rangeProvider ?? throw new ArgumentNullException(nameof(rangeProvider));
         _fallbackEvaluator = fallbackEvaluator ?? throw new ArgumentNullException(nameof(fallbackEvaluator));
         _samplesPerMatchup = Math.Max(32, samplesPerMatchup);
+        _populationProfileProvider = populationProfileProvider ?? new NamedPreflopPopulationProfileProvider(PreflopPopulationProfiles.GtoLikeName);
     }
 
     public PreflopLeafEvaluation Evaluate(PreflopLeafEvaluationContext context)
@@ -101,8 +104,9 @@ public sealed class EquityBasedPreflopLeafEvaluator : IPreflopLeafEvaluator
         if (sb is null || bb is null)
             return false;
 
-        const double sbContinue = 0.23;
-        const double bbContinue = 0.34;
+        var activeProfile = _populationProfileProvider.ActiveProfile;
+        var sbContinue = activeProfile.SbContinueUnopenedVsBtn;
+        var bbContinue = activeProfile.BbContinueUnopenedVsBtn;
         var allFold = Math.Clamp((1d - sbContinue) * (1d - bbContinue), 0d, 1d);
         var sbOnly = sbContinue * (1d - bbContinue);
         var bbOnly = (1d - sbContinue) * bbContinue;
@@ -121,7 +125,7 @@ public sealed class EquityBasedPreflopLeafEvaluator : IPreflopLeafEvaluator
             return false;
 
         var combined = BlendRanges(sbRange, sbWeight, bbRange, bbWeight);
-        var detail = $"BTN unopened weighted-blind abstraction: P(all fold)={allFold:0.000}, P(continue)={continueProbability:0.000}, SBw={sbWeight:0.000}, BBw={bbWeight:0.000}; sb={sbReason}; bb={bbReason}";
+        var detail = $"BTN unopened weighted-blind abstraction ({_populationProfileProvider.ActiveProfileName}): P(all fold)={allFold:0.000}, P(continue)={continueProbability:0.000}, SBw={sbWeight:0.000}, BBw={bbWeight:0.000}; sb={sbReason}; bb={bbReason}";
         var baseEval = EvaluateAgainstRange(
             context,
             nodeFamily,
@@ -142,6 +146,10 @@ public sealed class EquityBasedPreflopLeafEvaluator : IPreflopLeafEvaluator
         if (!baseEval.UtilityByPlayer.TryGetValue(context.HeroPlayerId, out var continueBranchUtility))
             continueBranchUtility = 0d;
 
+        var handClass = baseEval.Details?.HandClass ?? ClassifyHand(context.HeroCards);
+        var realizationPenalty = GetBtnUnopenedRealizationPenalty(handClass, activeProfile);
+        var adjustedContinueBranchUtility = continueBranchUtility - realizationPenalty;
+
         var immediateWinBb = 1.5d;
         var openSizeBb = 2.5d;
         var immediateComponent = 0d;
@@ -152,14 +160,14 @@ public sealed class EquityBasedPreflopLeafEvaluator : IPreflopLeafEvaluator
         if (actionType == ActionType.Raise)
         {
             immediateComponent = allFold * immediateWinBb;
-            continueComponent = continueProbability * continueBranchUtility;
-            var riskPenalty = continueProbability * 0.08d * openSizeBb;
+            continueComponent = continueProbability * adjustedContinueBranchUtility;
+            var riskPenalty = continueProbability * activeProfile.RaiseRiskPenaltyFactor * openSizeBb;
             heroUtility = immediateComponent + continueComponent - riskPenalty;
         }
         else if (actionType is ActionType.Call or ActionType.Check)
         {
             var limpPenalty = 0.04d;
-            heroUtility = continueBranchUtility - limpPenalty;
+            heroUtility = adjustedContinueBranchUtility - limpPenalty;
             continueComponent = heroUtility;
             immediateComponent = 0d;
         }
@@ -169,7 +177,7 @@ public sealed class EquityBasedPreflopLeafEvaluator : IPreflopLeafEvaluator
 
         var actionLabel = actionType.ToString();
         var summary = actionType == ActionType.Raise
-            ? $"{baseEval.Details!.DisplaySummary} Action={actionLabel}, EV={heroUtility:0.000} = fold({allFold:0.000})*pot({immediateWinBb:0.00}) + continue({continueProbability:0.000})*Vcont({continueBranchUtility:0.000})."
+            ? $"{baseEval.Details!.DisplaySummary} Action={actionLabel}, EV={heroUtility:0.000} = fold({allFold:0.000})*pot({immediateWinBb:0.00}) + continue({continueProbability:0.000})*Vcont({adjustedContinueBranchUtility:0.000}), profile={_populationProfileProvider.ActiveProfileName}."
             : $"{baseEval.Details!.DisplaySummary} Action={actionLabel}, utility {heroUtility:0.000} from limp/check continuation approximation.";
 
         evaluation = baseEval with
@@ -182,9 +190,10 @@ public sealed class EquityBasedPreflopLeafEvaluator : IPreflopLeafEvaluator
                 RootActionType = actionLabel,
                 ImmediateWinComponent = immediateComponent,
                 ContinueComponent = continueComponent,
-                ContinueBranchUtility = continueBranchUtility,
+                ContinueBranchUtility = adjustedContinueBranchUtility,
                 DisplaySummary = summary,
-                RationaleSummary = $"Unopened BTN {actionLabel} uses action-sensitive utility: fold-equity immediate component + continuation branch utility."
+                ActivePopulationProfile = _populationProfileProvider.ActiveProfileName,
+                RationaleSummary = $"Unopened BTN {actionLabel} uses action-sensitive utility with {_populationProfileProvider.ActiveProfileName} population assumptions: fold-equity immediate component + continuation branch utility."
             }
         };
 
@@ -303,7 +312,8 @@ public sealed class EquityBasedPreflopLeafEvaluator : IPreflopLeafEvaluator
                 RootEvaluatorMode: rootEvaluatorMode.ToString(),
                 RootActiveOpponentCount: rootActiveOpponentCount,
                 LeafActiveOpponentCount: leafActiveOpponentCount,
-                UsedDirectAbstractionShortcut: rootEvaluatorMode == RootEvaluatorMode.AbstractedHeadsUp));
+                UsedDirectAbstractionShortcut: rootEvaluatorMode == RootEvaluatorMode.AbstractedHeadsUp,
+                ActivePopulationProfile: _populationProfileProvider.ActiveProfileName));
     }
 
     private static OpponentWeightedRange BlendRanges(OpponentWeightedRange first, double firstWeight, OpponentWeightedRange second, double secondWeight)
@@ -358,7 +368,8 @@ public sealed class EquityBasedPreflopLeafEvaluator : IPreflopLeafEvaluator
                 RootEvaluatorMode: rootEvaluatorMode.ToString(),
                 RootActiveOpponentCount: rootActiveOpponentCount,
                 LeafActiveOpponentCount: leafActiveOpponentCount,
-                UsedDirectAbstractionShortcut: rootEvaluatorMode == RootEvaluatorMode.AbstractedHeadsUp));
+                UsedDirectAbstractionShortcut: rootEvaluatorMode == RootEvaluatorMode.AbstractedHeadsUp,
+                ActivePopulationProfile: _populationProfileProvider.ActiveProfileName));
     }
 
     private PreflopLeafEvaluation Fallback(PreflopLeafEvaluationContext context, RootEvaluatorMode rootEvaluatorMode, int rootActiveOpponentCount, int leafActiveOpponentCount, string reason)
@@ -403,7 +414,8 @@ public sealed class EquityBasedPreflopLeafEvaluator : IPreflopLeafEvaluator
                 RootEvaluatorMode: rootEvaluatorMode.ToString(),
                 RootActiveOpponentCount: rootActiveOpponentCount,
                 LeafActiveOpponentCount: leafActiveOpponentCount,
-                UsedDirectAbstractionShortcut: rootEvaluatorMode == RootEvaluatorMode.AbstractedHeadsUp)
+                UsedDirectAbstractionShortcut: rootEvaluatorMode == RootEvaluatorMode.AbstractedHeadsUp,
+                ActivePopulationProfile: existingDetails?.ActivePopulationProfile ?? _populationProfileProvider.ActiveProfileName)
         };
     }
 
@@ -449,10 +461,28 @@ public sealed class EquityBasedPreflopLeafEvaluator : IPreflopLeafEvaluator
         if (high >= 11 && low >= 9)
             return suited ? "Suited broadway" : "Offsuit broadway";
 
+        if (!suited && high == 14 && low <= 10)
+            return "Weak offsuit ace";
+
         if (!suited && high <= 10 && low <= 6)
             return "Offsuit trash";
 
         return suited ? "Suited connector/gapper" : "Offsuit connector/gapper";
+    }
+
+
+    private static double GetBtnUnopenedRealizationPenalty(string handClass, PreflopPopulationProfile profile)
+    {
+        if (string.Equals(handClass, "Offsuit broadway", StringComparison.Ordinal))
+            return profile.OffsuitBroadwayRealizationPenalty;
+
+        if (string.Equals(handClass, "Weak offsuit ace", StringComparison.Ordinal)
+            || string.Equals(handClass, "Offsuit trash", StringComparison.Ordinal))
+        {
+            return profile.WeakOffsuitRealizationPenalty;
+        }
+
+        return 0d;
     }
 
     private static string BuildBlockerSummary(HoleCards cards, Position? villainPosition)
