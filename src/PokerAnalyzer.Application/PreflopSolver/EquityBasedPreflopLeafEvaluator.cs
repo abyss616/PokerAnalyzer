@@ -16,7 +16,8 @@ public sealed record OpponentRangeRequest(
     PreflopNodeFamily NodeFamily,
     int RaiseDepth,
     bool IsHeadsUp,
-    string? SolverKey);
+    string? SolverKey,
+    double? PercentileOverride = null);
 
 public sealed record OpponentWeightedRange(
     IReadOnlyList<WeightedHoleCards> WeightedCombos,
@@ -116,8 +117,8 @@ public sealed class EquityBasedPreflopLeafEvaluator : IPreflopLeafEvaluator
         var sbWeight = continueProbability > 0d ? (sbOnly + 0.5d * bothContinue) / continueProbability : 0.5d;
         var bbWeight = continueProbability > 0d ? (bbOnly + 0.5d * bothContinue) / continueProbability : 0.5d;
 
-        var sbReq = new OpponentRangeRequest(context.HeroPosition, Position.SB, nodeFamily, context.RootState.RaisesThisStreet, true, context.SolverKey);
-        var bbReq = new OpponentRangeRequest(context.HeroPosition, Position.BB, nodeFamily, context.RootState.RaisesThisStreet, true, context.SolverKey);
+        var sbReq = new OpponentRangeRequest(context.HeroPosition, Position.SB, nodeFamily, context.RootState.RaisesThisStreet, true, context.SolverKey, activeProfile.SbContinueRangePercentileUnopenedVsBtn);
+        var bbReq = new OpponentRangeRequest(context.HeroPosition, Position.BB, nodeFamily, context.RootState.RaisesThisStreet, true, context.SolverKey, activeProfile.BbContinueRangePercentileUnopenedVsBtn);
 
         if (!_rangeProvider.TryGetRange(sbReq, out var sbRange, out var sbReason))
             return false;
@@ -125,7 +126,7 @@ public sealed class EquityBasedPreflopLeafEvaluator : IPreflopLeafEvaluator
             return false;
 
         var combined = BlendRanges(sbRange, sbWeight, bbRange, bbWeight);
-        var detail = $"BTN unopened weighted-blind abstraction ({_populationProfileProvider.ActiveProfileName}): P(all fold)={allFold:0.000}, P(continue)={continueProbability:0.000}, SBw={sbWeight:0.000}, BBw={bbWeight:0.000}; sb={sbReason}; bb={bbReason}";
+        var detail = $"BTN unopened weighted-blind abstraction ({_populationProfileProvider.ActiveProfileName}): P(all fold)={allFold:0.000}, P(continue)={continueProbability:0.000}, SBw={sbWeight:0.000}, BBw={bbWeight:0.000}, sbPct={activeProfile.SbContinueRangePercentileUnopenedVsBtn:0.00}, bbPct={activeProfile.BbContinueRangePercentileUnopenedVsBtn:0.00}; sb={sbReason}; bb={bbReason}";
         var baseEval = EvaluateAgainstRange(
             context,
             nodeFamily,
@@ -208,7 +209,8 @@ public sealed class EquityBasedPreflopLeafEvaluator : IPreflopLeafEvaluator
             nodeFamily,
             context.RootState.RaisesThisStreet,
             IsHeadsUp: true,
-            context.SolverKey);
+            context.SolverKey,
+            PercentileOverride: null);
 
         if (!_rangeProvider.TryGetRange(request, out var range, out var rangeReason))
             return Fallback(context, rootEvaluatorMode, rootActiveOpponentCount, leafActiveOpponentCount, $"range provider miss ({rangeReason})");
@@ -533,7 +535,9 @@ public sealed class TableDrivenOpponentRangeProvider : IOpponentRangeProvider
             return false;
         }
 
-        if (!_percentByFamily.TryGetValue(request.NodeFamily, out var percentile))
+        var percentile = request.PercentileOverride ?? (_percentByFamily.TryGetValue(request.NodeFamily, out var familyPercentile) ? familyPercentile : double.NaN);
+
+        if (double.IsNaN(percentile))
         {
             reason = $"unsupported node family {request.NodeFamily}";
             range = new OpponentWeightedRange(Array.Empty<WeightedHoleCards>(), "unsupported");
@@ -546,7 +550,8 @@ public sealed class TableDrivenOpponentRangeProvider : IOpponentRangeProvider
             request.NodeFamily,
             request.RaiseDepth,
             request.IsHeadsUp,
-            request.SolverKey);
+            request.SolverKey,
+            request.PercentileOverride);
 
         var rangeHit = _rangeCache.GetOrAdd(cacheKey, _ =>
         {
@@ -560,7 +565,8 @@ public sealed class TableDrivenOpponentRangeProvider : IOpponentRangeProvider
             return new OpponentWeightedRange(weightedCombos, request.NodeFamily.ToString());
         });
 
-        reason = $"table-range percentile={percentile:0.00}";
+        var source = request.PercentileOverride.HasValue ? "profile-override" : "table-default";
+        reason = $"table-range percentile={percentile:0.00} source={source}";
         range = rangeHit;
         return true;
     }
@@ -571,7 +577,8 @@ public sealed class TableDrivenOpponentRangeProvider : IOpponentRangeProvider
         PreflopNodeFamily NodeFamily,
         int RaiseDepth,
         bool IsHeadsUp,
-        string? SolverKey);
+        string? SolverKey,
+        double? PercentileOverride);
 }
 
 internal static class PreflopNodeFamilyClassifier

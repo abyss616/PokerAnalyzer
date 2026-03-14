@@ -65,7 +65,7 @@ public sealed class HandHistoryUploadTests : TestContext
                     "BTN",
                     "BB",
                     true,
-                    "table-range percentile=0.18",
+                    "table-range percentile=0.18 source=table-default",
                     "weighted combos",
                     0.571,
                     0.429,
