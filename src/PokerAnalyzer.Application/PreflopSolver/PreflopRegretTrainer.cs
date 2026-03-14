@@ -182,7 +182,7 @@ public sealed class AlternatingTraversalPlayerSelector : ITraversalPlayerSelecto
 
 public sealed record PreflopTrainerOptions(
     int Iterations,
-    int WorkerCount = 1,
+    int WorkerCount = 12,
     int BatchSize = 64,
     int? RandomSeed = null,
     bool Deterministic = false)
