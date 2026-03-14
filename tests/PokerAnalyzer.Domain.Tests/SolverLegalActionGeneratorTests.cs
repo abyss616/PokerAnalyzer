@@ -82,6 +82,38 @@ public class SolverLegalActionGeneratorTests
     }
 
     [Fact]
+    public void GenerateLegalActions_FacingLimpPreflop_ContainsFoldCallRaiseFivePointFiveBbAndRaiseNineBb()
+    {
+        var sb = Player(seat: 0, stack: 98, streetContribution: 2, totalContribution: 2);
+        var bb = Player(seat: 1, stack: 98, streetContribution: 2, totalContribution: 2);
+
+        var state = CreateState(
+            actingPlayerId: sb.PlayerId,
+            players: [sb, bb],
+            pot: 4,
+            currentBetSize: 2,
+            lastRaiseSize: 2,
+            raisesThisStreet: 0,
+            actionHistory:
+            [
+                new SolverActionEntry(sb.PlayerId, ActionType.PostSmallBlind, new ChipAmount(1)),
+                new SolverActionEntry(bb.PlayerId, ActionType.PostBigBlind, new ChipAmount(2)),
+                new SolverActionEntry(bb.PlayerId, ActionType.Call, new ChipAmount(2))
+            ]);
+
+        var actions = state.GenerateLegalActions();
+
+        Assert.Equal(
+            [
+                new LegalAction(ActionType.Fold),
+                new LegalAction(ActionType.Call, new ChipAmount(2)),
+                new LegalAction(ActionType.Raise, new ChipAmount(11)),
+                new LegalAction(ActionType.Raise, new ChipAmount(18))
+            ],
+            actions);
+    }
+
+    [Fact]
     public void GenerateLegalActions_AfterLimp_UsesCheckAndRaiseTargets()
     {
         var sb = Player(seat: 0, stack: 98, streetContribution: 2, totalContribution: 2);

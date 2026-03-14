@@ -4,6 +4,10 @@ public static class SolverLegalActionGenerator
 {
     private const long UnopenedPreflopOpenNumerator = 5;
     private const long UnopenedPreflopOpenDenominator = 2;
+    private const long FacingLimpRaiseFivePointFiveBbNumerator = 11;
+    private const long FacingLimpRaiseFivePointFiveBbDenominator = 2;
+    private const long FacingLimpRaiseNineBbNumerator = 9;
+    private const long FacingLimpRaiseNineBbDenominator = 1;
 
     public static IReadOnlyList<LegalAction> GenerateLegalActions(
         SolverHandState state,
@@ -145,6 +149,18 @@ public static class SolverLegalActionGenerator
             return actions.AsReadOnly();
         }
 
+        if (IsFacingLimpPreflopSpot(state))
+        {
+            var minTotalBetFacingLimp = state.CurrentBetSize + state.LastRaiseSize;
+            var raiseToFivePointFiveBb = ResolveFacingLimpRaiseFivePointFiveBb(state.Config.BigBlind);
+            var raiseToNineBb = ResolveFacingLimpRaiseNineBb(state.Config.BigBlind);
+
+            TryAddRaiseTarget(actions, raiseToFivePointFiveBb, minTotalBetFacingLimp, maxTotalBet);
+            TryAddRaiseTarget(actions, raiseToNineBb, minTotalBetFacingLimp, maxTotalBet);
+
+            return actions.AsReadOnly();
+        }
+
         var minTotalBet = state.CurrentBetSize + state.LastRaiseSize;
         var canFullRaise = maxTotalBet >= minTotalBet;
 
@@ -214,19 +230,80 @@ public static class SolverLegalActionGenerator
             a.ActionType == ActionType.Bet ||
             a.ActionType == ActionType.Raise ||
             a.ActionType == ActionType.AllIn);
-        return !isAggressive;
+        var hasVoluntaryPreflopCall = state.ActionHistory.Any(a => a.ActionType == ActionType.Call);
+
+        return !isAggressive && !hasVoluntaryPreflopCall;
+    }
+
+    private static bool IsFacingLimpPreflopSpot(SolverHandState state)
+    {
+        if (state.Street != Street.Preflop || state.ToCall.Value <= 0)
+            return false;
+
+        var hasAggressivePreflopAction = state.ActionHistory.Any(a =>
+            a.ActionType == ActionType.Bet ||
+            a.ActionType == ActionType.Raise ||
+            a.ActionType == ActionType.AllIn);
+
+        if (hasAggressivePreflopAction)
+            return false;
+
+        var hasLimpAction = state.ActionHistory.Any(a => a.ActionType == ActionType.Call);
+        return hasLimpAction;
     }
 
     private static ChipAmount ResolveUnopenedPreflopOpenSize(ChipAmount bigBlind)
     {
-        var scaled = checked(bigBlind.Value * UnopenedPreflopOpenNumerator);
-        if (scaled % UnopenedPreflopOpenDenominator != 0)
+        return ResolveFixedBbTarget(
+            bigBlind,
+            UnopenedPreflopOpenNumerator,
+            UnopenedPreflopOpenDenominator,
+            "2.5bb");
+    }
+
+    private static ChipAmount ResolveFacingLimpRaiseFivePointFiveBb(ChipAmount bigBlind)
+    {
+        return ResolveFixedBbTarget(
+            bigBlind,
+            FacingLimpRaiseFivePointFiveBbNumerator,
+            FacingLimpRaiseFivePointFiveBbDenominator,
+            "5.5bb");
+    }
+
+    private static ChipAmount ResolveFacingLimpRaiseNineBb(ChipAmount bigBlind)
+    {
+        return ResolveFixedBbTarget(
+            bigBlind,
+            FacingLimpRaiseNineBbNumerator,
+            FacingLimpRaiseNineBbDenominator,
+            "9bb");
+    }
+
+    private static ChipAmount ResolveFixedBbTarget(ChipAmount bigBlind, long numerator, long denominator, string displayBb)
+    {
+        var scaled = checked(bigBlind.Value * numerator);
+        if (scaled % denominator != 0)
         {
             throw new InvalidOperationException(
-                $"Configured big blind {bigBlind.Value} does not support exact 2.5bb sizing in integer-chip representation.");
+                $"Configured big blind {bigBlind.Value} does not support exact {displayBb} sizing in integer-chip representation.");
         }
 
-        return new ChipAmount(scaled / UnopenedPreflopOpenDenominator);
+        return new ChipAmount(scaled / denominator);
+    }
+
+    private static void TryAddRaiseTarget(
+        ICollection<LegalAction> actions,
+        ChipAmount target,
+        ChipAmount minTotalBet,
+        ChipAmount maxTotalBet)
+    {
+        if (target < minTotalBet || target > maxTotalBet)
+            return;
+
+        if (actions.Any(action => action.ActionType == ActionType.Raise && action.Amount == target))
+            return;
+
+        actions.Add(new LegalAction(ActionType.Raise, target));
     }
 
     private static ChipAmount ResolveMinBetTarget(ChipAmount currentContribution, ChipAmount lastRaiseSize)

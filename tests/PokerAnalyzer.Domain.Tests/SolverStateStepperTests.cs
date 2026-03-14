@@ -296,6 +296,39 @@ public class SolverStateStepperTests
         Assert.All(exceptions, ex => Assert.Null(ex));
     }
 
+    [Fact]
+    public void Step_FacingLimpPreflopGeneratedActions_AreExecutable()
+    {
+        var sb = Player(0, Position.SB, stack: 98, street: 2, total: 2);
+        var bb = Player(1, Position.BB, stack: 98, street: 2, total: 2);
+        var state = CreateState(
+            actingPlayerId: sb.PlayerId,
+            players: [sb, bb],
+            pot: 4,
+            currentBetSize: 2,
+            lastRaiseSize: 2,
+            raisesThisStreet: 0,
+            actionHistory:
+            [
+                new SolverActionEntry(sb.PlayerId, ActionType.PostSmallBlind, new ChipAmount(1)),
+                new SolverActionEntry(bb.PlayerId, ActionType.PostBigBlind, new ChipAmount(2)),
+                new SolverActionEntry(bb.PlayerId, ActionType.Call, new ChipAmount(2))
+            ]);
+
+        var actions = state.GenerateLegalActions();
+        var exceptions = actions.Select(action => Record.Exception(() => _ = SolverStateStepper.Step(state, action))).ToArray();
+
+        Assert.Equal(
+            [
+                new LegalAction(ActionType.Fold),
+                new LegalAction(ActionType.Call, new ChipAmount(2)),
+                new LegalAction(ActionType.Raise, new ChipAmount(11)),
+                new LegalAction(ActionType.Raise, new ChipAmount(18))
+            ],
+            actions);
+        Assert.All(exceptions, ex => Assert.Null(ex));
+    }
+
 
 
     [Fact]
