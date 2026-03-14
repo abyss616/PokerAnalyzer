@@ -332,6 +332,85 @@ public class SolverStateStepperTests
 
 
 
+
+
+    [Fact]
+    public void Step_NonBigBlindFacingLimp_CheckRemainsIllegal()
+    {
+        var sb = Player(0, Position.SB, stack: 98, street: 2, total: 2);
+        var bb = Player(1, Position.BB, stack: 98, street: 2, total: 2);
+        var state = CreateState(
+            actingPlayerId: sb.PlayerId,
+            players: [sb, bb],
+            pot: 4,
+            currentBetSize: 2,
+            lastRaiseSize: 2,
+            raisesThisStreet: 0,
+            actionHistory:
+            [
+                new SolverActionEntry(sb.PlayerId, ActionType.PostSmallBlind, new ChipAmount(1)),
+                new SolverActionEntry(bb.PlayerId, ActionType.PostBigBlind, new ChipAmount(2)),
+                new SolverActionEntry(bb.PlayerId, ActionType.Call, new ChipAmount(2))
+            ]);
+
+        var ex = Record.Exception(() => _ = SolverStateStepper.Step(state, new LegalAction(ActionType.Check)));
+
+        Assert.IsType<InvalidOperationException>(ex);
+    }
+
+    [Fact]
+    public void Step_BigBlindOptionVsLimp_CheckCompletesPreflopRound()
+    {
+        var sb = Player(0, Position.SB, stack: 98, street: 2, total: 2);
+        var bb = Player(1, Position.BB, stack: 98, street: 2, total: 2);
+        var state = CreateState(
+            actingPlayerId: bb.PlayerId,
+            players: [sb, bb],
+            pot: 4,
+            currentBetSize: 2,
+            lastRaiseSize: 2,
+            raisesThisStreet: 0,
+            actionHistory:
+            [
+                new SolverActionEntry(sb.PlayerId, ActionType.PostSmallBlind, new ChipAmount(1)),
+                new SolverActionEntry(bb.PlayerId, ActionType.PostBigBlind, new ChipAmount(2)),
+                new SolverActionEntry(sb.PlayerId, ActionType.Call, new ChipAmount(2))
+            ]);
+
+        var next = SolverStateStepper.Step(state, new LegalAction(ActionType.Check));
+
+        Assert.Equal(0, next.CurrentBetSize.Value);
+        Assert.Equal(0, next.RaisesThisStreet);
+        Assert.All(next.Players, p => Assert.Equal(0, p.CurrentStreetContribution.Value));
+        Assert.Empty(next.GenerateLegalActions());
+    }
+
+    [Fact]
+    public void Step_BigBlindOptionVsLimp_CheckDoesNotCreateInvalidExtraPreflopAction()
+    {
+        var sb = Player(0, Position.SB, stack: 98, street: 2, total: 2);
+        var bb = Player(1, Position.BB, stack: 98, street: 2, total: 2);
+        var state = CreateState(
+            actingPlayerId: bb.PlayerId,
+            players: [sb, bb],
+            pot: 4,
+            currentBetSize: 2,
+            lastRaiseSize: 2,
+            raisesThisStreet: 0,
+            actionHistory:
+            [
+                new SolverActionEntry(sb.PlayerId, ActionType.PostSmallBlind, new ChipAmount(1)),
+                new SolverActionEntry(bb.PlayerId, ActionType.PostBigBlind, new ChipAmount(2)),
+                new SolverActionEntry(sb.PlayerId, ActionType.Call, new ChipAmount(2))
+            ]);
+
+        var next = SolverStateStepper.Step(state, new LegalAction(ActionType.Check));
+        var extraActionAttempt = Record.Exception(() => SolverStateStepper.Step(next, new LegalAction(ActionType.Raise, new ChipAmount(11))));
+
+        Assert.IsType<InvalidOperationException>(extraActionAttempt);
+        Assert.Contains("not legal", extraActionAttempt!.Message, StringComparison.OrdinalIgnoreCase);
+    }
+
     [Fact]
     public void Step_BigBlindOptionVsLimp_RaiseIsExecutable()
     {

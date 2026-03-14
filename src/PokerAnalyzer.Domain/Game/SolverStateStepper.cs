@@ -306,6 +306,9 @@ public static class SolverStateStepper
     int actingSeatIndex,
     bool bettingRoundComplete)
     {
+        if (bettingRoundComplete && state.Street == Street.Preflop)
+            return null;
+
         var actionablePlayers = players.Where(p => p.IsActive && !p.IsAllIn && p.Stack.Value > 0).ToArray();
         if (actionablePlayers.Length == 1)
             return actionablePlayers[0];
