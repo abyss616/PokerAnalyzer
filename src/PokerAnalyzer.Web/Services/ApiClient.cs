@@ -96,7 +96,8 @@ public sealed class ApiClient
         int? SampledTrajectoryDepth = null,
         bool? UsedDirectAbstractionShortcut = null,
         long? TraversalMilliseconds = null,
-        long? LeafEvaluationMilliseconds = null);
+        long? LeafEvaluationMilliseconds = null,
+        string? ActivePopulationProfile = null);
     public sealed record PreflopTrace(
         string SolverKey,
         string HistorySignature,
@@ -171,9 +172,14 @@ public sealed class ApiClient
 
     public async Task<PreflopHandAnalysisResult?> AnalyzePreflopByHandNumberAsync(
         long handNumber,
+        string? populationProfile = null,
         CancellationToken ct = default)
     {
-        using var resp = await _http.GetAsync($"api/preflop-analysis/hand-number/{handNumber}", ct);
+        var url = $"api/preflop-analysis/hand-number/{handNumber}";
+        if (!string.IsNullOrWhiteSpace(populationProfile))
+            url += $"?populationProfile={Uri.EscapeDataString(populationProfile)}";
+
+        using var resp = await _http.GetAsync(url, ct);
         if (resp.StatusCode == System.Net.HttpStatusCode.NotFound)
             return null;
 

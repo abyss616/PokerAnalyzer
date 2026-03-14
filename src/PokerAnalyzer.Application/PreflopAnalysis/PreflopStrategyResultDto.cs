@@ -57,4 +57,5 @@ public sealed record PreflopLeafEvaluationDetailsDto(
     int? SampledTrajectoryDepth = null,
     bool? UsedDirectAbstractionShortcut = null,
     long? TraversalMilliseconds = null,
-    long? LeafEvaluationMilliseconds = null);
+    long? LeafEvaluationMilliseconds = null,
+    string? ActivePopulationProfile = null);

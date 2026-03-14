@@ -25,9 +25,9 @@ public sealed class PreflopHandAnalysisService : IPreflopHandAnalysisService
         _strategyProvider = strategyProvider;
     }
 
-    public async Task<PreflopHandAnalysisResultDto?> AnalyzePreflopByHandNumberAsync(long handNumber, CancellationToken ct)
+    public async Task<PreflopHandAnalysisResultDto?> AnalyzePreflopByHandNumberAsync(long handNumber, CancellationToken ct, string? populationProfileName = null)
     {
-        var result = await QueryPreflopNodeByHandNumberAsync(handNumber, ct);
+        var result = await QueryPreflopNodeByHandNumberAsync(handNumber, ct, populationProfileName);
         if (result is null)
             return null;
 
@@ -39,13 +39,13 @@ public sealed class PreflopHandAnalysisService : IPreflopHandAnalysisService
             result.IsSupported ? "See structured solver node details." : result.UnsupportedReason ?? NotYetImplemented);
     }
 
-    public async Task<PreflopNodeQueryResultDto?> QueryPreflopNodeByHandNumberAsync(long handNumber, CancellationToken ct)
+    public async Task<PreflopNodeQueryResultDto?> QueryPreflopNodeByHandNumberAsync(long handNumber, CancellationToken ct, string? populationProfileName = null)
     {
         var hand = await _hands.GetHandByGameCodeAsync(handNumber, ct);
         if (hand is null)
             return null;
 
-        var request = BuildRequestFromHand(hand);
+        var request = BuildRequestFromHand(hand, populationProfileName);
         if (request is null)
             return BuildUnsupported("Could not construct preflop query from hand history.");
 
@@ -85,7 +85,7 @@ public sealed class PreflopHandAnalysisService : IPreflopHandAnalysisService
         var snapshotState = BuildSnapshotState(request, extraction.Trace);
         var legalActions = BuildLegalActions(snapshotState, extraction.Trace);
 
-        var strategyResult = await ResolveStrategyAsync(extraction.Key.SolverKey, snapshotState, legalActions, request.UsePersistentTrainingState, ct);
+        var strategyResult = await ResolveStrategyAsync(extraction.Key.SolverKey, snapshotState, legalActions, request.UsePersistentTrainingState, request.PopulationProfileName, ct);
         var recommendationResult = BuildRecommendations(
             legalActions,
             strategyResult.Strategy,
@@ -131,10 +131,11 @@ public sealed class PreflopHandAnalysisService : IPreflopHandAnalysisService
         SolverHandState snapshotState,
         IReadOnlyList<LegalAction> legalActions,
         bool usePersistentTrainingState,
+        string? populationProfileName,
         CancellationToken ct)
     {
         var strategyResult = await _strategyProvider.GetStrategyResultAsync(
-            new PreflopStrategyRequestDto(solverKey, snapshotState, legalActions, usePersistentTrainingState),
+            new PreflopStrategyRequestDto(solverKey, snapshotState, legalActions, usePersistentTrainingState, populationProfileName),
             ct);
 
         if (strategyResult?.AverageStrategy is not { Count: > 0 } strategy)
@@ -555,7 +556,7 @@ public sealed class PreflopHandAnalysisService : IPreflopHandAnalysisService
             target.Add(value.Value);
     }
 
-    private static PreflopNodeQueryRequestDto? BuildRequestFromHand(Hand hand)
+    private static PreflopNodeQueryRequestDto? BuildRequestFromHand(Hand hand, string? populationProfileName)
     {
         var orderedActions = GetOrderedActions(hand);
         if (!HasValidPreflopBlindOrdering(orderedActions))
@@ -594,7 +595,8 @@ public sealed class PreflopHandAnalysisService : IPreflopHandAnalysisService
             blindInfo.Value.SmallBlind,
             blindInfo.Value.BigBlind,
             seats,
-            actions);
+            actions,
+            PopulationProfileName: populationProfileName);
     }
 
     private static PreflopNodeQueryResultDto BuildUnsupported(string reason, PreflopQueryTrace? trace = null)

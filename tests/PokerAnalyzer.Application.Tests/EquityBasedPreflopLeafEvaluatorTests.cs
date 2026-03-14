@@ -149,6 +149,58 @@ public sealed class EquityBasedPreflopLeafEvaluatorTests
         Assert.Equal("Fold", fold.Details.RootActionType);
     }
 
+
+    [Fact]
+    public void Evaluate_UnopenedBtn_FoldProbabilityChangesByProfile()
+    {
+        var gtoEvaluator = new EquityBasedPreflopLeafEvaluator(
+            new TableDrivenOpponentRangeProvider(),
+            new HeuristicPreflopLeafEvaluator(),
+            samplesPerMatchup: 120,
+            populationProfileProvider: new NamedPreflopPopulationProfileProvider(PreflopPopulationProfiles.GtoLikeName));
+
+        var microEvaluator = new EquityBasedPreflopLeafEvaluator(
+            new TableDrivenOpponentRangeProvider(),
+            new HeuristicPreflopLeafEvaluator(),
+            samplesPerMatchup: 120,
+            populationProfileProvider: new NamedPreflopPopulationProfileProvider(PreflopPopulationProfiles.MicroStakesLoosePassiveName));
+
+        var context = CreateThreeWayContext("v2/UNOPENED/BTN/eff=100", HoleCards.Parse("KcTd"), ActionType.Raise);
+        var gto = gtoEvaluator.Evaluate(context);
+        var micro = microEvaluator.Evaluate(context);
+
+        Assert.NotNull(gto.Details?.FoldProbability);
+        Assert.NotNull(micro.Details?.FoldProbability);
+        Assert.NotEqual(gto.Details!.FoldProbability, micro.Details!.FoldProbability);
+        Assert.True(micro.Details.FoldProbability < gto.Details.FoldProbability);
+    }
+
+    [Fact]
+    public void Evaluate_UnopenedBtn_MicroStakesPenalizesMarginalOffsuitOpens()
+    {
+        var gtoEvaluator = new EquityBasedPreflopLeafEvaluator(
+            new TableDrivenOpponentRangeProvider(),
+            new HeuristicPreflopLeafEvaluator(),
+            samplesPerMatchup: 120,
+            populationProfileProvider: new NamedPreflopPopulationProfileProvider(PreflopPopulationProfiles.GtoLikeName));
+
+        var microEvaluator = new EquityBasedPreflopLeafEvaluator(
+            new TableDrivenOpponentRangeProvider(),
+            new HeuristicPreflopLeafEvaluator(),
+            samplesPerMatchup: 120,
+            populationProfileProvider: new NamedPreflopPopulationProfileProvider(PreflopPopulationProfiles.MicroStakesLoosePassiveName));
+
+        var context = CreateThreeWayContext("v2/UNOPENED/BTN/eff=100", HoleCards.Parse("Qc4d"), ActionType.Raise);
+        var gto = gtoEvaluator.Evaluate(context);
+        var micro = microEvaluator.Evaluate(context);
+
+        Assert.NotNull(gto.Details?.HeroUtility);
+        Assert.NotNull(micro.Details?.HeroUtility);
+        Assert.True(micro.Details!.HeroUtility < gto.Details!.HeroUtility);
+        Assert.Equal(PreflopPopulationProfiles.GtoLikeName, gto.Details.ActivePopulationProfile);
+        Assert.Equal(PreflopPopulationProfiles.MicroStakesLoosePassiveName, micro.Details.ActivePopulationProfile);
+    }
+
     [Fact]
     public void Evaluate_MultiwayContext_FallsBackToHeuristic()
     {

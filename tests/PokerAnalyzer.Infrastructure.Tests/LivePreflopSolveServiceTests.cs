@@ -14,7 +14,7 @@ public sealed class LivePreflopSolveServiceTests
         var sharedRegrets = new InMemoryRegretStore();
         var sharedAverage = new InMemoryAverageStrategyStore();
         var sharedProgress = new InMemoryPreflopTrainingProgressStore();
-        var sut = new LivePreflopSolveService(sharedRegrets, sharedAverage, sharedProgress, new PreflopInfoSetMapper());
+        var sut = new LivePreflopSolveService(sharedRegrets, sharedAverage, sharedProgress, new PreflopInfoSetMapper(), new NamedPreflopPopulationProfileProvider(PreflopPopulationProfiles.GtoLikeName));
 
         var request = new PreflopStrategyRequestDto(
             "v2:test",
@@ -43,7 +43,7 @@ public sealed class LivePreflopSolveServiceTests
         var sharedRegrets = new InMemoryRegretStore();
         var sharedAverage = new InMemoryAverageStrategyStore();
         var sharedProgress = new InMemoryPreflopTrainingProgressStore();
-        var sut = new LivePreflopSolveService(sharedRegrets, sharedAverage, sharedProgress, new PreflopInfoSetMapper());
+        var sut = new LivePreflopSolveService(sharedRegrets, sharedAverage, sharedProgress, new PreflopInfoSetMapper(), new NamedPreflopPopulationProfileProvider(PreflopPopulationProfiles.GtoLikeName));
 
         var request = new PreflopStrategyRequestDto(
             "v2:test",
@@ -71,7 +71,7 @@ public sealed class LivePreflopSolveServiceTests
     [Fact]
     public async Task GetStrategyResultAsync_MapsLeafEvaluatorMetadata()
     {
-        var sut = new LivePreflopSolveService(new InMemoryRegretStore(), new InMemoryAverageStrategyStore(), new InMemoryPreflopTrainingProgressStore(), new PreflopInfoSetMapper());
+        var sut = new LivePreflopSolveService(new InMemoryRegretStore(), new InMemoryAverageStrategyStore(), new InMemoryPreflopTrainingProgressStore(), new PreflopInfoSetMapper(), new NamedPreflopPopulationProfileProvider(PreflopPopulationProfiles.GtoLikeName));
 
         var request = new PreflopStrategyRequestDto(
             "v2/UNOPENED/BTN/eff=100",
@@ -85,6 +85,30 @@ public sealed class LivePreflopSolveServiceTests
         Assert.Equal("AbstractedHeadsUp", result.LeafEvaluationDetails!.EvaluatorType);
         Assert.Equal("WeightedBlindsBTNUnopened", result.LeafEvaluationDetails.AbstractionSource);
         Assert.Equal(2, result.LeafEvaluationDetails.ActualActiveOpponentCount);
+    }
+
+    [Fact]
+    public async Task GetStrategyResultAsync_UsesRequestPopulationProfile_WhenProvided()
+    {
+        var sut = new LivePreflopSolveService(
+            new InMemoryRegretStore(),
+            new InMemoryAverageStrategyStore(),
+            new InMemoryPreflopTrainingProgressStore(),
+            new PreflopInfoSetMapper(),
+            new NamedPreflopPopulationProfileProvider(PreflopPopulationProfiles.GtoLikeName));
+
+        var request = new PreflopStrategyRequestDto(
+            "v2/UNOPENED/BTN/eff=100",
+            CreateBtnThreeWayRootState(),
+            [new LegalAction(ActionType.Fold), new LegalAction(ActionType.Call, new ChipAmount(100)), new LegalAction(ActionType.Raise, new ChipAmount(250))],
+            PopulationProfileName: PreflopPopulationProfiles.MicroStakesLoosePassiveName);
+
+        var result = await sut.GetStrategyResultAsync(request, CancellationToken.None);
+
+        Assert.NotNull(result);
+        Assert.NotNull(result!.LeafEvaluationDetails);
+        Assert.Equal(PreflopPopulationProfiles.MicroStakesLoosePassiveName, result.LeafEvaluationDetails!.ActivePopulationProfile);
+        Assert.Contains(PreflopPopulationProfiles.MicroStakesLoosePassiveName, result.ActionValueSupport);
     }
 
 

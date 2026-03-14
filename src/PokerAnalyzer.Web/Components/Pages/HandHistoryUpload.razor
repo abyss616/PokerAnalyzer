@@ -38,6 +38,12 @@
     <h4>Preflop Analysis By Hand Number</h4>
     <div class="d-flex gap-2 align-items-center">
         <input class="form-control" style="max-width: 260px" @bind="_analysisHandNumberInput" placeholder="Enter hand number" />
+        <select class="form-select" style="max-width: 240px" @bind="_selectedPopulationProfile" disabled="@_isAnalyzing" title="Population profile">
+            @foreach (var profile in PopulationProfiles)
+            {
+                <option value="@profile">@profile</option>
+            }
+        </select>
         <button class="btn btn-primary" @onclick="AnalyzePreflopByHandNumberAsync" disabled="@_isAnalyzing">Analyze</button>
         <span class="text-muted">Timer: @_analysisElapsedDisplay</span>
     </div>
@@ -100,6 +106,7 @@
                         <table class="table table-sm mb-0">
                             <tbody>
                                 <tr><th>Hero hand</th><td>@leaf.HeroHand</td><th>Hand class</th><td>@leaf.HandClass</td></tr>
+                                <tr><th>Population profile</th><td>@(leaf.ActivePopulationProfile ?? _selectedPopulationProfile)</td><th></th><td></td></tr>
                                 <tr><th>Hero position</th><td>@leaf.HeroPosition</td><th>Villain position</th><td>@leaf.VillainPosition</td></tr>
                                 <tr><th>Node family</th><td>@leaf.NodeFamily</td><th>Heads-up</th><td>@(leaf.IsHeadsUp ? "Yes" : "No")</td></tr>
                                 <tr><th>Abstraction</th><td>@leaf.AbstractionSource</td><th>Synthetic defender</th><td>@leaf.SyntheticDefenderLabel</td></tr>
@@ -295,6 +302,8 @@
     private string _analysisHandNumberInput = string.Empty;
     private string? _analysisError;
     private bool _isAnalyzing;
+    private string _selectedPopulationProfile = "GtoLike";
+    private static readonly IReadOnlyList<string> PopulationProfiles = new[] { "GtoLike", "MicroStakesLoosePassive", "TightRegs" };
     private TimeSpan _analysisElapsed = TimeSpan.Zero;
     private string _analysisElapsedDisplay = "00:00.000";
     private CancellationTokenSource? _analysisTimerCts;
@@ -418,7 +427,7 @@
 
         try
         {
-            _preflopAnalysis = await Api.AnalyzePreflopByHandNumberAsync(handNumber);
+            _preflopAnalysis = await Api.AnalyzePreflopByHandNumberAsync(handNumber, _selectedPopulationProfile);
             if (_preflopAnalysis is null)
                 _analysisError = "Hand number not found.";
         }
