@@ -141,7 +141,14 @@ public static class SolverStateStepper
         }
 
         var nextActingPlayer = ResolveNextActingPlayer(state, players, acting.SeatIndex, bettingRoundComplete);
-        var nextActingPlayerId = nextActingPlayer?.PlayerId ?? state.ActingPlayerId;
+        var nextActingPlayerId = nextActingPlayer?.PlayerId;
+        if (nextActingPlayerId is null)
+        {
+            if (!bettingRoundComplete)
+                throw new InvalidOperationException("Unable to resolve next acting player for a live betting round.");
+
+            nextActingPlayerId = ResolveCompletedRoundActingPlayerId(players, acting.PlayerId);
+        }
 
         var nextState = state.WithNormalized(
             actingPlayerId: nextActingPlayerId,
@@ -153,6 +160,18 @@ public static class SolverStateStepper
             actionHistory: updatedHistory);
 
         return nextState;
+    }
+
+    private static PlayerId ResolveCompletedRoundActingPlayerId(
+        IReadOnlyList<SolverPlayerState> players,
+        PlayerId fallbackPlayerId)
+    {
+        var activeActionable = players.FirstOrDefault(p => p.IsActive && !p.IsAllIn && p.Stack.Value > 0);
+        if (activeActionable is not null)
+            return activeActionable.PlayerId;
+
+        var active = players.FirstOrDefault(p => p.IsActive);
+        return active?.PlayerId ?? fallbackPlayerId;
     }
 
     private static bool IsBigBlindOptionVsLimpPreflopSpot(SolverHandState state, SolverPlayerState acting)

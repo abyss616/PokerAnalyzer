@@ -111,6 +111,7 @@ public class SolverStateStepperTests
         Assert.Equal(0, next.CurrentBetSize.Value);
         Assert.Equal(0, next.RaisesThisStreet);
         Assert.All(next.Players, p => Assert.Equal(0, p.CurrentStreetContribution.Value));
+        Assert.NotEqual(state.ActingPlayerId, next.ActingPlayerId);
         Assert.Empty(next.GenerateLegalActions());
     }
 
@@ -409,6 +410,30 @@ public class SolverStateStepperTests
 
         Assert.IsType<InvalidOperationException>(extraActionAttempt);
         Assert.Contains("not legal", extraActionAttempt!.Message, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void Step_BigBlindOptionVsLimp_CheckProducesCompletedPreflopState()
+    {
+        var sb = Player(0, Position.SB, stack: 98, street: 2, total: 2);
+        var bb = Player(1, Position.BB, stack: 98, street: 2, total: 2);
+        var state = CreateState(
+            actingPlayerId: bb.PlayerId,
+            players: [sb, bb],
+            pot: 4,
+            currentBetSize: 2,
+            lastRaiseSize: 2,
+            raisesThisStreet: 0,
+            actionHistory:
+            [
+                new SolverActionEntry(sb.PlayerId, ActionType.PostSmallBlind, new ChipAmount(1)),
+                new SolverActionEntry(bb.PlayerId, ActionType.PostBigBlind, new ChipAmount(2)),
+                new SolverActionEntry(sb.PlayerId, ActionType.Call, new ChipAmount(2))
+            ]);
+
+        var next = SolverStateStepper.Step(state, new LegalAction(ActionType.Check));
+
+        Assert.True(SolverTraversalGuards.IsCompletedPreflopState(next));
     }
 
     [Fact]

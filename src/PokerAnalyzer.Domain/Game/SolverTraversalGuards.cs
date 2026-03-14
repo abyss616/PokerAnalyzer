@@ -36,6 +36,7 @@ public static class SolverTraversalGuards
         var activePlayers = 0;
         var actionablePlayers = 0;
         var players = state.Players;
+        var currentBetSize = state.CurrentBetSize;
 
         for (var i = 0; i < players.Count; i++)
         {
@@ -47,7 +48,7 @@ public static class SolverTraversalGuards
             if (!player.IsAllIn && player.Stack.Value > 0)
             {
                 actionablePlayers++;
-                if (player.CurrentStreetContribution.Value != 0)
+                if (player.CurrentStreetContribution < currentBetSize)
                     return false;
             }
         }
@@ -55,7 +56,7 @@ public static class SolverTraversalGuards
         if (activePlayers <= 1)
             return true;
 
-        if (state.CurrentBetSize.Value != 0 || state.ToCall.Value != 0)
+        if (state.ToCall.Value != 0)
             return false;
 
         if (actionablePlayers == 0)
