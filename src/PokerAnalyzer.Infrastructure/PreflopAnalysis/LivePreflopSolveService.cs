@@ -74,6 +74,8 @@ public sealed class LivePreflopSolveService : IPreflopStrategyProvider
 
         var bestMargin = diagnostics.Count > 1 ? (double)(diagnostics[0].Frequency - diagnostics[1].Frequency) : 0d;
         var separation = diagnostics.Sum(x => x.PositiveRegret);
+        var displayedAction = SelectDisplayedAction(request.LegalActions, averagePolicy);
+        var deterministicLeafDetails = trainer.ExplainDisplayedActionDeterministically(displayedAction, request.LegalActions);
 
         return Task.FromResult<PreflopStrategyResultDto?>(new PreflopStrategyResultDto(
             request.SolverKey,
@@ -83,13 +85,35 @@ public sealed class LivePreflopSolveService : IPreflopStrategyProvider
             "LiveSolved",
             (long)trainingResult.Elapsed.TotalMilliseconds,
             request.UsePersistentTrainingState ? "Persistent" : "Fresh",
-            MapLeafDetails(trainingResult.LastLeafEvaluationDetails),
+            MapLeafDetails(deterministicLeafDetails),
             diagnostics,
             $"Derived from regret matching over action-sensitive preflop leaf utilities using population profile {_populationProfileProvider.ActiveProfileName} (BTN unopened opens include fold-equity + continuation components; no explicit postflop EV rollout).",
             bestMargin,
             separation));
     }
 
+
+
+    private static LegalAction SelectDisplayedAction(IReadOnlyList<LegalAction> legalActions, IReadOnlyDictionary<LegalAction, double> averagePolicy)
+    {
+        if (legalActions.Count == 1)
+            return legalActions[0];
+
+        LegalAction? bestAction = null;
+        var bestProbability = double.NegativeInfinity;
+
+        foreach (var action in legalActions)
+        {
+            var probability = averagePolicy.TryGetValue(action, out var value) ? value : 0d;
+            if (bestAction is null || probability > bestProbability)
+            {
+                bestAction = action;
+                bestProbability = probability;
+            }
+        }
+
+        return bestAction ?? legalActions[0];
+    }
 
     private static PreflopLeafEvaluationDetailsDto? MapLeafDetails(PreflopLeafEvaluationDetails? details)
     {

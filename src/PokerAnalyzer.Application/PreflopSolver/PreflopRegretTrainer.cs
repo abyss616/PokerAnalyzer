@@ -251,7 +251,7 @@ public sealed class PreflopTrainingResult
     public required bool StoppedByCancellation { get; init; }
     public required bool ReachedTimeLimit { get; init; }
     public required bool ReachedIterationLimit { get; init; }
-    public PreflopLeafEvaluationDetails? LastLeafEvaluationDetails { get; init; }
+    public PreflopLeafEvaluationDetails? LastSampledLeafEvaluationDetails { get; init; }
 }
 
 public interface IPreflopTrainingProgressStore
@@ -423,6 +423,36 @@ public sealed class PreflopRegretTrainer
             : fallbackPolicy;
     }
 
+
+    public PreflopLeafEvaluationDetails? ExplainDisplayedActionDeterministically(
+        LegalAction rootAction,
+        IReadOnlyList<LegalAction> legalActions,
+        int deterministicSeed = 1337)
+    {
+        ArgumentNullException.ThrowIfNull(rootAction);
+        ArgumentNullException.ThrowIfNull(legalActions);
+
+        var rootState = _rootStateProvider.CreateRootState();
+        var traversalPlayerId = _traversalPlayerSelector.Select(rootState);
+        var hero = rootState.Players.FirstOrDefault(player => player.PlayerId == traversalPlayerId);
+        if (hero is null || !rootState.PrivateCardsByPlayer.TryGetValue(traversalPlayerId, out var heroCards))
+            return null;
+
+        var afterActionState = SolverStateStepper.Step(rootState, rootAction, legalActions);
+        var evaluationContext = new PreflopLeafEvaluationContext(
+            rootState,
+            afterActionState,
+            traversalPlayerId,
+            hero.Position,
+            heroCards,
+            ResolveEffectiveStackBb(rootState, traversalPlayerId),
+            rootAction,
+            _canonicalStorageKey);
+
+        var rollout = _trajectoryTraverser.SampleTrajectory(afterActionState, new Random(deterministicSeed), evaluationContext);
+        return rollout.LeafEvaluationDetails;
+    }
+
     public PreflopTrainingResult RunTraining(
         PreflopTrainingOptions? options = null,
         CancellationToken cancellationToken = default)
@@ -479,7 +509,7 @@ public sealed class PreflopRegretTrainer
             StoppedByCancellation = cancellationToken.IsCancellationRequested,
             ReachedTimeLimit = reachedTimeLimit,
             ReachedIterationLimit = reachedIterationLimit,
-            LastLeafEvaluationDetails = _latestLeafEvaluationDetails
+            LastSampledLeafEvaluationDetails = _latestLeafEvaluationDetails
         };
     }
 
