@@ -641,7 +641,7 @@ public sealed class PreflopRegretTrainer
                         parallelOptions.CancellationToken.ThrowIfCancellationRequested();
                         var deterministicIterationIndex = options.Deterministic
                             ? workerStartIndices[workerId] + localIteration
-                            : null;
+                            : 0;
 
                         RunIteration(rng, local, deterministicIterationIndex);
                     }

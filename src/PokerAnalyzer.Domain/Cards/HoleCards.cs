@@ -11,7 +11,7 @@ public readonly record struct HoleCards(Card First, Card Second)
 
         text = string.Concat(text.Where(c => !char.IsWhiteSpace(c)));
         if (text.Length != 4)
-            throw new FormatException("Hole cards must be 4 characters like 'AsKh'.");
+            throw new FormatException($"Hole cards must be 4 characters like 'AsKh'. Current hand: {text}");
 
         var c1 = Card.Parse(text[..2]);
         var c2 = Card.Parse(text[2..4]);
