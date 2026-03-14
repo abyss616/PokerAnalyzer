@@ -8,6 +8,74 @@ namespace PokerAnalyzer.Application.Tests;
 public sealed class PreflopRegretTrainerTests
 {
 
+
+    [Fact]
+    public void RunTraining_WithParallelOptions_WorkerCountOne_CompletesIterations()
+    {
+        var trainer = CreateTrainerWithRegretAwareTraverser(out var regrets, out var averageStrategy, out var fold, out var call);
+
+        var result = trainer.RunTraining(new PreflopTrainerOptions(Iterations: 8, WorkerCount: 1, BatchSize: 2, Deterministic: true, RandomSeed: 123));
+
+        Assert.Equal(8, result.IterationsCompleted);
+        Assert.True(result.ReachedIterationLimit);
+        Assert.True(regrets.Get("traversal_infoset", fold) != 0d || regrets.Get("traversal_infoset", call) != 0d);
+        Assert.NotEqual(0d, averageStrategy.Get("traversal_infoset", fold) + averageStrategy.Get("traversal_infoset", call));
+    }
+
+    [Fact]
+    public void RunTraining_WithParallelOptions_WorkerCountGreaterThanOne_CompletesAndAccumulatesStrategy()
+    {
+        var trainer = CreateTrainerWithRegretAwareTraverser(out var regrets, out var averageStrategy, out var fold, out var call);
+
+        var result = trainer.RunTraining(new PreflopTrainerOptions(Iterations: 24, WorkerCount: 4, BatchSize: 3, Deterministic: true, RandomSeed: 456));
+
+        Assert.Equal(24, result.IterationsCompleted);
+        Assert.True(result.ReachedIterationLimit);
+        Assert.NotEqual(0d, regrets.Get("traversal_infoset", fold) + regrets.Get("traversal_infoset", call));
+        Assert.NotEqual(0d, averageStrategy.Get("traversal_infoset", fold) + averageStrategy.Get("traversal_infoset", call));
+    }
+
+    [Fact]
+    public void RunTraining_WithDeterministicSeed_IsReproducibleAcrossRuns()
+    {
+        var options = new PreflopTrainerOptions(Iterations: 16, WorkerCount: 3, BatchSize: 2, Deterministic: true, RandomSeed: 77);
+
+        var trainerA = CreateTrainerWithRegretAwareTraverser(out var regretsA, out var avgA, out var fold, out var call);
+        var trainerB = CreateTrainerWithRegretAwareTraverser(out var regretsB, out var avgB, out _, out _);
+
+        var resultA = trainerA.RunTraining(options);
+        var resultB = trainerB.RunTraining(options);
+
+        Assert.Equal(resultA.IterationsCompleted, resultB.IterationsCompleted);
+        Assert.Equal(regretsA.Get("traversal_infoset", fold), regretsB.Get("traversal_infoset", fold), 10);
+        Assert.Equal(regretsA.Get("traversal_infoset", call), regretsB.Get("traversal_infoset", call), 10);
+        Assert.Equal(avgA.Get("traversal_infoset", fold), avgB.Get("traversal_infoset", fold), 10);
+        Assert.Equal(avgA.Get("traversal_infoset", call), avgB.Get("traversal_infoset", call), 10);
+    }
+
+    [Fact]
+    public void RunTraining_ParallelAndSingleWorker_AreMateriallySimilar_ForFixedSeed()
+    {
+        const int iterations = 20;
+        const int seed = 99;
+
+        var singleTrainer = CreateTrainerWithRegretAwareTraverser(out var singleRegrets, out var singleAvg, out var fold, out var call);
+        var parallelTrainer = CreateTrainerWithRegretAwareTraverser(out var parallelRegrets, out var parallelAvg, out _, out _);
+
+        singleTrainer.RunTraining(new PreflopTrainerOptions(iterations, WorkerCount: 1, BatchSize: 4, RandomSeed: seed, Deterministic: true));
+        parallelTrainer.RunTraining(new PreflopTrainerOptions(iterations, WorkerCount: 4, BatchSize: 2, RandomSeed: seed, Deterministic: true));
+
+        var regretFoldDiff = Math.Abs(singleRegrets.Get("traversal_infoset", fold) - parallelRegrets.Get("traversal_infoset", fold));
+        var regretCallDiff = Math.Abs(singleRegrets.Get("traversal_infoset", call) - parallelRegrets.Get("traversal_infoset", call));
+        var avgFoldDiff = Math.Abs(singleAvg.Get("traversal_infoset", fold) - parallelAvg.Get("traversal_infoset", fold));
+        var avgCallDiff = Math.Abs(singleAvg.Get("traversal_infoset", call) - parallelAvg.Get("traversal_infoset", call));
+
+        Assert.True(regretFoldDiff < 5d, $"Fold regret drift too large: {regretFoldDiff}");
+        Assert.True(regretCallDiff < 5d, $"Call regret drift too large: {regretCallDiff}");
+        Assert.True(avgFoldDiff < 5d, $"Fold avg drift too large: {avgFoldDiff}");
+        Assert.True(avgCallDiff < 5d, $"Call avg drift too large: {avgCallDiff}");
+    }
+
     [Fact]
     public void RunTraining_InIterationMode_RunsRequestedIterationsAndReportsIterationLimit()
     {

@@ -1,5 +1,6 @@
 using PokerAnalyzer.Domain.Game;
 using System.Diagnostics;
+using System.Threading.Tasks;
 
 namespace PokerAnalyzer.Application.PreflopSolver;
 
@@ -173,9 +174,29 @@ public sealed class AlternatingTraversalPlayerSelector : ITraversalPlayerSelecto
         if (rootState.Players.Count == 0)
             throw new InvalidOperationException("Root state contains no players.");
 
-        var selected = rootState.Players[_index % rootState.Players.Count].PlayerId;
-        _index++;
+        var selectedIndex = Interlocked.Increment(ref _index) - 1;
+        var selected = rootState.Players[selectedIndex % rootState.Players.Count].PlayerId;
         return selected;
+    }
+}
+
+public sealed record PreflopTrainerOptions(
+    int Iterations,
+    int WorkerCount = 1,
+    int BatchSize = 64,
+    int? RandomSeed = null,
+    bool Deterministic = false)
+{
+    public void Validate()
+    {
+        if (Iterations <= 0)
+            throw new ArgumentOutOfRangeException(nameof(Iterations), "Iterations must be positive.");
+
+        if (WorkerCount <= 0)
+            throw new ArgumentOutOfRangeException(nameof(WorkerCount), "WorkerCount must be positive.");
+
+        if (BatchSize <= 0)
+            throw new ArgumentOutOfRangeException(nameof(BatchSize), "BatchSize must be positive.");
     }
 }
 
@@ -301,6 +322,7 @@ public sealed class PreflopRegretTrainer
     private readonly string? _canonicalStorageKey;
     private readonly RegretMatchingPolicyProvider _policyProvider;
     private PreflopLeafEvaluationDetails? _latestLeafEvaluationDetails;
+    private readonly object _traversalSelectorLock = new();
 
 
     public PreflopRegretTrainer(
@@ -358,8 +380,21 @@ public sealed class PreflopRegretTrainer
     {
         ArgumentNullException.ThrowIfNull(rng);
 
+        var localAccumulator = new WorkerAccumulator();
+        RunIteration(rng, localAccumulator, null);
+        MergeWorkerAccumulator(localAccumulator);
+
+        _latestLeafEvaluationDetails = localAccumulator.LastLeafEvaluationDetails ?? _latestLeafEvaluationDetails;
+        _trainingProgressStore.IncrementIterations(1);
+    }
+
+    private void RunIteration(Random rng, WorkerAccumulator accumulator, int? deterministicIterationIndex)
+    {
+        ArgumentNullException.ThrowIfNull(rng);
+        ArgumentNullException.ThrowIfNull(accumulator);
+
         var rootState = _rootStateProvider.CreateRootState();
-        var traversalPlayerId = _traversalPlayerSelector.Select(rootState);
+        var traversalPlayerId = SelectTraversalPlayer(rootState, deterministicIterationIndex);
         var sample = _trajectoryTraverser.SampleTrajectory(rootState, rng);
 
         foreach (var node in sample.Path)
@@ -374,7 +409,7 @@ public sealed class PreflopRegretTrainer
                 continue;
 
             var (actionValues, leafDetails) = EvaluateActionValues(node.StateBeforeAction, traversalPlayerId, node.LegalActions, rng);
-            _latestLeafEvaluationDetails = leafDetails ?? _latestLeafEvaluationDetails;
+            accumulator.LastLeafEvaluationDetails = leafDetails ?? accumulator.LastLeafEvaluationDetails;
             var nodeValue = 0d;
 
             var storageKey = _canonicalStorageKey ?? node.InfoSetKey;
@@ -392,7 +427,7 @@ public sealed class PreflopRegretTrainer
             foreach (var action in node.LegalActions)
             {
                 var regretDelta = actionValues[action] - nodeValue;
-                _regretStore.Add(storageKey, action, regretDelta);
+                accumulator.AddRegret(storageKey, action, regretDelta);
             }
 
             foreach (var action in node.LegalActions)
@@ -401,13 +436,14 @@ public sealed class PreflopRegretTrainer
                     ? policyProbability
                     : 0d;
 
-                _averageStrategyStore.Add(storageKey, action, probability);
+                accumulator.AddAverageStrategy(storageKey, action, probability);
             }
 
             // Future hook: MCCFR-style weighting can adjust regretDelta before Add.
         }
 
-        _trainingProgressStore.IncrementIterations(1);
+        accumulator.IterationsCompleted++;
+
     }
 
     private IReadOnlyDictionary<LegalAction, double> ResolvePolicy(
@@ -511,6 +547,205 @@ public sealed class PreflopRegretTrainer
             ReachedIterationLimit = reachedIterationLimit,
             LastSampledLeafEvaluationDetails = _latestLeafEvaluationDetails
         };
+    }
+
+    public PreflopTrainingResult RunTraining(
+        PreflopTrainerOptions options,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(options);
+        options.Validate();
+
+        if (options.WorkerCount == 1)
+            return RunSingleWorkerTraining(options, cancellationToken);
+
+        return RunParallelTraining(options, cancellationToken);
+    }
+
+    private PreflopTrainingResult RunSingleWorkerTraining(PreflopTrainerOptions options, CancellationToken cancellationToken)
+    {
+        var rng = CreateRandom(options, workerId: 0, epoch: 0);
+        var stopwatch = Stopwatch.StartNew();
+        var iterationsCompleted = 0;
+
+        while (!cancellationToken.IsCancellationRequested && iterationsCompleted < options.Iterations)
+        {
+            var localAccumulator = new WorkerAccumulator();
+            RunIteration(rng, localAccumulator, options.Deterministic ? iterationsCompleted : null);
+            MergeWorkerAccumulator(localAccumulator);
+            _latestLeafEvaluationDetails = localAccumulator.LastLeafEvaluationDetails ?? _latestLeafEvaluationDetails;
+            iterationsCompleted++;
+            _trainingProgressStore.IncrementIterations(1);
+        }
+
+        stopwatch.Stop();
+
+        return new PreflopTrainingResult
+        {
+            IterationsCompleted = iterationsCompleted,
+            Elapsed = stopwatch.Elapsed,
+            ModeUsed = PreflopTrainingMode.Iterations,
+            StoppedByCancellation = cancellationToken.IsCancellationRequested,
+            ReachedTimeLimit = false,
+            ReachedIterationLimit = !cancellationToken.IsCancellationRequested && iterationsCompleted >= options.Iterations,
+            LastSampledLeafEvaluationDetails = _latestLeafEvaluationDetails
+        };
+    }
+
+    private PreflopTrainingResult RunParallelTraining(PreflopTrainerOptions options, CancellationToken cancellationToken)
+    {
+        var stopwatch = Stopwatch.StartNew();
+        var iterationsCompleted = 0;
+        var epoch = 0;
+
+        while (!cancellationToken.IsCancellationRequested && iterationsCompleted < options.Iterations)
+        {
+            var remaining = options.Iterations - iterationsCompleted;
+            var epochIterations = Math.Min(remaining, options.WorkerCount * options.BatchSize);
+
+            var workerAccumulators = new WorkerAccumulator[options.WorkerCount];
+            var workerIterations = new int[options.WorkerCount];
+
+            var baseIterations = epochIterations / options.WorkerCount;
+            var extraIterations = epochIterations % options.WorkerCount;
+            var workerStartIndices = new int[options.WorkerCount];
+            var nextStartIndex = iterationsCompleted;
+
+            for (var workerId = 0; workerId < options.WorkerCount; workerId++)
+            {
+                var assignedIterations = baseIterations + (workerId < extraIterations ? 1 : 0);
+                workerIterations[workerId] = assignedIterations;
+                workerStartIndices[workerId] = nextStartIndex;
+                nextStartIndex += assignedIterations;
+            }
+
+            var parallelOptions = new ParallelOptions
+            {
+                CancellationToken = cancellationToken,
+                MaxDegreeOfParallelism = options.WorkerCount
+            };
+
+            try
+            {
+                Parallel.For(0, options.WorkerCount, parallelOptions, workerId =>
+                {
+                    var assignedIterations = workerIterations[workerId];
+                    if (assignedIterations <= 0)
+                        return;
+
+                    var rng = CreateRandom(options, workerId, epoch);
+                    var local = new WorkerAccumulator();
+
+                    for (var localIteration = 0; localIteration < assignedIterations; localIteration++)
+                    {
+                        parallelOptions.CancellationToken.ThrowIfCancellationRequested();
+                        var deterministicIterationIndex = options.Deterministic
+                            ? workerStartIndices[workerId] + localIteration
+                            : null;
+
+                        RunIteration(rng, local, deterministicIterationIndex);
+                    }
+
+                    workerAccumulators[workerId] = local;
+                });
+            }
+            catch (OperationCanceledException)
+            {
+            }
+
+            for (var workerId = 0; workerId < options.WorkerCount; workerId++)
+            {
+                var accumulator = workerAccumulators[workerId];
+                if (accumulator is null)
+                    continue;
+
+                MergeWorkerAccumulator(accumulator);
+                _latestLeafEvaluationDetails = accumulator.LastLeafEvaluationDetails ?? _latestLeafEvaluationDetails;
+                iterationsCompleted += accumulator.IterationsCompleted;
+                _trainingProgressStore.IncrementIterations(accumulator.IterationsCompleted);
+            }
+
+            epoch++;
+        }
+
+        stopwatch.Stop();
+
+        return new PreflopTrainingResult
+        {
+            IterationsCompleted = iterationsCompleted,
+            Elapsed = stopwatch.Elapsed,
+            ModeUsed = PreflopTrainingMode.Iterations,
+            StoppedByCancellation = cancellationToken.IsCancellationRequested,
+            ReachedTimeLimit = false,
+            ReachedIterationLimit = !cancellationToken.IsCancellationRequested && iterationsCompleted >= options.Iterations,
+            LastSampledLeafEvaluationDetails = _latestLeafEvaluationDetails
+        };
+    }
+
+    private PlayerId SelectTraversalPlayer(SolverHandState rootState, int? deterministicIterationIndex)
+    {
+        if (deterministicIterationIndex.HasValue && _traversalPlayerSelector is AlternatingTraversalPlayerSelector)
+        {
+            var index = deterministicIterationIndex.Value % rootState.Players.Count;
+            return rootState.Players[index].PlayerId;
+        }
+
+        lock (_traversalSelectorLock)
+        {
+            return _traversalPlayerSelector.Select(rootState);
+        }
+    }
+
+    private Random CreateRandom(PreflopTrainerOptions options, int workerId, int epoch)
+    {
+        if (!options.Deterministic)
+            return new Random();
+
+        var seedBase = options.RandomSeed ?? 1337;
+        var seed = HashCode.Combine(seedBase, workerId, epoch);
+        return new Random(seed);
+    }
+
+    private void MergeWorkerAccumulator(WorkerAccumulator local)
+    {
+        foreach (var (infoSetKey, byAction) in local.RegretDeltas)
+        {
+            foreach (var (action, delta) in byAction)
+                _regretStore.Add(infoSetKey, action, delta);
+        }
+
+        foreach (var (infoSetKey, byAction) in local.AverageStrategyDeltas)
+        {
+            foreach (var (action, delta) in byAction)
+                _averageStrategyStore.Add(infoSetKey, action, delta);
+        }
+    }
+
+    private sealed class WorkerAccumulator
+    {
+        public int IterationsCompleted { get; set; }
+        public Dictionary<string, Dictionary<LegalAction, double>> RegretDeltas { get; } = new(StringComparer.Ordinal);
+        public Dictionary<string, Dictionary<LegalAction, double>> AverageStrategyDeltas { get; } = new(StringComparer.Ordinal);
+        public PreflopLeafEvaluationDetails? LastLeafEvaluationDetails { get; set; }
+
+        public void AddRegret(string infoSetKey, LegalAction action, double regretDelta)
+            => Add(RegretDeltas, infoSetKey, action, regretDelta);
+
+        public void AddAverageStrategy(string infoSetKey, LegalAction action, double delta)
+            => Add(AverageStrategyDeltas, infoSetKey, action, delta);
+
+        private static void Add(Dictionary<string, Dictionary<LegalAction, double>> destination, string infoSetKey, LegalAction action, double delta)
+        {
+            if (!destination.TryGetValue(infoSetKey, out var byAction))
+            {
+                byAction = new Dictionary<LegalAction, double>();
+                destination[infoSetKey] = byAction;
+            }
+
+            byAction[action] = byAction.TryGetValue(action, out var value)
+                ? value + delta
+                : delta;
+        }
     }
 
     private (Dictionary<LegalAction, double> Values, PreflopLeafEvaluationDetails? LeafDetails) EvaluateActionValues(
