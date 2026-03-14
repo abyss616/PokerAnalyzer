@@ -29,6 +29,8 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<IPreflopTrainingProgressStore, InMemoryPreflopTrainingProgressStore>();
         services.AddSingleton<IPreflopInfoSetMapper, PreflopInfoSetMapper>();
         services.AddSingleton<IPreflopStrategyQueryService, PreflopStrategyQueryService>();
+        services.AddSingleton<IPreflopPopulationProfileProvider>(_ =>
+            new NamedPreflopPopulationProfileProvider(Environment.GetEnvironmentVariable("POKERANALYZER_PREFLOP_POPULATION_PROFILE")));
         services.AddSingleton<IPreflopStrategyProvider, LivePreflopSolveService>();
         return services;
     }

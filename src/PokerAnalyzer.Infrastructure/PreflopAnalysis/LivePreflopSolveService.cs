@@ -12,17 +12,20 @@ public sealed class LivePreflopSolveService : IPreflopStrategyProvider
     private readonly IAverageStrategyStore _averageStrategyStore;
     private readonly IPreflopTrainingProgressStore _trainingProgressStore;
     private readonly IPreflopInfoSetMapper _infoSetMapper;
+    private readonly IPreflopPopulationProfileProvider _populationProfileProvider;
 
     public LivePreflopSolveService(
         IRegretStore regretStore,
         IAverageStrategyStore averageStrategyStore,
         IPreflopTrainingProgressStore trainingProgressStore,
-        IPreflopInfoSetMapper infoSetMapper)
+        IPreflopInfoSetMapper infoSetMapper,
+        IPreflopPopulationProfileProvider populationProfileProvider)
     {
         _regretStore = regretStore ?? throw new ArgumentNullException(nameof(regretStore));
         _averageStrategyStore = averageStrategyStore ?? throw new ArgumentNullException(nameof(averageStrategyStore));
         _trainingProgressStore = trainingProgressStore ?? throw new ArgumentNullException(nameof(trainingProgressStore));
         _infoSetMapper = infoSetMapper ?? throw new ArgumentNullException(nameof(infoSetMapper));
+        _populationProfileProvider = populationProfileProvider ?? throw new ArgumentNullException(nameof(populationProfileProvider));
     }
 
     public Task<PreflopStrategyResultDto?> GetStrategyResultAsync(PreflopStrategyRequestDto request, CancellationToken ct)
@@ -41,7 +44,7 @@ public sealed class LivePreflopSolveService : IPreflopStrategyProvider
             new SolverChanceSampler(),
             _infoSetMapper,
             new WeightedRandomActionSampler(),
-            new EquityBasedPreflopLeafEvaluator(new TableDrivenOpponentRangeProvider(), new HeuristicPreflopLeafEvaluator()),
+            new EquityBasedPreflopLeafEvaluator(new TableDrivenOpponentRangeProvider(), new HeuristicPreflopLeafEvaluator(), populationProfileProvider: _populationProfileProvider),
             new DefaultPreflopLeafDetector(),
             new FixedTraversalPlayerSelector(request.RootState.ActingPlayerId),
             regretStore,
@@ -82,7 +85,7 @@ public sealed class LivePreflopSolveService : IPreflopStrategyProvider
             request.UsePersistentTrainingState ? "Persistent" : "Fresh",
             MapLeafDetails(trainingResult.LastLeafEvaluationDetails),
             diagnostics,
-            "Derived from regret matching over action-sensitive preflop leaf utilities (BTN unopened opens include fold-equity + continuation components; no explicit postflop EV rollout).",
+            $"Derived from regret matching over action-sensitive preflop leaf utilities using population profile {_populationProfileProvider.ActiveProfileName} (BTN unopened opens include fold-equity + continuation components; no explicit postflop EV rollout).",
             bestMargin,
             separation));
     }
@@ -129,7 +132,8 @@ public sealed class LivePreflopSolveService : IPreflopStrategyProvider
             details.SampledTrajectoryDepth,
             details.UsedDirectAbstractionShortcut,
             details.TraversalMilliseconds,
-            details.LeafEvaluationMilliseconds);
+            details.LeafEvaluationMilliseconds,
+            details.ActivePopulationProfile);
     }
 
     private static string ToActionKey(LegalAction action)
