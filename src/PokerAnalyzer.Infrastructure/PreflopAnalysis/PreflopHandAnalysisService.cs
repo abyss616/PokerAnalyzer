@@ -650,7 +650,10 @@ public sealed class PreflopHandAnalysisService : IPreflopHandAnalysisService
             FourBetBucket = "NA",
             JamThreshold = 0,
             SolverKey = "UNSUPPORTED",
-            RawActionHistory = Array.Empty<PreflopRawActionTrace>()
+            RawActionHistory = Array.Empty<PreflopRawActionTrace>(),
+            PriorActionsBeforeActing = Array.Empty<PreflopRawActionTrace>(),
+            HadPriorCallOrCompletion = false,
+            ActingPlayersFirstActionType = null
         };
 
     private static IReadOnlyList<HandAction> GetOrderedActions(Hand hand)

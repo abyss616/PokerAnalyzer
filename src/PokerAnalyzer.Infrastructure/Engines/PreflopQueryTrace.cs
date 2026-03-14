@@ -23,6 +23,9 @@ public sealed class PreflopQueryTrace
     public required decimal JamThreshold { get; init; }
     public required string SolverKey { get; init; }
     public required IReadOnlyList<PreflopRawActionTrace> RawActionHistory { get; init; }
+    public required IReadOnlyList<PreflopRawActionTrace> PriorActionsBeforeActing { get; init; }
+    public required bool HadPriorCallOrCompletion { get; init; }
+    public string? ActingPlayersFirstActionType { get; init; }
 }
 
 public sealed record PreflopRawActionTrace(

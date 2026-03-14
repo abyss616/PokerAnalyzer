@@ -137,7 +137,7 @@ public sealed class PreflopCompilerFixturesTests
     }
 
     [Fact]
-    public void Extraction_Checked_To_Big_Blind_Reports_Zero_ToCall()
+    public void Extraction_Bb_Option_Vs_Sb_Complete_Maps_To_Limp_With_Zero_ToCall()
     {
         var extractor = new PreflopStateExtractor();
         var btnId = PlayerId.New();
@@ -159,12 +159,16 @@ public sealed class PreflopCompilerFixturesTests
 
         Assert.True(result.IsSupported, result.UnsupportedReason);
         Assert.NotNull(result.Key);
-        Assert.Equal("UNOPENED_CHECK", result.Key!.HistorySignature);
+        Assert.Equal("LIMP", result.Key!.HistorySignature);
         Assert.Equal(0m, result.Key.ToCallBb);
         Assert.Equal(result.Key.ToCallBb, result.Trace.ToCallBb);
         Assert.Equal(1m, result.Trace.CurrentBetBb);
         Assert.Equal(1m, result.Trace.ActingContribBb);
         Assert.Equal(2m, result.Trace.PotBb);
+        Assert.True(result.Trace.HadPriorCallOrCompletion);
+        Assert.Equal(Position.BB, result.Trace.ActingPosition);
+        Assert.Single(result.Trace.PriorActionsBeforeActing);
+        Assert.Equal("CALL", result.Trace.PriorActionsBeforeActing[0].ActionType);
     }
     [Fact]
     public void Extraction_Uses_Literal_ToCall_For_Open_And_VsOpen()
