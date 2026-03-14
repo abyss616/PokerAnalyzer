@@ -31,6 +31,7 @@ public sealed class PreflopStateExtractor
         PlayerId? lastAggressor = null;
         var raiseSizesBb = new List<decimal>();
         string? actingPlayersFirstActionType = null;
+        var hadPriorCallOrCompletion = false;
 
         void PostBlind(Position position, decimal amount)
         {
@@ -101,6 +102,7 @@ public sealed class PreflopStateExtractor
 
                     case "CALL":
                         ApplyDelta(act.PlayerId, amountChips);
+                        hadPriorCallOrCompletion = true;
                         break;
                     case "CHECK":
                     case "FOLD":
@@ -115,7 +117,12 @@ public sealed class PreflopStateExtractor
             var toCallBb = Math.Max(0m, decimal.Round(currentBetBb - actingContribBb, 2));
             var potBb = bigBlind == 0 ? 0 : decimal.Round(pot / bigBlind, 2);
 
-            var historySignature = BuildSignature(actingSeat.Position, raiseDepth, actingPlayersFirstActionType);
+            var priorActionsBeforeActing = raw.ToArray();
+            var historySignature = BuildSignature(
+                actingSeat.Position,
+                raiseDepth,
+                actingPlayersFirstActionType,
+                hadPriorCallOrCompletion);
 
             var bigBlindSeat = seats.FirstOrDefault(s => s.Position == Position.BB);
             Position? facingPos = lastAggressor.HasValue
@@ -190,7 +197,10 @@ public sealed class PreflopStateExtractor
                 FourBetBucket = FormatBucket(fourBetSizeBucketBb),
                 JamThreshold = jamThresholdBucketBb ?? 0m,
                 SolverKey = solverKey,
-                RawActionHistory = raw
+                RawActionHistory = raw,
+                PriorActionsBeforeActing = priorActionsBeforeActing,
+                HadPriorCallOrCompletion = hadPriorCallOrCompletion,
+                ActingPlayersFirstActionType = actingPlayersFirstActionType
             };
 
             var validation = PreflopKeyValidator.Validate(key, ctx);
@@ -241,19 +251,30 @@ public sealed class PreflopStateExtractor
                 FourBetBucket = "NA",
                 JamThreshold = 18m,
                 SolverKey = "UNSUPPORTED",
-                RawActionHistory = rawActions
+                RawActionHistory = rawActions,
+                PriorActionsBeforeActing = rawActions,
+                HadPriorCallOrCompletion = false,
+                ActingPlayersFirstActionType = null
             };
 
             return PreflopExtractionResult.Unsupported(reason, trace);
         }
     }
 
-    private static string BuildSignature(Position acting, int raiseDepth, string? actingPlayersFirstActionType)
+    private static string BuildSignature(
+        Position acting,
+        int raiseDepth,
+        string? actingPlayersFirstActionType,
+        bool hadPriorCallOrCompletion)
     {
         if (raiseDepth == 0)
         {
             if (acting == Position.SB)
                 return "UNOPENED_SB";
+
+            // In BB option spots, prior SB completion must not collapse to unopened.
+            if (hadPriorCallOrCompletion)
+                return "LIMP";
 
             return actingPlayersFirstActionType switch
             {
