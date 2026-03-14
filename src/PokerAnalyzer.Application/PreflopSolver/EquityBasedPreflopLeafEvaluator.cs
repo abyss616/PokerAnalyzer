@@ -403,7 +403,7 @@ public sealed class EquityBasedPreflopLeafEvaluator : IPreflopLeafEvaluator
                 RootEvaluatorMode: rootEvaluatorMode.ToString(),
                 RootActiveOpponentCount: rootActiveOpponentCount,
                 LeafActiveOpponentCount: leafActiveOpponentCount,
-                UsedDirectAbstractionShortcut: rootEvaluatorMode == RootEvaluatorMode.AbstractedHeadsUp))
+                UsedDirectAbstractionShortcut: rootEvaluatorMode == RootEvaluatorMode.AbstractedHeadsUp)
         };
     }
 
