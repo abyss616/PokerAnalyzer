@@ -59,7 +59,7 @@ public sealed class PreflopLeafDetailsSerializationTests
       "villainPosition": "BB",
       "isHeadsUp": true,
       "rangeDescription": "FacingRaise",
-      "rangeDetail": "table-range percentile=0.18",
+      "rangeDetail": "table-range percentile=0.18 source=table-default",
       "foldProbability": 0.51,
       "continueProbability": 0.49,
       "rootActionType": "Raise",

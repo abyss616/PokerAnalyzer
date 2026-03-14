@@ -173,6 +173,42 @@ public sealed class EquityBasedPreflopLeafEvaluatorTests
         Assert.NotNull(micro.Details?.FoldProbability);
         Assert.NotEqual(gto.Details!.FoldProbability, micro.Details!.FoldProbability);
         Assert.True(micro.Details.FoldProbability < gto.Details.FoldProbability);
+        Assert.Contains("sbPct=0.45", gto.Details.RangeDetail);
+        Assert.Contains("bbPct=0.45", gto.Details.RangeDetail);
+        Assert.Contains("sbPct=0.52", micro.Details.RangeDetail);
+        Assert.Contains("bbPct=0.62", micro.Details.RangeDetail);
+    }
+
+    [Fact]
+    public void Evaluate_UnopenedBtn_UsesProfileSpecificRangeCompositionInDiagnosticsAndRangeShape()
+    {
+        var tightEvaluator = new EquityBasedPreflopLeafEvaluator(
+            new TableDrivenOpponentRangeProvider(),
+            new HeuristicPreflopLeafEvaluator(),
+            samplesPerMatchup: 120,
+            populationProfileProvider: new NamedPreflopPopulationProfileProvider(PreflopPopulationProfiles.TightRegsName));
+
+        var microEvaluator = new EquityBasedPreflopLeafEvaluator(
+            new TableDrivenOpponentRangeProvider(),
+            new HeuristicPreflopLeafEvaluator(),
+            samplesPerMatchup: 120,
+            populationProfileProvider: new NamedPreflopPopulationProfileProvider(PreflopPopulationProfiles.MicroStakesLoosePassiveName));
+
+        var context = CreateThreeWayContext("v2/UNOPENED/BTN/eff=100", HoleCards.Parse("9c7d"), ActionType.Raise);
+        var tight = tightEvaluator.Evaluate(context);
+        var micro = microEvaluator.Evaluate(context);
+
+        Assert.NotNull(tight.Details);
+        Assert.NotNull(micro.Details);
+        Assert.Contains("sbPct=0.36", tight.Details!.RangeDetail);
+        Assert.Contains("bbPct=0.40", tight.Details.RangeDetail);
+        Assert.Contains("table-range percentile=0.36 source=profile-override", tight.Details.RangeDetail);
+        Assert.Contains("table-range percentile=0.40 source=profile-override", tight.Details.RangeDetail);
+        Assert.Contains("sbPct=0.52", micro.Details!.RangeDetail);
+        Assert.Contains("bbPct=0.62", micro.Details.RangeDetail);
+        Assert.Contains("table-range percentile=0.52 source=profile-override", micro.Details.RangeDetail);
+        Assert.Contains("table-range percentile=0.62 source=profile-override", micro.Details.RangeDetail);
+        Assert.NotEqual(tight.Details.FilteredCombos, micro.Details.FilteredCombos);
     }
 
     [Fact]

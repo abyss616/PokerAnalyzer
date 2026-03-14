@@ -3,6 +3,8 @@ namespace PokerAnalyzer.Application.PreflopSolver;
 public sealed record PreflopPopulationProfile(
     double SbContinueUnopenedVsBtn,
     double BbContinueUnopenedVsBtn,
+    double SbContinueRangePercentileUnopenedVsBtn,
+    double BbContinueRangePercentileUnopenedVsBtn,
     double RaiseRiskPenaltyFactor,
     double OffsuitBroadwayRealizationPenalty,
     double WeakOffsuitRealizationPenalty);
@@ -16,6 +18,8 @@ public static class PreflopPopulationProfiles
     public static PreflopPopulationProfile GtoLike { get; } = new(
         SbContinueUnopenedVsBtn: 0.23d,
         BbContinueUnopenedVsBtn: 0.34d,
+        SbContinueRangePercentileUnopenedVsBtn: 0.45d,
+        BbContinueRangePercentileUnopenedVsBtn: 0.45d,
         RaiseRiskPenaltyFactor: 0.08d,
         OffsuitBroadwayRealizationPenalty: 0.00d,
         WeakOffsuitRealizationPenalty: 0.00d);
@@ -23,6 +27,8 @@ public static class PreflopPopulationProfiles
     public static PreflopPopulationProfile MicroStakesLoosePassive { get; } = new(
         SbContinueUnopenedVsBtn: 0.30d,
         BbContinueUnopenedVsBtn: 0.48d,
+        SbContinueRangePercentileUnopenedVsBtn: 0.52d,
+        BbContinueRangePercentileUnopenedVsBtn: 0.62d,
         RaiseRiskPenaltyFactor: 0.12d,
         OffsuitBroadwayRealizationPenalty: 0.03d,
         WeakOffsuitRealizationPenalty: 0.05d);
@@ -30,6 +36,8 @@ public static class PreflopPopulationProfiles
     public static PreflopPopulationProfile TightRegs { get; } = new(
         SbContinueUnopenedVsBtn: 0.20d,
         BbContinueUnopenedVsBtn: 0.30d,
+        SbContinueRangePercentileUnopenedVsBtn: 0.36d,
+        BbContinueRangePercentileUnopenedVsBtn: 0.40d,
         RaiseRiskPenaltyFactor: 0.07d,
         OffsuitBroadwayRealizationPenalty: 0.01d,
         WeakOffsuitRealizationPenalty: 0.02d);
