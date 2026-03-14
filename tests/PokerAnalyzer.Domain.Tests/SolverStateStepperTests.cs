@@ -331,6 +331,32 @@ public class SolverStateStepperTests
 
 
 
+
+    [Fact]
+    public void Step_BigBlindOptionVsLimp_RaiseIsExecutable()
+    {
+        var sb = Player(0, Position.SB, stack: 98, street: 2, total: 2);
+        var bb = Player(1, Position.BB, stack: 98, street: 2, total: 2);
+        var state = CreateState(
+            actingPlayerId: bb.PlayerId,
+            players: [sb, bb],
+            pot: 4,
+            currentBetSize: 2,
+            lastRaiseSize: 2,
+            raisesThisStreet: 0,
+            actionHistory:
+            [
+                new SolverActionEntry(sb.PlayerId, ActionType.PostSmallBlind, new ChipAmount(1)),
+                new SolverActionEntry(bb.PlayerId, ActionType.PostBigBlind, new ChipAmount(2)),
+                new SolverActionEntry(sb.PlayerId, ActionType.Call, new ChipAmount(2))
+            ]);
+
+        var raise = state.GenerateLegalActions().Single(a => a.ActionType == ActionType.Raise && a.Amount == new ChipAmount(11));
+        var ex = Record.Exception(() => _ = SolverStateStepper.Step(state, raise));
+
+        Assert.Null(ex);
+    }
+
     [Fact]
     public void Step_ApplyingGeneratedBetAction_WithPriorContribution100_Succeeds()
     {

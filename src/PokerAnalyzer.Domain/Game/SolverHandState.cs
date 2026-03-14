@@ -370,7 +370,8 @@ public sealed record SolverHandState
                     stateByPlayer[action.PlayerId] = playerState with { Contribution = action.Amount };
                     break;
                 case ActionType.Raise:
-                    if (toCall.Value == 0)
+                    var isBigBlindOptionVsLimpRaise = IsBigBlindOptionVsLimpRaiseAction(i, action, playerState, currentBet);
+                    if (toCall.Value == 0 && !isBigBlindOptionVsLimpRaise)
                         throw new InvalidOperationException($"Action history inconsistency: player {action.PlayerId} raised when no bet was outstanding.");
                     ValidateAggressiveAmount(action, playerState.Contribution, "Raise");
                     if (action.Amount <= currentBet)
@@ -415,6 +416,33 @@ public sealed record SolverHandState
                     throw new InvalidOperationException($"Unsupported action type in history: {action.ActionType}.");
             }
         }
+    }
+
+    private bool IsBigBlindOptionVsLimpRaiseAction(
+        int actionIndex,
+        SolverActionEntry action,
+        ActionValidationState playerState,
+        ChipAmount currentBet)
+    {
+        if (Street != Street.Preflop)
+            return false;
+
+        var actor = Players.FirstOrDefault(p => p.PlayerId == action.PlayerId);
+        if (actor is null || actor.Position != Position.BB)
+            return false;
+
+        if (playerState.Contribution != currentBet)
+            return false;
+
+        var hasAggressiveAction = ActionHistory.Take(actionIndex).Any(a =>
+            a.ActionType == ActionType.Bet ||
+            a.ActionType == ActionType.Raise ||
+            a.ActionType == ActionType.AllIn);
+
+        if (hasAggressiveAction)
+            return false;
+
+        return ActionHistory.Take(actionIndex).Any(a => a.ActionType == ActionType.Call);
     }
 
     private static void ValidateAggressiveAmount(SolverActionEntry action, ChipAmount priorContribution, string actionName)

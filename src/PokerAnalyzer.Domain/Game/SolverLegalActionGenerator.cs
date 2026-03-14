@@ -51,6 +51,20 @@ public static class SolverLegalActionGenerator
 
         var actions = new List<LegalAction>(8);
 
+        if (IsBigBlindOptionVsLimpPreflopSpot(state, acting))
+        {
+            actions.Add(new LegalAction(ActionType.Check));
+
+            var minTotalBetFacingLimp = state.CurrentBetSize + state.LastRaiseSize;
+            var raiseToFivePointFiveBb = ResolveFacingLimpRaiseFivePointFiveBb(state.Config.BigBlind);
+            var raiseToNineBb = ResolveFacingLimpRaiseNineBb(state.Config.BigBlind);
+
+            TryAddRaiseTarget(actions, raiseToFivePointFiveBb, minTotalBetFacingLimp, maxTotalBet);
+            TryAddRaiseTarget(actions, raiseToNineBb, minTotalBetFacingLimp, maxTotalBet);
+
+            return actions.AsReadOnly();
+        }
+
         if (toCall.Value == 0)
         {
             actions.Add(new LegalAction(ActionType.Check));
@@ -250,6 +264,31 @@ public static class SolverLegalActionGenerator
 
         var hasLimpAction = state.ActionHistory.Any(a => a.ActionType == ActionType.Call);
         return hasLimpAction;
+    }
+
+    private static bool IsBigBlindOptionVsLimpPreflopSpot(SolverHandState state, SolverPlayerState acting)
+    {
+        if (state.Street != Street.Preflop)
+            return false;
+
+        if (acting.Position != Position.BB)
+            return false;
+
+        if (state.ToCall.Value != 0)
+            return false;
+
+        if (acting.CurrentStreetContribution != state.CurrentBetSize)
+            return false;
+
+        var hasPriorAggressiveAction = state.ActionHistory.Any(a =>
+            a.ActionType == ActionType.Bet ||
+            a.ActionType == ActionType.Raise ||
+            a.ActionType == ActionType.AllIn);
+
+        if (hasPriorAggressiveAction)
+            return false;
+
+        return state.ActionHistory.Any(a => a.ActionType == ActionType.Call);
     }
 
     private static ChipAmount ResolveUnopenedPreflopOpenSize(ChipAmount bigBlind)

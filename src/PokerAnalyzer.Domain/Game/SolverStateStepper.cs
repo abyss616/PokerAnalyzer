@@ -76,7 +76,8 @@ public static class SolverStateStepper
             case ActionType.Raise:
             {
                 var toCall = state.ToCall;
-                if (toCall.Value <= 0)
+                var isBigBlindOptionVsLimp = IsBigBlindOptionVsLimpPreflopSpot(state, acting);
+                if (toCall.Value <= 0 && !isBigBlindOptionVsLimp)
                     throw new InvalidOperationException($"Player {acting.PlayerId} cannot raise when there is no outstanding bet.");
 
                 var toAmount = RequireTargetAmount(action, acting, "Raise");
@@ -152,6 +153,31 @@ public static class SolverStateStepper
             actionHistory: updatedHistory);
 
         return nextState;
+    }
+
+    private static bool IsBigBlindOptionVsLimpPreflopSpot(SolverHandState state, SolverPlayerState acting)
+    {
+        if (state.Street != Street.Preflop)
+            return false;
+
+        if (acting.Position != Position.BB)
+            return false;
+
+        if (state.ToCall.Value != 0)
+            return false;
+
+        if (acting.CurrentStreetContribution != state.CurrentBetSize)
+            return false;
+
+        var hasAggressivePreflopAction = state.ActionHistory.Any(a =>
+            a.ActionType == ActionType.Bet ||
+            a.ActionType == ActionType.Raise ||
+            a.ActionType == ActionType.AllIn);
+
+        if (hasAggressivePreflopAction)
+            return false;
+
+        return state.ActionHistory.Any(a => a.ActionType == ActionType.Call);
     }
 
     private static void EnsureActionIsLegal(SolverHandState state, LegalAction action, IReadOnlyList<LegalAction>? legalActions)

@@ -114,7 +114,7 @@ public class SolverLegalActionGeneratorTests
     }
 
     [Fact]
-    public void GenerateLegalActions_AfterLimp_UsesCheckAndRaiseTargets()
+    public void GenerateLegalActions_BigBlindOptionAfterLimp_ContainsCheckRaiseFivePointFiveBbAndRaiseNineBbOnly()
     {
         var sb = Player(seat: 0, stack: 98, streetContribution: 2, totalContribution: 2);
         var bb = Player(seat: 1, stack: 98, streetContribution: 2, totalContribution: 2);
@@ -138,11 +138,13 @@ public class SolverLegalActionGeneratorTests
         Assert.Equal(
             [
                 new LegalAction(ActionType.Check),
-                new LegalAction(ActionType.Raise, new ChipAmount(4))
+                new LegalAction(ActionType.Raise, new ChipAmount(11)),
+                new LegalAction(ActionType.Raise, new ChipAmount(18))
             ],
             actions);
 
-        Assert.DoesNotContain(actions, action => action.ActionType == ActionType.Raise && action.Amount is null);
+        Assert.DoesNotContain(actions, action => action.ActionType == ActionType.Fold);
+        Assert.DoesNotContain(actions, action => action.ActionType == ActionType.Call);
     }
     [Fact]
     public void GenerateLegalActions_FacingBetWithFullRaise_ReturnsFoldCallRaiseCategory()
