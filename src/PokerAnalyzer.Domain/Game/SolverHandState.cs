@@ -647,6 +647,62 @@ public sealed record SolverHandState
         return string.Join(" | ", ActionHistory.Select((a, i) => $"#{i}:{a.PlayerId}:{a.ActionType}:{a.Amount.Value}"));
     }
 
+    private bool TryValidateAggressiveAmount(
+        SolverActionEntry action,
+        ChipAmount priorContribution,
+        string actionName,
+        int actionIndex,
+        ChipAmount currentBet,
+        ChipAmount lastRaiseSize,
+        out ValidationIssue? issue)
+    {
+        if (action.Amount.Value <= 0)
+        {
+            issue = BuildIssue("HISTORY_AGGRESSIVE_NONPOSITIVE", $"{actionName} action for player {action.PlayerId} must use a positive to-amount.", actionIndex, currentBet, lastRaiseSize);
+            return true;
+        }
+
+        if (action.Amount <= priorContribution)
+        {
+            issue = BuildIssue("HISTORY_AGGRESSIVE_NOT_INCREASING", $"{actionName} action for player {action.PlayerId} must increase street contribution.", actionIndex, currentBet, lastRaiseSize);
+            return true;
+        }
+
+        issue = null;
+        return false;
+    }
+
+    private ValidationIssue BuildIssue(
+        string errorCode,
+        string message,
+        int? offendingActionIndex = null,
+        ChipAmount? currentBetOverride = null,
+        ChipAmount? lastRaiseSizeOverride = null)
+    {
+        return new ValidationIssue(
+            errorCode,
+            message,
+            offendingActionIndex,
+            ActingPlayerId,
+            Street,
+            currentBetOverride ?? CurrentBetSize,
+            Pot,
+            lastRaiseSizeOverride ?? LastRaiseSize,
+            RaisesThisStreet,
+            BuildActionHistorySummary(),
+            BuildPlayerContributionSummary(),
+            ResolveToCallSafe(),
+            ResolveLastAggressor());
+    }
+
+    private string BuildActionHistorySummary()
+    {
+        if (ActionHistory.Count == 0)
+            return "<empty>";
+
+        return string.Join(" | ", ActionHistory.Select((a, i) => $"#{i}:{a.PlayerId}:{a.ActionType}:{a.Amount.Value}"));
+    }
+
     private string BuildPlayerContributionSummary()
     {
         if (Players.Count == 0)
