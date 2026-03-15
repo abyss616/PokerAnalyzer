@@ -15,6 +15,9 @@ public static class PreflopKeyValidator
         if (key.HistorySignature == "LIMP" && key.ToCallBb <= 0)
             return PreflopValidationResult.Invalid("Invalid key: LIMP requires ToCall > 0.");
 
+        if (key.HistorySignature == "LIMP_OPTION" && key.ToCallBb != 0)
+            return PreflopValidationResult.Invalid("Invalid key: LIMP_OPTION requires ToCall == 0.");
+
         if (key.HistorySignature == "UNOPENED_CHECK" && key.ToCallBb != 0)
             return PreflopValidationResult.Invalid("Invalid key: UNOPENED_CHECK requires ToCall == 0.");
 
@@ -54,6 +57,7 @@ public static class PreflopKeyValidator
     private static bool IsKnownHistorySignature(string signature)
         => signature is "OPEN"
             or "LIMP"
+            or "LIMP_OPTION"
             or "UNOPENED"
             or "UNOPENED_SB"
             or "UNOPENED_CHECK"

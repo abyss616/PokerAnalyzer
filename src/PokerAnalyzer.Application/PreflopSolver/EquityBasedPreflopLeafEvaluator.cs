@@ -611,7 +611,7 @@ internal static class PreflopNodeFamilyClassifier
         family = parts[1] switch
         {
             "UNOPENED" or "UNOPENED_SB" or "UNOPENED_CHECK" or "UNOPENED_FOLD" => PreflopNodeFamily.Unopened,
-            "LIMP" => PreflopNodeFamily.FacingLimp,
+            "LIMP" or "LIMP_OPTION" => PreflopNodeFamily.FacingLimp,
             "VS_OPEN" => PreflopNodeFamily.FacingRaise,
             "VS_3BET" => PreflopNodeFamily.Facing3Bet,
             "VS_4BET" => PreflopNodeFamily.Facing4Bet,

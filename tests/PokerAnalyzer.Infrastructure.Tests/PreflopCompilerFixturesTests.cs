@@ -137,7 +137,7 @@ public sealed class PreflopCompilerFixturesTests
     }
 
     [Fact]
-    public void Extraction_Bb_Option_Vs_Sb_Complete_Maps_To_Limp_With_Zero_ToCall()
+    public void Extraction_Bb_Option_Vs_Sb_Complete_Maps_To_LimpOption_With_Zero_ToCall()
     {
         var extractor = new PreflopStateExtractor();
         var btnId = PlayerId.New();
@@ -159,7 +159,7 @@ public sealed class PreflopCompilerFixturesTests
 
         Assert.True(result.IsSupported, result.UnsupportedReason);
         Assert.NotNull(result.Key);
-        Assert.Equal("LIMP", result.Key!.HistorySignature);
+        Assert.Equal("LIMP_OPTION", result.Key!.HistorySignature);
         Assert.Equal(0m, result.Key.ToCallBb);
         Assert.Equal(result.Key.ToCallBb, result.Trace.ToCallBb);
         Assert.Equal(1m, result.Trace.CurrentBetBb);
@@ -169,6 +169,29 @@ public sealed class PreflopCompilerFixturesTests
         Assert.Equal(Position.BB, result.Trace.ActingPosition);
         Assert.Single(result.Trace.PriorActionsBeforeActing);
         Assert.Equal("CALL", result.Trace.PriorActionsBeforeActing[0].ActionType);
+    }
+
+    [Fact]
+    public void Validation_LimpOption_With_Zero_ToCall_IsSupported()
+    {
+        var key = new PreflopInfoSetKey(Position.BB, Position.BB, "LIMP_OPTION", 0, 0m, 100m, null, null, null, null, null, 18m, "k");
+        var ctx = new PreflopSpotContext(PlayerId.New(), Position.BB, null, Position.BB, 0, 0m, 1m, 1m, 2m, 100m);
+
+        var result = PreflopKeyValidator.Validate(key, ctx);
+
+        Assert.True(result.IsValid);
+    }
+
+    [Fact]
+    public void Validation_Invalid_LimpOption_With_NonZero_ToCall_IsUnsupported()
+    {
+        var key = new PreflopInfoSetKey(Position.BB, Position.BB, "LIMP_OPTION", 0, 0.5m, 100m, null, null, null, null, null, 18m, "k");
+        var ctx = new PreflopSpotContext(PlayerId.New(), Position.BB, null, Position.BB, 0, 0.5m, 1m, 0.5m, 2m, 100m);
+
+        var result = PreflopKeyValidator.Validate(key, ctx);
+
+        Assert.False(result.IsValid);
+        Assert.Contains("LIMP_OPTION requires ToCall == 0", result.Reason);
     }
     [Fact]
     public void Extraction_Uses_Literal_ToCall_For_Open_And_VsOpen()

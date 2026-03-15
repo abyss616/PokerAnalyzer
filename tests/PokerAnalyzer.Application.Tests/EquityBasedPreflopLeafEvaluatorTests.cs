@@ -9,6 +9,7 @@ public sealed class EquityBasedPreflopLeafEvaluatorTests
 {
     [Theory]
     [InlineData("v2/UNOPENED/BTN/eff=100", PreflopNodeFamily.Unopened)]
+    [InlineData("v2/LIMP_OPTION/BB/eff=100", PreflopNodeFamily.FacingLimp)]
     [InlineData("v2/VS_OPEN/BTN/eff=100", PreflopNodeFamily.FacingRaise)]
     [InlineData("v2/VS_3BET/BTN/eff=100", PreflopNodeFamily.Facing3Bet)]
     public void Evaluate_UsesSameEvaluatorPathAcrossFamilies(string solverKey, PreflopNodeFamily expectedFamily)
