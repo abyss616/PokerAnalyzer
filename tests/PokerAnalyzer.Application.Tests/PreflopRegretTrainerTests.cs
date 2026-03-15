@@ -212,23 +212,26 @@ public sealed class PreflopRegretTrainerTests
     }
 
     [Fact]
-    public void RunIteration_WhenAllLegalRegretsNonPositive_UsesUniformTraversalPolicy()
+    public void RunIteration_WhenAllLegalRegretsNonPositive_UsesActionValueBasedTraversalPolicy()
     {
         var root = CreateHeadsUpPreflopState();
         var traversalPlayer = root.Players[0].PlayerId;
         var opponent = root.Players[1].PlayerId;
 
         var regrets = new InMemoryRegretStore();
+        var actionValues = new InMemoryActionValueStore();
         var fold = new LegalAction(ActionType.Fold);
         var call = new LegalAction(ActionType.Call, new ChipAmount(1));
         regrets.Add("traversal_infoset", fold, -2d);
         regrets.Add("traversal_infoset", call, 0d);
+        actionValues.AddSamples("traversal_infoset", fold, 10d, 1);
+        actionValues.AddSamples("traversal_infoset", call, 4d, 1);
 
         var traverser = new RegretAwareStubTrajectoryTraverser(
             root,
             traversalPlayer,
             opponent,
-            new RegretMatchingPolicyProvider(regrets),
+            new RegretMatchingPolicyProvider(regrets, actionValues),
             fold,
             call);
 
@@ -237,12 +240,13 @@ public sealed class PreflopRegretTrainerTests
             traverser,
             new FixedTraversalPlayerSelector(traversalPlayer),
             regrets,
-            new InMemoryAverageStrategyStore());
+            new InMemoryAverageStrategyStore(),
+            actionValueStore: actionValues);
 
         trainer.RunIteration(new Random(19));
 
-        Assert.Equal(0.5d, traverser.InitialTraversalPolicy[fold], 10);
-        Assert.Equal(0.5d, traverser.InitialTraversalPolicy[call], 10);
+        Assert.True(traverser.InitialTraversalPolicy[fold] > traverser.InitialTraversalPolicy[call]);
+        Assert.NotEqual(0.5d, traverser.InitialTraversalPolicy[fold], 10);
     }
 
     [Fact]

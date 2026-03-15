@@ -26,6 +26,7 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IPreflopHandAnalysisService, PreflopHandAnalysisService>();
         services.AddSingleton<IRegretStore, InMemoryRegretStore>();
         services.AddSingleton<IAverageStrategyStore, InMemoryAverageStrategyStore>();
+        services.AddSingleton<IActionValueStore, InMemoryActionValueStore>();
         services.AddSingleton<IPreflopTrainingProgressStore, InMemoryPreflopTrainingProgressStore>();
         services.AddSingleton<IPreflopInfoSetMapper, PreflopInfoSetMapper>();
         services.AddSingleton<IPreflopStrategyQueryService, PreflopStrategyQueryService>();
