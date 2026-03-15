@@ -90,6 +90,92 @@ public sealed class RegretMatchingPolicyProviderTests
     }
 
     [Fact]
+    public void TryGetPolicy_AllNonPositiveRegrets_FallbackStronglyConcentratesOnClearBestAction()
+    {
+        var regrets = new InMemoryRegretStore();
+        var actionValues = new InMemoryActionValueStore();
+        var provider = new RegretMatchingPolicyProvider(regrets, actionValues);
+        var fold = new LegalAction(ActionType.Fold);
+        var call = new LegalAction(ActionType.Call, new ChipAmount(1));
+        var raise = new LegalAction(ActionType.Raise, new ChipAmount(9));
+        var smallRaise = new LegalAction(ActionType.Raise, new ChipAmount(6));
+
+        regrets.Add("infoset", fold, -4d);
+        regrets.Add("infoset", call, -2d);
+        regrets.Add("infoset", raise, -1d);
+        regrets.Add("infoset", smallRaise, -3d);
+
+        actionValues.AddSamples("infoset", fold, 0d, 1);
+        actionValues.AddSamples("infoset", call, -2.5d, 1);
+        actionValues.AddSamples("infoset", raise, -10d, 1);
+        actionValues.AddSamples("infoset", smallRaise, -100d, 1);
+
+        var found = provider.TryGetPolicy("infoset", new[] { fold, call, raise, smallRaise }, out var policy);
+
+        Assert.True(found);
+        Assert.True(policy[fold] > 0.99d);
+        Assert.True(policy[call] < 0.01d);
+        Assert.True(policy[raise] < 1e-5d);
+        Assert.True(policy[smallRaise] < 1e-5d);
+        Assert.Equal(1d, policy.Values.Sum(), 10);
+    }
+
+    [Fact]
+    public void TryGetPolicy_AllNonPositiveRegrets_FallbackCanMixWhenTopActionsAreClose()
+    {
+        var regrets = new InMemoryRegretStore();
+        var actionValues = new InMemoryActionValueStore();
+        var provider = new RegretMatchingPolicyProvider(regrets, actionValues);
+        var fold = new LegalAction(ActionType.Fold);
+        var call = new LegalAction(ActionType.Call, new ChipAmount(1));
+        var raise = new LegalAction(ActionType.Raise, new ChipAmount(6));
+
+        regrets.Add("infoset", fold, -1d);
+        regrets.Add("infoset", call, -1d);
+        regrets.Add("infoset", raise, -1d);
+
+        actionValues.AddSamples("infoset", fold, -0.10d, 1);
+        actionValues.AddSamples("infoset", call, -0.12d, 1);
+        actionValues.AddSamples("infoset", raise, -1.5d, 1);
+
+        var found = provider.TryGetPolicy("infoset", new[] { fold, call, raise }, out var policy);
+
+        Assert.True(found);
+        Assert.True(policy[fold] > 0.45d);
+        Assert.True(policy[call] > 0.43d);
+        Assert.True(Math.Abs(policy[fold] - policy[call]) < 0.02d);
+        Assert.True(policy[raise] < 0.1d);
+        Assert.Equal(1d, policy.Values.Sum(), 10);
+    }
+
+    [Fact]
+    public void TryGetPolicy_AllNonPositiveRegrets_CatastrophicOutlierDoesNotFlattenBestVsSecondBestGap()
+    {
+        var regrets = new InMemoryRegretStore();
+        var actionValues = new InMemoryActionValueStore();
+        var provider = new RegretMatchingPolicyProvider(regrets, actionValues);
+        var fold = new LegalAction(ActionType.Fold);
+        var call = new LegalAction(ActionType.Call, new ChipAmount(1));
+        var jam = new LegalAction(ActionType.Raise, new ChipAmount(20));
+
+        regrets.Add("infoset", fold, -2d);
+        regrets.Add("infoset", call, -2d);
+        regrets.Add("infoset", jam, -2d);
+
+        actionValues.AddSamples("infoset", fold, 0d, 1);
+        actionValues.AddSamples("infoset", call, -0.7d, 1);
+        actionValues.AddSamples("infoset", jam, -200d, 1);
+
+        var found = provider.TryGetPolicy("infoset", new[] { fold, call, jam }, out var policy);
+
+        Assert.True(found);
+        Assert.True(policy[fold] > 0.79d);
+        Assert.True(policy[call] < 0.21d);
+        Assert.True(policy[jam] < 1e-5d);
+        Assert.Equal(1d, policy.Values.Sum(), 10);
+    }
+
+    [Fact]
     public void TryGetPolicy_ConsidersOnlyLegalActions_WhenNormalizing()
     {
         var regrets = new InMemoryRegretStore();

@@ -145,6 +145,9 @@ public sealed class InMemoryActionValueStore : IActionValueStore
 
 public sealed class RegretMatchingPolicyProvider : IPreflopPolicyProvider
 {
+    private const double FallbackSoftmaxTemperature = 0.5d;
+    private const double MaxScaledDisadvantage = 12d;
+
     private readonly IRegretStore _regretStore;
     private readonly IActionValueStore? _actionValueStore;
 
@@ -203,16 +206,16 @@ public sealed class RegretMatchingPolicyProvider : IPreflopPolicyProvider
         if (knownUtilities.Count == 0)
             return UniformPolicyBuilder.Build(legalActions);
 
-        var minUtility = knownUtilities.Values.Min();
         var maxUtility = knownUtilities.Values.Max();
-        var scale = Math.Max(1e-9d, maxUtility - minUtility);
+        var minUtility = knownUtilities.Values.Min();
         var weights = new Dictionary<LegalAction, double>(legalActions.Count);
         var totalWeight = 0d;
 
         foreach (var action in legalActions)
         {
             var utility = knownUtilities.TryGetValue(action, out var value) ? value : minUtility;
-            var shifted = (utility - maxUtility) / scale;
+            var shifted = (utility - maxUtility) / FallbackSoftmaxTemperature;
+            shifted = Math.Max(-MaxScaledDisadvantage, shifted);
             var weight = Math.Exp(shifted);
             weights[action] = weight;
             totalWeight += weight;
