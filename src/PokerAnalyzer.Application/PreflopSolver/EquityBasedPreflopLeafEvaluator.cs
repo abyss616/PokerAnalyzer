@@ -77,7 +77,7 @@ public sealed class EquityBasedPreflopLeafEvaluator : IPreflopLeafEvaluator
 
         if (rootEvaluatorMode == RootEvaluatorMode.AbstractedHeadsUp
             && (TryEvaluateBtnUnopenedActionAware(context, nodeFamily, rootActiveOpponentCount, leafActiveOpponentCount, out var abstracted)
-                || TryEvaluateSbUnopenedActionAware(context, nodeFamily, rootActiveOpponentCount, leafActiveOpponentCount, out abstracted)
+                || TryEvaluateUnopenedActionAware(context, nodeFamily, rootActiveOpponentCount, leafActiveOpponentCount, out abstracted)
                 || TryEvaluateFacingLimpActionAware(context, nodeFamily, rootActiveOpponentCount, leafActiveOpponentCount, out abstracted)))
         {
             return abstracted;
@@ -313,10 +313,10 @@ public sealed class EquityBasedPreflopLeafEvaluator : IPreflopLeafEvaluator
         return true;
     }
 
-    private bool TryEvaluateSbUnopenedActionAware(PreflopLeafEvaluationContext context, PreflopNodeFamily nodeFamily, int rootActiveOpponentCount, int leafActiveOpponentCount, out PreflopLeafEvaluation evaluation)
+    private bool TryEvaluateUnopenedActionAware(PreflopLeafEvaluationContext context, PreflopNodeFamily nodeFamily, int rootActiveOpponentCount, int leafActiveOpponentCount, out PreflopLeafEvaluation evaluation)
     {
         evaluation = default!;
-        if (context.HeroPosition != Position.SB || nodeFamily != PreflopNodeFamily.Unopened)
+        if (context.HeroPosition == Position.BTN || nodeFamily != PreflopNodeFamily.Unopened)
             return false;
 
         var rootOpponents = context.RootState.Players.Where(p => p.PlayerId != context.HeroPlayerId && p.IsActive).ToArray();
@@ -329,17 +329,20 @@ public sealed class EquityBasedPreflopLeafEvaluator : IPreflopLeafEvaluator
 
         foreach (var opponent in rootOpponents)
         {
-            var percentileOverride = GetSbUnopenedPercentileOverride(opponent.Position, activeProfile);
+            var percentileOverride = GetUnopenedPercentileOverride(context.HeroPosition, opponent.Position, activeProfile);
             var request = new OpponentRangeRequest(context.HeroPosition, opponent.Position, nodeFamily, context.RootState.RaisesThisStreet, true, context.SolverKey, percentileOverride);
             if (!_rangeProvider.TryGetRange(request, out var opponentRange, out var opponentReason))
                 return false;
 
-            var weight = GetSbUnopenedContributorWeight(opponent.Position, playersLeftBehind);
+            var weight = GetUnopenedContributorWeight(context.HeroPosition, opponent.Position, playersLeftBehind);
             rangeContributors.Add((opponentRange, weight, opponent.Position.ToString(), opponentReason, percentileOverride));
         }
 
         var combined = BlendRanges(rangeContributors.Select(x => (x.Range, x.Weight)).ToArray());
-        var detail = $"SB unopened synthetic field ({_populationProfileProvider.ActiveProfileName}): hero={context.HeroPosition}, behind={playersLeftBehind}, contributors={string.Join(", ", rangeContributors.Select(x => $"{x.Label}w={x.Weight:0.00}"))}; {string.Join("; ", rangeContributors.Select(x => $"{x.Label}pct={(x.PercentileOverride?.ToString("0.00") ?? "table")}, {x.Reason}"))}";
+        var detail = $"Unopened synthetic field ({_populationProfileProvider.ActiveProfileName}): hero={context.HeroPosition}, behind={playersLeftBehind}, contributors={string.Join(", ", rangeContributors.Select(x => $"{x.Label}w={x.Weight:0.00}"))}; {string.Join("; ", rangeContributors.Select(x => $"{x.Label}pct={(x.PercentileOverride?.ToString("0.00") ?? "table")}, {x.Reason}"))}";
+        var abstractionSource = context.HeroPosition == Position.SB ? "SyntheticFieldSbUnopened" : "SyntheticFieldUnopened";
+        var syntheticDefenderLabel = context.HeroPosition == Position.SB ? "SyntheticSbUnopenedDefender" : "SyntheticUnopenedFieldDefender";
+        var summaryPrefix = context.HeroPosition == Position.SB ? "Level-2 SB unopened abstraction" : "Level-2 unopened abstraction";
         var baseEval = EvaluateAgainstRange(
             context,
             nodeFamily,
@@ -350,12 +353,12 @@ public sealed class EquityBasedPreflopLeafEvaluator : IPreflopLeafEvaluator
             rootActiveOpponentCount: rootActiveOpponentCount,
             leafActiveOpponentCount: leafActiveOpponentCount,
             evaluatorType: "AbstractedHeadsUp",
-            abstractionSource: "SyntheticFieldSbUnopened",
+            abstractionSource: abstractionSource,
             abstractedOpponentCount: 1,
-            syntheticDefenderLabel: "SyntheticSbUnopenedDefender",
+            syntheticDefenderLabel: syntheticDefenderLabel,
             foldProbability: null,
             continueProbability: null,
-            summaryPrefix: "Level-2 SB unopened abstraction");
+            summaryPrefix: summaryPrefix);
 
         if (!baseEval.UtilityByPlayer.TryGetValue(context.HeroPlayerId, out var continueBranchUtility))
             continueBranchUtility = 0d;
@@ -369,7 +372,7 @@ public sealed class EquityBasedPreflopLeafEvaluator : IPreflopLeafEvaluator
         var allFold = 1d;
         foreach (var opponent in rootOpponents)
         {
-            var foldProbability = GetSbUnopenedFoldProbability(opponent.Position, sizeDelta, activeProfile, playersLeftBehind);
+            var foldProbability = GetUnopenedFoldProbability(context.HeroPosition, opponent.Position, sizeDelta, activeProfile, playersLeftBehind);
             allFold *= foldProbability;
         }
 
@@ -384,14 +387,14 @@ public sealed class EquityBasedPreflopLeafEvaluator : IPreflopLeafEvaluator
             immediateComponent = allFold * potBb;
             continueComponent = continueProbability * continueBranchUtility;
             var riskPenalty = continueProbability * activeProfile.RaiseRiskPenaltyFactor * Math.Max(0d, actionSizeBb - 1d);
-            var oopPenalty = 0.05d + (0.01d * rootOpponents.Length);
+            var oopPenalty = GetUnopenedPositionalPenalty(context.HeroPosition, rootOpponents.Length, playersLeftBehind);
             heroUtility = immediateComponent + continueComponent - riskPenalty - oopPenalty;
         }
         else if (actionType is ActionType.Call or ActionType.Check)
         {
             allFold = 0d;
             continueProbability = 1d;
-            var completePenalty = 0.02d + (0.01d * playersLeftBehind);
+            var completePenalty = GetUnopenedPassivePenalty(context.HeroPosition, playersLeftBehind, rootOpponents.Length);
             heroUtility = continueBranchUtility - completePenalty;
             continueComponent = heroUtility;
         }
@@ -415,7 +418,7 @@ public sealed class EquityBasedPreflopLeafEvaluator : IPreflopLeafEvaluator
                 ContinueBranchUtility = continueBranchUtility,
                 DisplaySummary = $"{baseEval.Details!.DisplaySummary} Action={actionLabel}, EV={heroUtility:0.000}, fold={allFold:0.000}, continue={continueProbability:0.000}, profile={_populationProfileProvider.ActiveProfileName}.",
                 ActivePopulationProfile = _populationProfileProvider.ActiveProfileName,
-                RationaleSummary = $"Unopened SB {actionLabel} uses a synthetic defender field with action-sensitive fold/continue decomposition under {_populationProfileProvider.ActiveProfileName}."
+                RationaleSummary = $"Unopened {context.HeroPosition} {actionLabel} uses a synthetic defender field with action-sensitive fold/continue decomposition under {_populationProfileProvider.ActiveProfileName}."
             }
         };
 
@@ -689,9 +692,7 @@ public sealed class EquityBasedPreflopLeafEvaluator : IPreflopLeafEvaluator
         if (rootActiveOpponentCount == 1)
             return RootEvaluatorMode.TrueHeadsUp;
 
-        if (((context.HeroPosition == Position.BTN && nodeFamily == PreflopNodeFamily.Unopened)
-                || (context.HeroPosition == Position.SB && nodeFamily == PreflopNodeFamily.Unopened)
-                || nodeFamily == PreflopNodeFamily.FacingLimp)
+        if ((nodeFamily == PreflopNodeFamily.Unopened || nodeFamily == PreflopNodeFamily.FacingLimp)
             && rootActiveOpponentCount >= 2)
         {
             return RootEvaluatorMode.AbstractedHeadsUp;
@@ -805,13 +806,26 @@ public sealed class EquityBasedPreflopLeafEvaluator : IPreflopLeafEvaluator
             _ => null
         };
 
-    private static double? GetSbUnopenedPercentileOverride(Position position, PreflopPopulationProfile profile)
-        => position switch
+    private static double? GetUnopenedPercentileOverride(Position heroPosition, Position position, PreflopPopulationProfile profile)
+    {
+        if (heroPosition == Position.SB)
+        {
+            return position switch
+            {
+                Position.BB => profile.BbContinueRangePercentileUnopenedVsBtn,
+                Position.BTN => profile.SbContinueRangePercentileUnopenedVsBtn,
+                _ => null
+            };
+        }
+
+        return position switch
         {
             Position.BB => profile.BbContinueRangePercentileUnopenedVsBtn,
             Position.BTN => profile.SbContinueRangePercentileUnopenedVsBtn,
+            Position.SB => profile.SbContinueRangePercentileUnopenedVsBtn,
             _ => null
         };
+    }
 
     private static double GetFacingLimpContributorWeight(Position position, bool isLimper, int playersLeftBehind)
     {
@@ -839,6 +853,58 @@ public sealed class EquityBasedPreflopLeafEvaluator : IPreflopLeafEvaluator
         var behindAdjustment = 0.01d * Math.Min(playersLeftBehind, 3);
         return Math.Clamp(baseFold + sizeAdjustment + behindAdjustment, 0.20d, 0.92d);
     }
+
+    private static double GetUnopenedContributorWeight(Position heroPosition, Position position, int playersLeftBehind)
+    {
+        if (heroPosition == Position.SB)
+            return GetSbUnopenedContributorWeight(position, playersLeftBehind);
+
+        var baseWeight = position switch
+        {
+            Position.BTN => 1.20d,
+            Position.SB => 0.90d,
+            Position.BB => 1.10d,
+            _ => 1.00d
+        };
+
+        return baseWeight + (0.02d * Math.Min(playersLeftBehind, 3));
+    }
+
+    private static double GetUnopenedFoldProbability(Position heroPosition, Position position, double sizeDelta, PreflopPopulationProfile profile, int playersLeftBehind)
+    {
+        if (heroPosition == Position.SB)
+            return GetSbUnopenedFoldProbability(position, sizeDelta, profile, playersLeftBehind);
+
+        var baseFold = position switch
+        {
+            Position.BB => 1d - profile.BbContinueUnopenedVsBtn,
+            Position.SB => 1d - profile.SbContinueUnopenedVsBtn,
+            Position.BTN => 0.42d,
+            _ => 0.48d
+        };
+
+        var sizeAdjustment = 0.03d * sizeDelta;
+        var behindAdjustment = 0.01d * Math.Min(playersLeftBehind, 3);
+        return Math.Clamp(baseFold + sizeAdjustment + behindAdjustment, 0.18d, 0.94d);
+    }
+
+    private static double GetUnopenedPositionalPenalty(Position heroPosition, int activeOpponents, int playersLeftBehind)
+        => heroPosition switch
+        {
+            Position.SB => 0.05d + (0.01d * activeOpponents),
+            Position.HJ => 0.02d + (0.01d * playersLeftBehind),
+            Position.CO => 0.015d + (0.008d * playersLeftBehind),
+            _ => 0.02d + (0.008d * Math.Max(0, activeOpponents - 1))
+        };
+
+    private static double GetUnopenedPassivePenalty(Position heroPosition, int playersLeftBehind, int activeOpponents)
+        => heroPosition switch
+        {
+            Position.SB => 0.02d + (0.01d * playersLeftBehind),
+            Position.HJ => 0.025d + (0.008d * playersLeftBehind),
+            Position.CO => 0.022d + (0.007d * playersLeftBehind),
+            _ => 0.02d + (0.006d * Math.Max(0, activeOpponents - 1))
+        };
 
     private static double GetSbUnopenedContributorWeight(Position position, int playersLeftBehind)
     {
