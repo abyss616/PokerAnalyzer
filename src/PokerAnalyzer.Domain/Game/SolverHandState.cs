@@ -417,6 +417,33 @@ public sealed record SolverHandState
         return false;
     }
 
+    private bool IsBigBlindOptionVsLimpRaiseAction(
+        int actionIndex,
+        SolverActionEntry action,
+        ActionValidationState playerState,
+        ChipAmount currentBet)
+    {
+        if (Street != Street.Preflop)
+            return false;
+
+        var actor = Players.FirstOrDefault(p => p.PlayerId == action.PlayerId);
+        if (actor is null || actor.Position != Position.BB)
+            return false;
+
+        if (playerState.Contribution != currentBet)
+            return false;
+
+        var hasAggressiveAction = ActionHistory.Take(actionIndex).Any(a =>
+            a.ActionType == ActionType.Bet ||
+            a.ActionType == ActionType.Raise ||
+            a.ActionType == ActionType.AllIn);
+
+        if (hasAggressiveAction)
+            return false;
+
+        return ActionHistory.Take(actionIndex).Any(a => a.ActionType == ActionType.Call);
+    }
+
     private bool TryValidateBettingState(out ValidationIssue? issue)
     {
         var maxStreetContribution = Players.Max(p => p.CurrentStreetContribution.Value);
