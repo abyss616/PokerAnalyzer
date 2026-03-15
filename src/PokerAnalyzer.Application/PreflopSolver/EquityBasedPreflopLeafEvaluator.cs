@@ -153,6 +153,8 @@ public sealed class EquityBasedPreflopLeafEvaluator : IPreflopLeafEvaluator
         if (!baseEval.UtilityByPlayer.TryGetValue(context.HeroPlayerId, out var continueBranchUtility))
             continueBranchUtility = 0d;
 
+        var handClass = baseEval.Details?.HandClass ?? ClassifyHand(context.HeroCards);
+
         var bigBlind = Math.Max(1d, context.RootState.Config.BigBlind.Value);
         var potBb = context.RootState.Pot.Value / bigBlind;
         var actionType = context.RootAction.ActionType;
@@ -179,7 +181,7 @@ public sealed class EquityBasedPreflopLeafEvaluator : IPreflopLeafEvaluator
             allFold = 0d;
             continueProbability = 1d;
             var squeezeRiskPenalty = GetFacingRaiseSqueezeRiskPenalty(facingContext);
-            var positionalPenalty = facingContext.IsInPositionVsOpener ? 0d : 0.03d;
+            var positionalPenalty = facingContext.IsInPositionVsOpener ? 0d : 0.01d;
             heroUtility = continueBranchUtility - squeezeRiskPenalty - positionalPenalty;
             continueComponent = heroUtility;
         }
@@ -189,7 +191,8 @@ public sealed class EquityBasedPreflopLeafEvaluator : IPreflopLeafEvaluator
             continueComponent = continueProbability * continueBranchUtility;
             var riskPenalty = continueProbability * activeProfile.RaiseRiskPenaltyFactor * Math.Max(0d, actionSizeBb - 2d);
             var leveragePenalty = isJamAction ? 0.12d + (0.02d * facingContext.PlayersLeftBehindHero) : 0.05d + (0.01d * facingContext.PlayersLeftBehindHero);
-            heroUtility = immediateComponent + continueComponent - riskPenalty - leveragePenalty;
+            var realizationPenalty = continueProbability * GetFacingRaiseRealizationPenalty(handClass, facingContext, activeProfile);
+            heroUtility = immediateComponent + continueComponent - riskPenalty - leveragePenalty - realizationPenalty;
         }
 
         var utility = baseEval.UtilityByPlayer.ToDictionary(kvp => kvp.Key, kvp => kvp.Value);
@@ -959,15 +962,30 @@ public sealed class EquityBasedPreflopLeafEvaluator : IPreflopLeafEvaluator
     private static double? GetFacingRaisePercentileOverride(Position opponentPosition, Position openerPosition, FacingRaiseStructuralContext context, PreflopPopulationProfile profile)
     {
         if (opponentPosition == openerPosition)
-            return 0.14d;
+        {
+            var openerPercentile = context.StructuralClass switch
+            {
+                "BlindDefenseVsLateOpen" => 0.16d,
+                "InPositionVsEarlierOpen" => 0.12d,
+                _ => 0.14d
+            };
+
+            if (profile.RaiseRiskPenaltyFactor >= 0.11d)
+                openerPercentile += 0.01d;
+
+            return Math.Clamp(openerPercentile, 0.10d, 0.18d);
+        }
 
         if (opponentPosition == Position.SB)
-            return profile.SbContinueRangePercentileUnopenedVsBtn;
+            return Math.Clamp((profile.SbContinueRangePercentileUnopenedVsBtn * 0.24d) + 0.02d, 0.08d, 0.18d);
 
         if (opponentPosition == Position.BB)
-            return profile.BbContinueRangePercentileUnopenedVsBtn;
+            return Math.Clamp((profile.BbContinueRangePercentileUnopenedVsBtn * 0.22d) + 0.03d, 0.08d, 0.18d);
 
-        return context.PlayersLeftBehindHero > 0 ? 0.20d : 0.18d;
+        var coldContinuePercentile = context.PlayersLeftBehindHero > 0 ? 0.14d : 0.12d;
+        if (profile.RaiseRiskPenaltyFactor >= 0.11d)
+            coldContinuePercentile += 0.01d;
+        return Math.Clamp(coldContinuePercentile, 0.09d, 0.18d);
     }
 
     private static double GetFacingRaiseContributorWeight(Position opponentPosition, Position openerPosition, FacingRaiseStructuralContext context)
@@ -990,34 +1008,53 @@ public sealed class EquityBasedPreflopLeafEvaluator : IPreflopLeafEvaluator
         if (actionType == ActionType.Call)
             return 0d;
 
-        var baseFold = opponentPosition == openerPosition ? 0.42d : 0.54d;
+        var baseFold = opponentPosition == openerPosition ? 0.34d : 0.44d;
         if (opponentPosition is Position.SB or Position.BB)
-            baseFold += 0.04d;
+            baseFold += 0.02d;
 
         if (context.StructuralClass == "BlindDefenseVsLateOpen")
-            baseFold -= 0.04d;
+            baseFold -= 0.06d;
 
         if (context.StructuralClass == "FieldBehindFacingRaise")
-            baseFold += 0.03d;
+            baseFold += 0.02d;
 
         if (!context.IsInPositionVsOpener)
-            baseFold -= 0.02d;
+            baseFold -= 0.03d;
 
         var sizeLift = isJamAction
-            ? 0.16d
-            : 0.07d * Math.Max(0d, actionSizeBb - 9d);
+            ? 0.10d
+            : 0.045d * Math.Max(0d, actionSizeBb - 9d);
 
-        var depthAdjustment = context.EffectiveStackBb >= 50m ? 0.02d : -0.02d;
-        var populationAdjustment = profile.RaiseRiskPenaltyFactor >= 0.015d ? 0.02d : 0d;
+        var depthAdjustment = context.EffectiveStackBb >= 50m ? -0.01d : 0.01d;
+        var populationAdjustment = profile.RaiseRiskPenaltyFactor >= 0.11d
+            ? -0.05d
+            : profile.RaiseRiskPenaltyFactor <= 0.075d ? 0.02d : 0d;
 
-        return Math.Clamp(baseFold + sizeLift + depthAdjustment + populationAdjustment, 0.12d, 0.95d);
+        return Math.Clamp(baseFold + sizeLift + depthAdjustment + populationAdjustment, 0.08d, 0.90d);
     }
 
     private static double GetFacingRaiseSqueezeRiskPenalty(FacingRaiseStructuralContext context)
     {
-        var behindPenalty = 0.025d * context.PlayersLeftBehindHero;
+        var behindPenalty = 0.015d * context.PlayersLeftBehindHero;
         var oopPenalty = context.IsInPositionVsOpener ? 0d : 0.02d;
         return behindPenalty + oopPenalty;
+    }
+
+    private static double GetFacingRaiseRealizationPenalty(string handClass, FacingRaiseStructuralContext context, PreflopPopulationProfile profile)
+    {
+        var positionalPenalty = context.IsInPositionVsOpener ? 0d : 0.02d;
+        var behindPenalty = 0.01d * context.PlayersLeftBehindHero;
+
+        if (string.Equals(handClass, "Weak offsuit ace", StringComparison.Ordinal)
+            || string.Equals(handClass, "Offsuit trash", StringComparison.Ordinal))
+        {
+            return profile.WeakOffsuitRealizationPenalty + positionalPenalty + behindPenalty + 0.03d;
+        }
+
+        if (string.Equals(handClass, "Offsuit broadway", StringComparison.Ordinal))
+            return profile.OffsuitBroadwayRealizationPenalty + positionalPenalty + (0.5d * behindPenalty);
+
+        return positionalPenalty * 0.5d;
     }
 
     private readonly record struct FacingRaiseStructuralContext(
