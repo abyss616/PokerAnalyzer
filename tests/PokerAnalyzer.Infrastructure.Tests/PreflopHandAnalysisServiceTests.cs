@@ -160,6 +160,78 @@ public sealed class PreflopHandAnalysisServiceTests
         Assert.Equal("EquityBased", result.SolveMetadata.LeafEvaluationDetails!.EvaluatorType);
         Assert.Equal(0.57, result.SolveMetadata.LeafEvaluationDetails.HeroEquity);
     }
+
+
+    [Fact]
+    public async Task QueryPreflopNodeByHandNumberAsync_PrefersNonFoldBranchForTopLevelExplanation_WhenSelectedActionIsFoldFallback()
+    {
+        var hand = BuildStandardHeroFacingOpenHand();
+        var foldDetails = new PreflopLeafEvaluationDetailsDto(
+            "AsKh",
+            false,
+            true,
+            "FoldZeroUtility",
+            null,
+            2,
+            null,
+            null,
+            "FacingLimp",
+            "CO",
+            "HJ",
+            false,
+            null,
+            null,
+            null,
+            null,
+            "Fold",
+            null,
+            null,
+            null,
+            null,
+            null,
+            0d,
+            null,
+            "Broadway",
+            null,
+            null,
+            "root action fold",
+            null);
+        var callDetails = foldDetails with
+        {
+            UsedEquityEvaluator = true,
+            UsedFallbackEvaluator = false,
+            EvaluatorType = "AbstractedHeadsUp",
+            RootActionType = "Call",
+            FallbackReason = null
+        };
+
+        var strategyProvider = new TestStrategyProvider(
+            new Dictionary<string, decimal>
+            {
+                ["Fold"] = 0.70m,
+                ["Call:1.5"] = 0.20m,
+                ["Raise:4"] = 0.10m
+            },
+            foldDetails,
+            [
+                new PreflopActionExplanationDto("Fold", foldDetails),
+                new PreflopActionExplanationDto("Call:1.5", callDetails),
+                new PreflopActionExplanationDto("Raise:4", callDetails with { RootActionType = "Raise" })
+            ]);
+
+        var result = await BuildService(hand, strategyProvider).QueryPreflopNodeByHandNumberAsync(1, CancellationToken.None);
+
+        Assert.NotNull(result);
+        Assert.NotNull(result!.SolveMetadata.LeafEvaluationDetails);
+        Assert.Equal("AbstractedHeadsUp", result.SolveMetadata.LeafEvaluationDetails!.EvaluatorType);
+        Assert.False(result.SolveMetadata.LeafEvaluationDetails.UsedFallbackEvaluator);
+
+        Assert.Equal(3, result.ActionExplanations.Count);
+        var foldExplanation = Assert.Single(result.ActionExplanations, x => x.ActionKey == "Fold");
+        Assert.Equal("FoldZeroUtility", foldExplanation.LeafEvaluationDetails!.EvaluatorType);
+        Assert.True(foldExplanation.LeafEvaluationDetails.UsedFallbackEvaluator);
+    }
+
     [Fact]
     public async Task QueryPreflopNodeByHandNumberAsync_UsesLiveSolverAndReturnsSolveMetadata()
     {
@@ -344,11 +416,16 @@ public sealed class PreflopHandAnalysisServiceTests
     {
         private readonly IReadOnlyDictionary<string, decimal>? _strategy;
         private readonly PreflopLeafEvaluationDetailsDto? _details;
+        private readonly IReadOnlyList<PreflopActionExplanationDto>? _actionExplanations;
 
-        public TestStrategyProvider(IReadOnlyDictionary<string, decimal>? strategy, PreflopLeafEvaluationDetailsDto? details = null)
+        public TestStrategyProvider(
+            IReadOnlyDictionary<string, decimal>? strategy,
+            PreflopLeafEvaluationDetailsDto? details = null,
+            IReadOnlyList<PreflopActionExplanationDto>? actionExplanations = null)
         {
             _strategy = strategy;
             _details = details;
+            _actionExplanations = actionExplanations;
         }
 
         public Task<PreflopStrategyResultDto?> GetStrategyResultAsync(PreflopStrategyRequestDto request, CancellationToken ct)
@@ -360,7 +437,7 @@ public sealed class PreflopHandAnalysisServiceTests
                 .Where(kv => request.LegalActions.Select(ToActionKey).Contains(kv.Key, StringComparer.Ordinal))
                 .ToDictionary(kv => kv.Key, kv => kv.Value, StringComparer.Ordinal);
 
-            return Task.FromResult<PreflopStrategyResultDto?>(new PreflopStrategyResultDto(request.SolverKey, selected, 0, 0d, "TestProvider", 0, "None", _details));
+            return Task.FromResult<PreflopStrategyResultDto?>(new PreflopStrategyResultDto(request.SolverKey, selected, 0, 0d, "TestProvider", 0, "None", _details, _actionExplanations));
         }
 
         private static string ToActionKey(LegalAction action)

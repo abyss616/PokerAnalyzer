@@ -168,7 +168,8 @@ public sealed class PreflopHandAnalysisService : IPreflopHandAnalysisService
             .Select(x => new PreflopNodeActionExplanationDto(x.ActionKey, x.LeafEvaluationDetails))
             .ToList();
 
-        var heroHand = strategyResult.LeafEvaluationDetails?.HeroHand;
+        var topLevelLeafDetails = SelectTopLevelLeafDetails(strategyResult.LeafEvaluationDetails, strategyResult.ActionExplanations);
+        var heroHand = topLevelLeafDetails?.HeroHand;
 
         return (
             items,
@@ -177,7 +178,7 @@ public sealed class PreflopHandAnalysisService : IPreflopHandAnalysisService
                 strategyResult.IterationsCompleted,
                 strategyResult.ElapsedMilliseconds,
                 strategyResult.SolveMode,
-                strategyResult.LeafEvaluationDetails,
+                topLevelLeafDetails,
                 heroHand),
             strategyResult.StrategySource,
             strategyResult.IterationsCompleted,
@@ -189,6 +190,27 @@ public sealed class PreflopHandAnalysisService : IPreflopHandAnalysisService
             strategyResult.BestActionMargin.HasValue ? decimal.Round((decimal)strategyResult.BestActionMargin.Value * 100m, 2) : null,
             strategyResult.SeparationScore.HasValue ? decimal.Round((decimal)strategyResult.SeparationScore.Value, 4) : null);
     }
+
+    private static PreflopLeafEvaluationDetailsDto? SelectTopLevelLeafDetails(
+        PreflopLeafEvaluationDetailsDto? selectedActionDetails,
+        IReadOnlyList<PreflopActionExplanationDto>? actionExplanations)
+    {
+        if (selectedActionDetails is null)
+            return actionExplanations?.Select(x => x.LeafEvaluationDetails).FirstOrDefault(x => x is not null);
+
+        if (!IsFoldOnlyFallback(selectedActionDetails))
+            return selectedActionDetails;
+
+        var representative = actionExplanations?
+            .Select(x => x.LeafEvaluationDetails)
+            .FirstOrDefault(x => x is not null && !IsFoldOnlyFallback(x));
+
+        return representative ?? selectedActionDetails;
+    }
+
+    private static bool IsFoldOnlyFallback(PreflopLeafEvaluationDetailsDto details)
+        => details.UsedFallbackEvaluator
+           && string.Equals(details.RootActionType, ActionType.Fold.ToString(), StringComparison.OrdinalIgnoreCase);
 
     private const decimal FrequencyEqualityTolerance = 0.0001m;
 
