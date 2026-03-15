@@ -14,15 +14,18 @@ public sealed class PreflopStrategyQueryService : IPreflopStrategyQueryService
     private readonly IAverageStrategyStore _averageStrategyStore;
     private readonly IRegretStore _regretStore;
     private readonly IPreflopTrainingProgressStore _trainingProgressStore;
+    private readonly IActionValueStore _actionValueStore;
 
     public PreflopStrategyQueryService(
         IAverageStrategyStore averageStrategyStore,
         IRegretStore regretStore,
-        IPreflopTrainingProgressStore trainingProgressStore)
+        IPreflopTrainingProgressStore trainingProgressStore,
+        IActionValueStore actionValueStore)
     {
         _averageStrategyStore = averageStrategyStore ?? throw new ArgumentNullException(nameof(averageStrategyStore));
         _regretStore = regretStore ?? throw new ArgumentNullException(nameof(regretStore));
         _trainingProgressStore = trainingProgressStore ?? throw new ArgumentNullException(nameof(trainingProgressStore));
+        _actionValueStore = actionValueStore ?? throw new ArgumentNullException(nameof(actionValueStore));
     }
 
     public PreflopStrategyResultDto GetStrategyResult(string infoSetKey, IReadOnlyList<LegalAction> legalActions)
@@ -39,7 +42,7 @@ public sealed class PreflopStrategyQueryService : IPreflopStrategyQueryService
             averageStrategy[ToActionKey(action)] = (decimal)probability;
         }
 
-        _ = new RegretMatchingPolicyProvider(_regretStore).TryGetPolicy(infoSetKey, legalActions, out var currentPolicy);
+        _ = new RegretMatchingPolicyProvider(_regretStore, _actionValueStore).TryGetPolicy(infoSetKey, legalActions, out var currentPolicy);
         currentPolicy ??= UniformPolicyBuilder.Build(legalActions);
 
         var regretMagnitude = 0d;
@@ -79,7 +82,7 @@ public sealed class PreflopStrategyQueryService : IPreflopStrategyQueryService
             null,
             null,
             diagnostics,
-            "Average frequencies come from cumulative average strategy; current-policy frequencies come from regret matching on positive cumulative regret; regrets are cumulative counterfactual regrets.",
+            "Average frequencies come from cumulative average strategy; current-policy frequencies come from regret matching on positive cumulative regret and action-value-based stochastic fallback when all regrets are non-positive; regrets are cumulative counterfactual regrets.",
             bestMargin,
             separation);
     }

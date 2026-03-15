@@ -13,19 +13,22 @@ public sealed class LivePreflopSolveService : IPreflopStrategyProvider
     private readonly IPreflopTrainingProgressStore _trainingProgressStore;
     private readonly IPreflopInfoSetMapper _infoSetMapper;
     private readonly IPreflopPopulationProfileProvider _populationProfileProvider;
+    private readonly IActionValueStore _actionValueStore;
 
     public LivePreflopSolveService(
         IRegretStore regretStore,
         IAverageStrategyStore averageStrategyStore,
         IPreflopTrainingProgressStore trainingProgressStore,
         IPreflopInfoSetMapper infoSetMapper,
-        IPreflopPopulationProfileProvider populationProfileProvider)
+        IPreflopPopulationProfileProvider populationProfileProvider,
+        IActionValueStore actionValueStore)
     {
         _regretStore = regretStore ?? throw new ArgumentNullException(nameof(regretStore));
         _averageStrategyStore = averageStrategyStore ?? throw new ArgumentNullException(nameof(averageStrategyStore));
         _trainingProgressStore = trainingProgressStore ?? throw new ArgumentNullException(nameof(trainingProgressStore));
         _infoSetMapper = infoSetMapper ?? throw new ArgumentNullException(nameof(infoSetMapper));
         _populationProfileProvider = populationProfileProvider ?? throw new ArgumentNullException(nameof(populationProfileProvider));
+        _actionValueStore = actionValueStore ?? throw new ArgumentNullException(nameof(actionValueStore));
     }
 
     public Task<PreflopStrategyResultDto?> GetStrategyResultAsync(PreflopStrategyRequestDto request, CancellationToken ct)
@@ -38,6 +41,7 @@ public sealed class LivePreflopSolveService : IPreflopStrategyProvider
         var regretStore = request.UsePersistentTrainingState ? _regretStore : new InMemoryRegretStore();
         var averageStrategyStore = request.UsePersistentTrainingState ? _averageStrategyStore : new InMemoryAverageStrategyStore();
         var trainingProgressStore = request.UsePersistentTrainingState ? _trainingProgressStore : new InMemoryPreflopTrainingProgressStore();
+        var actionValueStore = request.UsePersistentTrainingState ? _actionValueStore : new InMemoryActionValueStore();
 
         var profileProvider = ResolveProfileProvider(request.PopulationProfileName);
 
@@ -52,12 +56,13 @@ public sealed class LivePreflopSolveService : IPreflopStrategyProvider
             regretStore,
             averageStrategyStore,
             trainingProgressStore,
-            request.SolverKey);
+            request.SolverKey,
+            actionValueStore);
 
         var trainingResult = trainer.RunTraining(DefaultOptions, ct);
 
         var averagePolicy = averageStrategyStore.GetAveragePolicy(request.SolverKey, request.LegalActions);
-        _ = new RegretMatchingPolicyProvider(regretStore).TryGetPolicy(request.SolverKey, request.LegalActions, out var currentPolicy);
+        _ = new RegretMatchingPolicyProvider(regretStore, actionValueStore).TryGetPolicy(request.SolverKey, request.LegalActions, out var currentPolicy);
         currentPolicy ??= UniformPolicyBuilder.Build(request.LegalActions);
 
         var strategy = request.LegalActions.ToDictionary(
@@ -113,7 +118,7 @@ public sealed class LivePreflopSolveService : IPreflopStrategyProvider
             bestActionLeafDetails,
             explanations,
             diagnostics,
-            $"Average frequencies come from cumulative average strategy; current-policy frequencies come from regret matching on positive cumulative regret; regrets are cumulative counterfactual regrets. Profile={profileProvider.ActiveProfileName}.",
+            $"Average frequencies come from cumulative average strategy; current-policy frequencies come from regret matching on positive cumulative regret and action-value-based stochastic fallback when all regrets are non-positive; regrets are cumulative counterfactual regrets. Profile={profileProvider.ActiveProfileName}.",
             bestMargin,
             separation));
     }
