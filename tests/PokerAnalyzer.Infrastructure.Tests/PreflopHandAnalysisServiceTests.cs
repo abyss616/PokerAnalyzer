@@ -78,6 +78,33 @@ public sealed class PreflopHandAnalysisServiceTests
     }
 
     [Fact]
+    public async Task QueryPreflopNodeByHandNumberAsync_FacingRaise_UsesStandardizedFoldCallRaiseNineAndJamActionSet()
+    {
+        var hand = BuildStandardHeroFacingOpenHand();
+        var strategyProvider = new TestStrategyProvider(new Dictionary<string, decimal>
+        {
+            ["Fold"] = 0.25m,
+            ["Call:2.5"] = 0.25m,
+            ["Raise:9"] = 0.25m,
+            ["Raise:100"] = 0.25m
+        });
+
+        var result = await BuildService(hand, strategyProvider).QueryPreflopNodeByHandNumberAsync(1, CancellationToken.None);
+
+        Assert.NotNull(result);
+        Assert.True(result!.IsSupported);
+        Assert.Equal("VS_OPEN", result.HistorySignature);
+
+        var actionKeys = result.LegalActions.Select(x => x.ActionKey).ToArray();
+        Assert.Equal(new[] { "Fold", "Call:2.5", "Raise:9", "Raise:100" }, actionKeys);
+
+        Assert.Contains(result.Strategy, x => x.ActionKey == "Call:2.5");
+        Assert.Contains(result.Strategy, x => x.ActionKey == "Raise:9");
+        Assert.Contains(result.Strategy, x => x.ActionKey == "Raise:100");
+        Assert.DoesNotContain(result.LegalActions, x => x.ActionKey == "Raise:4");
+    }
+
+    [Fact]
     public async Task QueryPreflopNodeByHandNumberAsync_OrdersActionsBySequenceNumber()
     {
         var hand = BuildStandardHeroFacingOpenHand();
@@ -123,6 +150,19 @@ public sealed class PreflopHandAnalysisServiceTests
         Assert.Equal(
             expected,
             result.LegalActions.Select(a => a.ActionKey).ToArray());
+    }
+
+    [Fact]
+    public async Task QueryPreflopNodeByHandNumberAsync_UnopenedSpot_RemainsUnchangedByFacingRaiseSizingStandardization()
+    {
+        var hand = BuildUnopenedHeroDecisionHand();
+
+        var result = await BuildService(hand).QueryPreflopNodeByHandNumberAsync(1, CancellationToken.None);
+
+        Assert.NotNull(result);
+        Assert.True(result!.IsSupported);
+        Assert.Equal("UNOPENED", result.HistorySignature);
+        Assert.Equal(new[] { "Fold", "Call:1", "Raise:2.5" }, result.LegalActions.Select(a => a.ActionKey).ToArray());
     }
 
 
