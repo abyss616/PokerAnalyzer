@@ -76,10 +76,10 @@ public sealed class EquityBasedPreflopLeafEvaluator : IPreflopLeafEvaluator
             return EvaluateFold(context, rootEvaluatorMode, rootActiveOpponentCount, leafActiveOpponentCount);
 
         if (rootEvaluatorMode == RootEvaluatorMode.AbstractedHeadsUp
-            && (TryEvaluateBtnUnopenedActionAware(context, nodeFamily, rootActiveOpponentCount, leafActiveOpponentCount, out var btnActionAware)
-                || TryEvaluateBtnFacingLimpActionAware(context, nodeFamily, rootActiveOpponentCount, leafActiveOpponentCount, out btnActionAware)))
+            && (TryEvaluateBtnUnopenedActionAware(context, nodeFamily, rootActiveOpponentCount, leafActiveOpponentCount, out var abstracted)
+                || TryEvaluateFacingLimpActionAware(context, nodeFamily, rootActiveOpponentCount, leafActiveOpponentCount, out abstracted)))
         {
-            return btnActionAware;
+            return abstracted;
         }
 
         if (rootEvaluatorMode == RootEvaluatorMode.TrueHeadsUp)
@@ -94,44 +94,34 @@ public sealed class EquityBasedPreflopLeafEvaluator : IPreflopLeafEvaluator
         return Fallback(context, rootEvaluatorMode, rootActiveOpponentCount, leafActiveOpponentCount, $"unsupported root evaluator mode for family={nodeFamily}, rootActiveOpponents={rootActiveOpponentCount}");
     }
 
-    private bool TryEvaluateBtnFacingLimpActionAware(PreflopLeafEvaluationContext context, PreflopNodeFamily nodeFamily, int rootActiveOpponentCount, int leafActiveOpponentCount, out PreflopLeafEvaluation evaluation)
+    private bool TryEvaluateFacingLimpActionAware(PreflopLeafEvaluationContext context, PreflopNodeFamily nodeFamily, int rootActiveOpponentCount, int leafActiveOpponentCount, out PreflopLeafEvaluation evaluation)
     {
         evaluation = default!;
-        if (context.HeroPosition != Position.BTN || nodeFamily != PreflopNodeFamily.FacingLimp)
+        if (nodeFamily != PreflopNodeFamily.FacingLimp)
             return false;
 
         var rootOpponents = context.RootState.Players.Where(p => p.PlayerId != context.HeroPlayerId && p.IsActive).ToArray();
-        var sb = rootOpponents.FirstOrDefault(p => p.Position == Position.SB);
-        var bb = rootOpponents.FirstOrDefault(p => p.Position == Position.BB);
-        var limpers = rootOpponents.Where(p => p.Position is not Position.SB and not Position.BB).ToArray();
-        if (sb is null || bb is null || limpers.Length == 0)
+        var limpers = rootOpponents.Where(IsLimper).ToArray();
+        if (limpers.Length == 0)
             return false;
 
         var activeProfile = _populationProfileProvider.ActiveProfile;
+        var playersLeftBehind = CountPlayersLeftBehind(context.RootState.Players, context.HeroPlayerId);
         var rangeContributors = new List<(OpponentWeightedRange Range, double Weight, string Label, string Reason)>();
 
-        var sbRequest = new OpponentRangeRequest(context.HeroPosition, Position.SB, nodeFamily, context.RootState.RaisesThisStreet, true, context.SolverKey, activeProfile.SbContinueRangePercentileUnopenedVsBtn);
-        if (!_rangeProvider.TryGetRange(sbRequest, out var sbRange, out var sbReason))
-            return false;
-
-        var bbRequest = new OpponentRangeRequest(context.HeroPosition, Position.BB, nodeFamily, context.RootState.RaisesThisStreet, true, context.SolverKey, activeProfile.BbContinueRangePercentileUnopenedVsBtn);
-        if (!_rangeProvider.TryGetRange(bbRequest, out var bbRange, out var bbReason))
-            return false;
-
-        rangeContributors.Add((sbRange, 0.70d, "SB", sbReason));
-        rangeContributors.Add((bbRange, 0.85d, "BB", bbReason));
-
-        foreach (var limper in limpers)
+        foreach (var opponent in rootOpponents)
         {
-            var limperRequest = new OpponentRangeRequest(context.HeroPosition, limper.Position, nodeFamily, context.RootState.RaisesThisStreet, true, context.SolverKey, null);
-            if (!_rangeProvider.TryGetRange(limperRequest, out var limperRange, out var limperReason))
+            var percentileOverride = GetFacingLimpPercentileOverride(opponent.Position, activeProfile);
+            var request = new OpponentRangeRequest(context.HeroPosition, opponent.Position, nodeFamily, context.RootState.RaisesThisStreet, true, context.SolverKey, percentileOverride);
+            if (!_rangeProvider.TryGetRange(request, out var opponentRange, out var opponentReason))
                 return false;
 
-            rangeContributors.Add((limperRange, 1.10d, limper.Position.ToString(), limperReason));
+            var weight = GetFacingLimpContributorWeight(opponent.Position, IsLimper(opponent), playersLeftBehind);
+            rangeContributors.Add((opponentRange, weight, opponent.Position.ToString(), opponentReason));
         }
 
         var combined = BlendRanges(rangeContributors.Select(x => (x.Range, x.Weight)).ToArray());
-        var detail = $"BTN facing-limp synthetic field ({_populationProfileProvider.ActiveProfileName}): limpers={limpers.Length}, contributors={string.Join(", ", rangeContributors.Select(x => $"{x.Label}w={x.Weight:0.00}"))}; {string.Join("; ", rangeContributors.Select(x => $"{x.Label}={x.Reason}"))}";
+        var detail = $"Facing-limp synthetic field ({_populationProfileProvider.ActiveProfileName}): hero={context.HeroPosition}, limpers={limpers.Length}, behind={playersLeftBehind}, contributors={string.Join(", ", rangeContributors.Select(x => $"{x.Label}w={x.Weight:0.00}"))}; {string.Join("; ", rangeContributors.Select(x => $"{x.Label}={x.Reason}"))}";
         var baseEval = EvaluateAgainstRange(
             context,
             nodeFamily,
@@ -142,12 +132,12 @@ public sealed class EquityBasedPreflopLeafEvaluator : IPreflopLeafEvaluator
             rootActiveOpponentCount: rootActiveOpponentCount,
             leafActiveOpponentCount: leafActiveOpponentCount,
             evaluatorType: "AbstractedHeadsUp",
-            abstractionSource: "SyntheticFieldBtnFacingLimp",
+            abstractionSource: "SyntheticFieldFacingLimp",
             abstractedOpponentCount: 1,
             syntheticDefenderLabel: "SyntheticLimpFieldDefender",
             foldProbability: null,
             continueProbability: null,
-            summaryPrefix: "Level-2 BTN facing-limp abstraction");
+            summaryPrefix: "Level-2 facing-limp abstraction");
 
         if (!baseEval.UtilityByPlayer.TryGetValue(context.HeroPlayerId, out var continueBranchUtility))
             continueBranchUtility = 0d;
@@ -158,10 +148,14 @@ public sealed class EquityBasedPreflopLeafEvaluator : IPreflopLeafEvaluator
         var actionSizeBb = (context.RootAction.Amount?.Value ?? 0L) / bigBlind;
         var sizeDelta = Math.Max(0d, actionSizeBb - 5.5d);
 
-        var limperFoldPerPlayer = Math.Clamp(0.44d + (0.05d * sizeDelta), 0.30d, 0.76d);
-        var sbFold = Math.Clamp((1d - activeProfile.SbContinueUnopenedVsBtn) + (0.02d * sizeDelta), 0.25d, 0.90d);
-        var bbFold = Math.Clamp((1d - activeProfile.BbContinueUnopenedVsBtn) + (0.03d * sizeDelta), 0.20d, 0.88d);
-        var allFold = Math.Clamp(Math.Pow(limperFoldPerPlayer, limpers.Length) * sbFold * bbFold, 0d, 1d);
+        var allFold = 1d;
+        foreach (var opponent in rootOpponents)
+        {
+            var foldProbability = GetFacingLimpFoldProbability(opponent.Position, IsLimper(opponent), sizeDelta, activeProfile, playersLeftBehind);
+            allFold *= foldProbability;
+        }
+
+        allFold = Math.Clamp(allFold, 0d, 1d);
         var continueProbability = Math.Clamp(1d - allFold, 0d, 1d);
 
         var immediateComponent = 0d;
@@ -172,14 +166,14 @@ public sealed class EquityBasedPreflopLeafEvaluator : IPreflopLeafEvaluator
             immediateComponent = allFold * potBb;
             continueComponent = continueProbability * continueBranchUtility;
             var riskPenalty = continueProbability * activeProfile.RaiseRiskPenaltyFactor * Math.Max(0d, actionSizeBb - 1d);
-            var crowdingPenalty = 0.02d * limpers.Length;
+            var crowdingPenalty = 0.02d * rootOpponents.Length;
             heroUtility = immediateComponent + continueComponent - riskPenalty - crowdingPenalty;
         }
         else if (actionType is ActionType.Call or ActionType.Check)
         {
             allFold = 0d;
             continueProbability = 1d;
-            var overlimpPenalty = 0.03d + (0.01d * limpers.Length);
+            var overlimpPenalty = 0.03d + (0.01d * rootOpponents.Length);
             heroUtility = continueBranchUtility - overlimpPenalty;
             continueComponent = heroUtility;
         }
@@ -203,7 +197,7 @@ public sealed class EquityBasedPreflopLeafEvaluator : IPreflopLeafEvaluator
                 ContinueBranchUtility = continueBranchUtility,
                 DisplaySummary = $"{baseEval.Details!.DisplaySummary} Action={actionLabel}, EV={heroUtility:0.000}, fold={allFold:0.000}, continue={continueProbability:0.000}, profile={_populationProfileProvider.ActiveProfileName}.",
                 ActivePopulationProfile = _populationProfileProvider.ActiveProfileName,
-                RationaleSummary = $"Facing-limp BTN {actionLabel} uses a synthetic continuing field (limpers+blinds) with size-sensitive fold/continue decomposition under {_populationProfileProvider.ActiveProfileName}."
+                RationaleSummary = $"Facing-limp {context.HeroPosition} {actionLabel} uses a synthetic continuing field with size-sensitive fold/continue decomposition under {_populationProfileProvider.ActiveProfileName}."
             }
         };
 
@@ -585,8 +579,8 @@ public sealed class EquityBasedPreflopLeafEvaluator : IPreflopLeafEvaluator
         if (rootActiveOpponentCount == 1)
             return RootEvaluatorMode.TrueHeadsUp;
 
-        if (context.HeroPosition == Position.BTN
-            && (nodeFamily == PreflopNodeFamily.Unopened || nodeFamily == PreflopNodeFamily.FacingLimp)
+        if (((context.HeroPosition == Position.BTN && nodeFamily == PreflopNodeFamily.Unopened)
+                || nodeFamily == PreflopNodeFamily.FacingLimp)
             && rootActiveOpponentCount >= 2)
         {
             return RootEvaluatorMode.AbstractedHeadsUp;
@@ -664,6 +658,68 @@ public sealed class EquityBasedPreflopLeafEvaluator : IPreflopLeafEvaluator
         || left.First == right.Second
         || left.Second == right.First
         || left.Second == right.Second;
+
+    private static bool IsLimper(SolverPlayerState player)
+        => player.Position is not Position.SB and not Position.BB;
+
+    private static int CountPlayersLeftBehind(IReadOnlyList<SolverPlayerState> players, PlayerId heroId)
+    {
+        var hero = players.FirstOrDefault(p => p.PlayerId == heroId);
+        if (hero is null)
+            return 0;
+
+        return players.Count(p => p.PlayerId != heroId && p.IsActive && IsBehind(hero.Position, p.Position));
+    }
+
+    private static bool IsBehind(Position heroPosition, Position opponentPosition)
+        => GetPreflopOrder(opponentPosition) > GetPreflopOrder(heroPosition);
+
+    private static int GetPreflopOrder(Position position)
+        => position switch
+        {
+            Position.UTG => 0,
+            Position.HJ => 1,
+            Position.CO => 2,
+            Position.BTN => 3,
+            Position.SB => 4,
+            Position.BB => 5,
+            _ => 0
+        };
+
+    private static double? GetFacingLimpPercentileOverride(Position position, PreflopPopulationProfile profile)
+        => position switch
+        {
+            Position.SB => profile.SbContinueRangePercentileUnopenedVsBtn,
+            Position.BB => profile.BbContinueRangePercentileUnopenedVsBtn,
+            _ => null
+        };
+
+    private static double GetFacingLimpContributorWeight(Position position, bool isLimper, int playersLeftBehind)
+    {
+        var baseWeight = position switch
+        {
+            Position.SB => 0.70d,
+            Position.BB => 0.85d,
+            Position.BTN => 0.95d,
+            _ => isLimper ? 1.10d : 1.00d
+        };
+
+        return baseWeight + (0.02d * Math.Min(playersLeftBehind, 3));
+    }
+
+    private static double GetFacingLimpFoldProbability(Position position, bool isLimper, double sizeDelta, PreflopPopulationProfile profile, int playersLeftBehind)
+    {
+        var baseFold = position switch
+        {
+            Position.SB => 1d - profile.SbContinueUnopenedVsBtn,
+            Position.BB => 1d - profile.BbContinueUnopenedVsBtn,
+            _ => isLimper ? 0.44d : 0.47d
+        };
+
+        var sizeAdjustment = isLimper ? 0.05d * sizeDelta : 0.03d * sizeDelta;
+        var behindAdjustment = 0.01d * Math.Min(playersLeftBehind, 3);
+        return Math.Clamp(baseFold + sizeAdjustment + behindAdjustment, 0.20d, 0.92d);
+    }
 }
 
 public sealed class TableDrivenOpponentRangeProvider : IOpponentRangeProvider
