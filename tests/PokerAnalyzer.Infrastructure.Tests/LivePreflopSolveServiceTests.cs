@@ -69,6 +69,67 @@ public sealed class LivePreflopSolveServiceTests
 
 
     [Fact]
+    public async Task GetStrategyResultAsync_FreshMode_UsesConfiguredMultiRunIterationBudget()
+    {
+        var sut = new LivePreflopSolveService(new InMemoryRegretStore(), new InMemoryAverageStrategyStore(), new InMemoryPreflopTrainingProgressStore(), new PreflopInfoSetMapper(), new NamedPreflopPopulationProfileProvider(PreflopPopulationProfiles.GtoLikeName), new InMemoryActionValueStore());
+
+        var request = new PreflopStrategyRequestDto(
+            "v2:test:multi",
+            CreateRootState(),
+            [new LegalAction(ActionType.Fold), new LegalAction(ActionType.Call, new ChipAmount(100)), new LegalAction(ActionType.Raise, new ChipAmount(250))]);
+
+        var result = await sut.GetStrategyResultAsync(request, CancellationToken.None);
+
+        Assert.NotNull(result);
+        Assert.Equal("Fresh", result!.SolveMode);
+        Assert.Equal(600, result.IterationsCompleted);
+    }
+
+    [Fact]
+    public async Task GetStrategyResultAsync_PersistentMode_KeepsSingleRunIterationBudget()
+    {
+        var progress = new InMemoryPreflopTrainingProgressStore();
+        var sut = new LivePreflopSolveService(new InMemoryRegretStore(), new InMemoryAverageStrategyStore(), progress, new PreflopInfoSetMapper(), new NamedPreflopPopulationProfileProvider(PreflopPopulationProfiles.GtoLikeName), new InMemoryActionValueStore());
+
+        var request = new PreflopStrategyRequestDto(
+            "v2:test:persistent",
+            CreateRootState(),
+            [new LegalAction(ActionType.Fold), new LegalAction(ActionType.Call, new ChipAmount(100)), new LegalAction(ActionType.Raise, new ChipAmount(250))],
+            UsePersistentTrainingState: true);
+
+        var result = await sut.GetStrategyResultAsync(request, CancellationToken.None);
+
+        Assert.NotNull(result);
+        Assert.Equal("Persistent", result!.SolveMode);
+        Assert.Equal(300, result.IterationsCompleted);
+        Assert.Equal(300, progress.TotalIterationsCompleted);
+    }
+
+    [Fact]
+    public async Task GetStrategyResultAsync_RecommendationIsDerivedFromReturnedAveragedFrequencies()
+    {
+        var sut = new LivePreflopSolveService(new InMemoryRegretStore(), new InMemoryAverageStrategyStore(), new InMemoryPreflopTrainingProgressStore(), new PreflopInfoSetMapper(), new NamedPreflopPopulationProfileProvider(PreflopPopulationProfiles.GtoLikeName), new InMemoryActionValueStore());
+
+        var request = new PreflopStrategyRequestDto(
+            "v2:test:best",
+            CreateRootState(),
+            [new LegalAction(ActionType.Fold), new LegalAction(ActionType.Call, new ChipAmount(100)), new LegalAction(ActionType.Raise, new ChipAmount(250))]);
+
+        var result = await sut.GetStrategyResultAsync(request, CancellationToken.None);
+
+        Assert.NotNull(result);
+        Assert.NotNull(result!.ActionDiagnostics);
+        var bestByFlag = result.ActionDiagnostics!.Single(x => x.IsBestByFrequency);
+        var bestByReturnedAverage = result.AverageStrategy
+            .OrderByDescending(kvp => kvp.Value)
+            .First()
+            .Key;
+
+        Assert.Equal(bestByReturnedAverage, bestByFlag.ActionKey);
+    }
+
+
+    [Fact]
     public async Task GetStrategyResultAsync_MapsLeafEvaluatorMetadata()
     {
         var sut = new LivePreflopSolveService(new InMemoryRegretStore(), new InMemoryAverageStrategyStore(), new InMemoryPreflopTrainingProgressStore(), new PreflopInfoSetMapper(), new NamedPreflopPopulationProfileProvider(PreflopPopulationProfiles.GtoLikeName), new InMemoryActionValueStore());
@@ -241,6 +302,62 @@ public sealed class LivePreflopSolveServiceTests
         Assert.True(avgFreqSpread > 1 || currFreqSpread > 1);
 
         Assert.Equal(result.BestActionMargin, result.SeparationScore);
+    }
+
+    [Fact]
+    public async Task GetStrategyResultAsync_FreshMode_MultiRunAveragingReducesFrequencyVolatilityAgainstSingleShortRuns()
+    {
+        var request = new PreflopStrategyRequestDto(
+            "v2:test:stability",
+            CreateRootState(),
+            [new LegalAction(ActionType.Fold), new LegalAction(ActionType.Call, new ChipAmount(100)), new LegalAction(ActionType.Raise, new ChipAmount(250))]);
+
+        var liveService = new LivePreflopSolveService(new InMemoryRegretStore(), new InMemoryAverageStrategyStore(), new InMemoryPreflopTrainingProgressStore(), new PreflopInfoSetMapper(), new NamedPreflopPopulationProfileProvider(PreflopPopulationProfiles.GtoLikeName), new InMemoryActionValueStore());
+
+        const int samples = 20;
+        var averagedFoldFrequencies = new List<decimal>(samples);
+        var singleRunFoldFrequencies = new List<double>(samples);
+
+        for (var i = 0; i < samples; i++)
+        {
+            var averaged = await liveService.GetStrategyResultAsync(request, CancellationToken.None);
+            Assert.NotNull(averaged);
+            averagedFoldFrequencies.Add(averaged!.AverageStrategy["Fold"]);
+
+            var foldFreq = RunSingleShortSolveFoldFrequency(request);
+            singleRunFoldFrequencies.Add(foldFreq);
+        }
+
+        var averagedRange = averagedFoldFrequencies.Max() - averagedFoldFrequencies.Min();
+        var singleRange = singleRunFoldFrequencies.Max() - singleRunFoldFrequencies.Min();
+
+        Assert.True((double)averagedRange <= singleRange, $"Expected averaged fresh solves to have equal/lower fold-frequency range than single short runs, got averagedRange={averagedRange}, singleRange={singleRange}.");
+    }
+
+    private static double RunSingleShortSolveFoldFrequency(PreflopStrategyRequestDto request)
+    {
+        var regretStore = new InMemoryRegretStore();
+        var averageStore = new InMemoryAverageStrategyStore();
+        var actionValueStore = new InMemoryActionValueStore();
+
+        var trainer = new PreflopRegretTrainer(
+            new FixedRootStateProvider(request.RootState),
+            new SolverChanceSampler(),
+            new PreflopInfoSetMapper(),
+            new WeightedRandomActionSampler(),
+            new EquityBasedPreflopLeafEvaluator(new TableDrivenOpponentRangeProvider(), new HeuristicPreflopLeafEvaluator(), populationProfileProvider: new NamedPreflopPopulationProfileProvider(PreflopPopulationProfiles.GtoLikeName)),
+            new DefaultPreflopLeafDetector(),
+            new FixedTraversalPlayerSelector(request.RootState.ActingPlayerId),
+            regretStore,
+            averageStore,
+            new InMemoryPreflopTrainingProgressStore(),
+            request.SolverKey,
+            actionValueStore);
+
+        _ = trainer.RunTraining(PreflopTrainingOptions.ForIterations(100), CancellationToken.None, randomSeed: Random.Shared.Next());
+        var policy = averageStore.GetAveragePolicy(request.SolverKey, request.LegalActions);
+        var foldAction = request.LegalActions.Single(x => x.ActionType == ActionType.Fold);
+        return policy.TryGetValue(foldAction, out var value) ? value : 0d;
     }
 
 }

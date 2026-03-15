@@ -591,12 +591,13 @@ public sealed class PreflopRegretTrainer
 
     public PreflopTrainingResult RunTraining(
         PreflopTrainingOptions? options = null,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        int? randomSeed = null)
     {
         options ??= PreflopTrainingOptions.Default;
         options.Validate();
 
-        var rng = new Random();
+        var rng = randomSeed.HasValue ? new Random(randomSeed.Value) : new Random();
         var stopwatch = Stopwatch.StartNew();
         var iterationsCompleted = 0;
 
