@@ -195,22 +195,22 @@ public sealed record SolverHandState
     public ValidationResult Validate()
     {
         if (TryValidateNonNegativeStacks(out var issue))
-            return new ValidationResult([issue]);
+            return new ValidationResult([issue!]);
 
         if (TryValidatePotConsistency(out issue))
-            return new ValidationResult([issue]);
+            return new ValidationResult([issue!]);
 
         if (TryValidateNoDuplicateCards(out issue))
-            return new ValidationResult([issue]);
+            return new ValidationResult([issue!]);
 
         if (!SolverTraversalGuards.IsTerminalLikeState(this) && TryValidateActingPlayerIsActive(out issue))
-            return new ValidationResult([issue]);
+            return new ValidationResult([issue!]);
 
         if (TryValidateBettingState(out issue))
-            return new ValidationResult([issue]);
+            return new ValidationResult([issue!]);
 
         if (TryValidateActionHistoryConsistency(out issue))
-            return new ValidationResult([issue]);
+            return new ValidationResult([issue!]);
 
         return new ValidationResult(Array.Empty<ValidationIssue>());
     }
