@@ -284,12 +284,12 @@ public sealed class EquityBasedPreflopLeafEvaluator : IPreflopLeafEvaluator
             {
                 // Facing limp options in blind-vs-blind spots need action-size-sensitive utility; otherwise
                 // check and multiple raise sizes collapse to identical EV and regrets stay exactly zero.
-                var foldProbability = Math.Clamp(0.12d + (0.045d * Math.Max(0d, actionAmountBb - 5.5d)), 0.08d, 0.42d);
+                var raiseFoldProbability = Math.Clamp(0.12d + (0.045d * Math.Max(0d, actionAmountBb - 5.5d)), 0.08d, 0.42d);
                 var riskBb = Math.Max(0d, actionAmountBb - 1d);
                 var riskPenalty = 0.08d * riskBb;
 
-                immediateComponent = foldProbability * potBb;
-                continueComponent = (1d - foldProbability) * continueBranchUtility;
+                immediateComponent = raiseFoldProbability * potBb;
+                continueComponent = (1d - raiseFoldProbability) * continueBranchUtility;
                 heroUtility = immediateComponent.Value + continueComponent.Value - riskPenalty;
             }
             else if (actionType is ActionType.Check or ActionType.Call)
