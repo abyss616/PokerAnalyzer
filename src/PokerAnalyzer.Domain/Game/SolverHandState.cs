@@ -6,6 +6,27 @@ namespace PokerAnalyzer.Domain.Game;
 
 public sealed record SolverHandState
 {
+    public sealed record ValidationIssue(
+        string ErrorCode,
+        string Message,
+        int? OffendingActionIndex,
+        PlayerId ActingPlayer,
+        Street Street,
+        ChipAmount CurrentBet,
+        ChipAmount Pot,
+        ChipAmount LastRaiseSize,
+        int RaisesThisStreet,
+        string ActionHistorySummary,
+        string PlayerContributionSummary,
+        ChipAmount ToCall,
+        PlayerId? LastAggressor);
+
+    public sealed record ValidationResult(IReadOnlyList<ValidationIssue> Issues)
+    {
+        public bool IsValid => Issues.Count == 0;
+        public ValidationIssue? FirstIssue => Issues.FirstOrDefault();
+    }
+
     private static readonly IReadOnlyDictionary<PlayerId, HoleCards> EmptyPrivateCardsByPlayer
         = new ReadOnlyDictionary<PlayerId, HoleCards>(new Dictionary<PlayerId, HoleCards>());
 
@@ -171,63 +192,148 @@ public sealed record SolverHandState
         => SolverStateStepper.Step(this, action);
 
 
-    internal void ValidateNonNegativeStacks()
+    public ValidationResult Validate()
+    {
+        if (TryValidateNonNegativeStacks(out var issue))
+            return new ValidationResult([issue]);
+
+        if (TryValidatePotConsistency(out issue))
+            return new ValidationResult([issue]);
+
+        if (TryValidateNoDuplicateCards(out issue))
+            return new ValidationResult([issue]);
+
+        if (!SolverTraversalGuards.IsTerminalLikeState(this) && TryValidateActingPlayerIsActive(out issue))
+            return new ValidationResult([issue]);
+
+        if (TryValidateBettingState(out issue))
+            return new ValidationResult([issue]);
+
+        if (TryValidateActionHistoryConsistency(out issue))
+            return new ValidationResult([issue]);
+
+        return new ValidationResult(Array.Empty<ValidationIssue>());
+    }
+
+    internal void EnsureValid()
+    {
+        var result = Validate();
+        if (result.IsValid)
+            return;
+
+        var issue = result.FirstIssue!;
+        throw new InvalidOperationException($"[{issue.ErrorCode}] {issue.Message} | " +
+            $"Context: actionIndex={(issue.OffendingActionIndex?.ToString() ?? "n/a")}, " +
+            $"actingPlayer={issue.ActingPlayer}, street={issue.Street}, currentBet={issue.CurrentBet.Value}, " +
+            $"pot={issue.Pot.Value}, lastRaise={issue.LastRaiseSize.Value}, raisesThisStreet={issue.RaisesThisStreet}, " +
+            $"toCall={issue.ToCall.Value}, lastAggressor={(issue.LastAggressor?.ToString() ?? "n/a")}, " +
+            $"actions={issue.ActionHistorySummary}, contributions={issue.PlayerContributionSummary}.");
+    }
+
+    private bool TryValidateNonNegativeStacks(out ValidationIssue? issue)
     {
         if (CurrentBetSize.Value < 0)
-            throw new InvalidOperationException($"Current bet size cannot be negative ({CurrentBetSize.Value}).");
+        {
+            issue = BuildIssue("NEGATIVE_CURRENT_BET", $"Current bet size cannot be negative ({CurrentBetSize.Value}).");
+            return true;
+        }
 
         if (LastRaiseSize.Value < 0)
-            throw new InvalidOperationException($"Last raise size cannot be negative ({LastRaiseSize.Value}).");
+        {
+            issue = BuildIssue("NEGATIVE_LAST_RAISE", $"Last raise size cannot be negative ({LastRaiseSize.Value}).");
+            return true;
+        }
 
         if (RaisesThisStreet < 0)
-            throw new InvalidOperationException($"Raises this street cannot be negative ({RaisesThisStreet}).");
+        {
+            issue = BuildIssue("NEGATIVE_RAISE_COUNT", $"Raises this street cannot be negative ({RaisesThisStreet}).");
+            return true;
+        }
 
         foreach (var player in Players)
         {
             if (player.Stack.Value < 0)
-                throw new InvalidOperationException($"Player {player.PlayerId} has negative stack ({player.Stack.Value}).");
+            {
+                issue = BuildIssue("NEGATIVE_STACK", $"Player {player.PlayerId} has negative stack ({player.Stack.Value}).");
+                return true;
+            }
 
             if (player.CurrentStreetContribution.Value < 0)
-                throw new InvalidOperationException($"Player {player.PlayerId} has negative current-street contribution ({player.CurrentStreetContribution.Value}).");
+            {
+                issue = BuildIssue("NEGATIVE_STREET_CONTRIBUTION", $"Player {player.PlayerId} has negative current-street contribution ({player.CurrentStreetContribution.Value}).");
+                return true;
+            }
 
             if (player.TotalContribution.Value < 0)
-                throw new InvalidOperationException($"Player {player.PlayerId} has negative total contribution ({player.TotalContribution.Value}).");
+            {
+                issue = BuildIssue("NEGATIVE_TOTAL_CONTRIBUTION", $"Player {player.PlayerId} has negative total contribution ({player.TotalContribution.Value}).");
+                return true;
+            }
 
             if (player.TotalContribution < player.CurrentStreetContribution)
-                throw new InvalidOperationException($"Player {player.PlayerId} current-street contribution exceeds total contribution.");
+            {
+                issue = BuildIssue("STREET_GT_TOTAL_CONTRIBUTION", $"Player {player.PlayerId} current-street contribution exceeds total contribution.");
+                return true;
+            }
 
             if (player.IsAllIn && player.Stack.Value != 0)
-                throw new InvalidOperationException($"Player {player.PlayerId} is marked all-in but has stack {player.Stack.Value}.");
+            {
+                issue = BuildIssue("ALLIN_WITH_STACK", $"Player {player.PlayerId} is marked all-in but has stack {player.Stack.Value}.");
+                return true;
+            }
 
             if (player.Stack.Value == 0 && !player.IsAllIn && !player.IsFolded)
-                throw new InvalidOperationException($"Player {player.PlayerId} has zero stack and must be marked all-in or folded.");
+            {
+                issue = BuildIssue("ZERO_STACK_NOT_ALLIN", $"Player {player.PlayerId} has zero stack and must be marked all-in or folded.");
+                return true;
+            }
 
             if (player.IsAllIn && player.IsFolded)
-                throw new InvalidOperationException($"Player {player.PlayerId} cannot be both all-in and folded.");
+            {
+                issue = BuildIssue("ALLIN_AND_FOLDED", $"Player {player.PlayerId} cannot be both all-in and folded.");
+                return true;
+            }
 
             var chipsInPlay = player.Stack + player.TotalContribution;
             if (chipsInPlay > Config.StartingStack)
-                throw new InvalidOperationException($"Player {player.PlayerId} has stack + contribution ({chipsInPlay.Value}) above configured starting stack ({Config.StartingStack.Value}).");
+            {
+                issue = BuildIssue("CHIPS_EXCEED_STARTING_STACK", $"Player {player.PlayerId} has stack + contribution ({chipsInPlay.Value}) above configured starting stack ({Config.StartingStack.Value}).");
+                return true;
+            }
         }
+
+        issue = null;
+        return false;
     }
 
-    internal void ValidatePotConsistency()
+    private bool TryValidatePotConsistency(out ValidationIssue? issue)
     {
         var contributionSum = Players.Aggregate(ChipAmount.Zero, (sum, p) => sum + p.TotalContribution);
         if (contributionSum != Pot)
-            throw new InvalidOperationException($"Pot inconsistency: pot is {Pot.Value}, but summed player contributions are {contributionSum.Value}.");
+        {
+            issue = BuildIssue("POT_CONTRIBUTION_MISMATCH", $"Pot inconsistency: pot is {Pot.Value}, but summed player contributions are {contributionSum.Value}.");
+            return true;
+        }
 
+        issue = null;
+        return false;
     }
 
-    internal void ValidateNoDuplicateCards()
+    private bool TryValidateNoDuplicateCards(out ValidationIssue? issue)
     {
         if (BoardCards.Count > 5)
-            throw new InvalidOperationException($"Board cannot contain more than 5 cards (found {BoardCards.Count}).");
+        {
+            issue = BuildIssue("BOARD_CARD_COUNT_EXCEEDED", $"Board cannot contain more than 5 cards (found {BoardCards.Count}).");
+            return true;
+        }
 
         foreach (var playerId in PrivateCardsByPlayer.Keys)
         {
             if (Players.All(p => p.PlayerId != playerId))
-                throw new InvalidOperationException($"Private cards were provided for non-seated player {playerId}.");
+            {
+                issue = BuildIssue("PRIVATE_CARDS_FOR_NON_SEATED_PLAYER", $"Private cards were provided for non-seated player {playerId}.");
+                return true;
+            }
         }
 
         var cards = new List<Card>(BoardCards.Count + DeadCards.Count + (PrivateCardsByPlayer.Count * 2));
@@ -242,62 +348,101 @@ public sealed record SolverHandState
 
         var duplicate = cards.GroupBy(card => card).FirstOrDefault(group => group.Count() > 1);
         if (duplicate is not null)
-            throw new InvalidOperationException($"Duplicate card detected in solver state: {duplicate.Key}.");
+        {
+            issue = BuildIssue("DUPLICATE_CARD", $"Duplicate card detected in solver state: {duplicate.Key}.");
+            return true;
+        }
+
+        issue = null;
+        return false;
     }
 
-    internal void ValidateActingPlayerIsActive()
+    private bool TryValidateActingPlayerIsActive(out ValidationIssue? issue)
     {
         if (Players.Count == 0)
-            throw new InvalidOperationException("Solver hand state must contain at least one player.");
+        {
+            issue = BuildIssue("NO_PLAYERS", "Solver hand state must contain at least one player.");
+            return true;
+        }
 
         var duplicatePlayerId = Players.GroupBy(p => p.PlayerId).FirstOrDefault(g => g.Count() > 1);
         if (duplicatePlayerId is not null)
-            throw new InvalidOperationException($"Duplicate player id detected: {duplicatePlayerId.Key}.");
+        {
+            issue = BuildIssue("DUPLICATE_PLAYER_ID", $"Duplicate player id detected: {duplicatePlayerId.Key}.");
+            return true;
+        }
 
         var duplicateSeat = Players.GroupBy(p => p.SeatIndex).FirstOrDefault(g => g.Count() > 1);
         if (duplicateSeat is not null)
-            throw new InvalidOperationException($"Duplicate seat index detected: {duplicateSeat.Key}.");
+        {
+            issue = BuildIssue("DUPLICATE_SEAT_INDEX", $"Duplicate seat index detected: {duplicateSeat.Key}.");
+            return true;
+        }
 
         for (var seat = 0; seat < Players.Count; seat++)
         {
             if (Players[seat].SeatIndex != seat)
             {
-                throw new InvalidOperationException(
-                    $"Players must be normalized to contiguous seat-order indexing. Expected seat {seat}, found {Players[seat].SeatIndex}.");
+                issue = BuildIssue("NON_CONTIGUOUS_SEAT_ORDER", $"Players must be normalized to contiguous seat-order indexing. Expected seat {seat}, found {Players[seat].SeatIndex}.");
+                return true;
             }
         }
 
         var player = Players.FirstOrDefault(p => p.PlayerId == ActingPlayerId);
         if (player is null)
-            throw new InvalidOperationException($"Acting player {ActingPlayerId} is not seated in the state.");
+        {
+            issue = BuildIssue("ACTING_PLAYER_NOT_SEATED", $"Acting player {ActingPlayerId} is not seated in the state.");
+            return true;
+        }
 
         if (!player.IsActive)
-            throw new InvalidOperationException($"Acting player {ActingPlayerId} is folded and cannot act.");
+        {
+            issue = BuildIssue("ACTING_PLAYER_FOLDED", $"Acting player {ActingPlayerId} is folded and cannot act.");
+            return true;
+        }
 
         if (player.IsAllIn)
-            throw new InvalidOperationException($"Acting player {ActingPlayerId} is all-in and cannot act.");
+        {
+            issue = BuildIssue("ACTING_PLAYER_ALLIN", $"Acting player {ActingPlayerId} is all-in and cannot act.");
+            return true;
+        }
 
         if (player.Stack.Value <= 0)
-            throw new InvalidOperationException($"Acting player {ActingPlayerId} has no chips remaining and cannot act.");
+        {
+            issue = BuildIssue("ACTING_PLAYER_NO_CHIPS", $"Acting player {ActingPlayerId} has no chips remaining and cannot act.");
+            return true;
+        }
+
+        issue = null;
+        return false;
     }
 
-    internal void ValidateBettingState()
+    private bool TryValidateBettingState(out ValidationIssue? issue)
     {
         var maxStreetContribution = Players.Max(p => p.CurrentStreetContribution.Value);
         if (CurrentBetSize.Value != maxStreetContribution)
         {
-            throw new InvalidOperationException(
-                $"Current bet size mismatch: CurrentBetSize is {CurrentBetSize.Value}, but max player street contribution is {maxStreetContribution}.");
+            issue = BuildIssue("CURRENT_BET_MISMATCH", $"Current bet size mismatch: CurrentBetSize is {CurrentBetSize.Value}, but max player street contribution is {maxStreetContribution}.");
+            return true;
         }
 
         if (CurrentBetSize.Value == 0 && RaisesThisStreet > 0)
-            throw new InvalidOperationException("RaisesThisStreet cannot be greater than zero when CurrentBetSize is zero.");
+        {
+            issue = BuildIssue("RAISE_COUNT_WITHOUT_BET", "RaisesThisStreet cannot be greater than zero when CurrentBetSize is zero.");
+            return true;
+        }
+
+        issue = null;
+        return false;
     }
 
-    internal void ValidateActionHistoryConsistency()
+    private bool TryValidateActionHistoryConsistency(out ValidationIssue? issue)
     {
         if (ActionHistory.Count == 0)
-            return;
+        {
+            issue = null;
+            return false;
+        }
 
         var stateByPlayer = Players.ToDictionary(
             p => p.PlayerId,
@@ -311,60 +456,71 @@ public sealed record SolverHandState
             var action = ActionHistory[i];
 
             if (!stateByPlayer.TryGetValue(action.PlayerId, out var playerState))
-                throw new InvalidOperationException(
-                    $"ActionHistory[{i}] contains action from non-seated player {action.PlayerId}.");
+            {
+                issue = BuildIssue("HISTORY_NON_SEATED_PLAYER", $"ActionHistory[{i}] contains action from non-seated player {action.PlayerId}.", i, currentBet, lastRaiseSize);
+                return true;
+            }
 
             if (playerState.HasFoldedInHistory)
-                throw new InvalidOperationException(
-                    $"ActionHistory[{i}] contains action by folded player {action.PlayerId}. " +
-                    $"Action={action.ActionType}, Amount={action.Amount.Value}.");
+            {
+                issue = BuildIssue("HISTORY_ACTION_AFTER_FOLD", $"ActionHistory[{i}] contains action by folded player {action.PlayerId}. Action={action.ActionType}, Amount={action.Amount.Value}.", i, currentBet, lastRaiseSize);
+                return true;
+            }
 
             if (playerState.AllIn)
-                throw new InvalidOperationException($"Action history contains action by all-in player {action.PlayerId}.");
+            {
+                issue = BuildIssue("HISTORY_ACTION_AFTER_ALLIN", $"Action history contains action by all-in player {action.PlayerId}.", i, currentBet, lastRaiseSize);
+                return true;
+            }
 
             var toCall = currentBet - playerState.Contribution;
             if (toCall.Value < 0)
                 toCall = ChipAmount.Zero;
 
-
-    //        Console.WriteLine(
-    //$"VALIDATE STEP: street={Street}, player={action.PlayerId.Value}, action={action.ActionType}, " +
-    //$"amount={action.Amount.Value}, priorContribution={playerState.Contribution.Value}, " +
-    //$"currentBet={currentBet.Value}, lastRaiseSize={lastRaiseSize.Value}, toCall={toCall.Value}");
-
-    //        Console.WriteLine(
-    //            "VALIDATE PLAYERS: " +
-    //            string.Join(" | ", Players.Select(p =>
-    //            {
-    //                var histState = stateByPlayer[p.PlayerId];
-    //                return $"id={p.PlayerId.Value}, pos={p.Position}, " +
-    //                       $"snapshotStreetContrib={p.CurrentStreetContribution.Value}, " +
-    //                       $"historyContrib={histState.Contribution.Value}, " +
-    //                       $"foldedInHistory={histState.HasFoldedInHistory}, allInInHistory={histState.AllIn}";
-    //            })));
-
             switch (action.ActionType)
             {
                 case ActionType.Fold:
                     if (action.Amount != ChipAmount.Zero)
-                        throw new InvalidOperationException($"Fold action for player {action.PlayerId} must have zero amount.");
+                    {
+                        issue = BuildIssue("HISTORY_FOLD_NONZERO", $"Fold action for player {action.PlayerId} must have zero amount.", i, currentBet, lastRaiseSize);
+                        return true;
+                    }
+
                     stateByPlayer[action.PlayerId] = playerState with { HasFoldedInHistory = true };
                     break;
                 case ActionType.Check:
                     if (action.Amount != ChipAmount.Zero)
-                        throw new InvalidOperationException($"Check action for player {action.PlayerId} must have zero amount.");
+                    {
+                        issue = BuildIssue("HISTORY_CHECK_NONZERO", $"Check action for player {action.PlayerId} must have zero amount.", i, currentBet, lastRaiseSize);
+                        return true;
+                    }
+
                     if (toCall.Value > 0)
-                        throw new InvalidOperationException($"Action history inconsistency: player {action.PlayerId} checked while facing {toCall.Value} to call.");
+                    {
+                        issue = BuildIssue("HISTORY_CHECK_FACING_BET", $"Action history inconsistency: player {action.PlayerId} checked while facing {toCall.Value} to call.", i, currentBet, lastRaiseSize);
+                        return true;
+                    }
+
                     break;
                 case ActionType.Call:
                     if (toCall.Value == 0)
-                        throw new InvalidOperationException($"Action history inconsistency: player {action.PlayerId} called when nothing was owed.");
+                    {
+                        issue = BuildIssue("HISTORY_CALL_NOTHING_OWED", $"Action history inconsistency: player {action.PlayerId} called when nothing was owed.", i, currentBet, lastRaiseSize);
+                        return true;
+                    }
+
                     stateByPlayer[action.PlayerId] = playerState with { Contribution = playerState.Contribution + toCall };
                     break;
                 case ActionType.Bet:
                     if (toCall.Value != 0)
-                        throw new InvalidOperationException($"Action history inconsistency: player {action.PlayerId} bet while facing an outstanding bet.");
-                    ValidateAggressiveAmount(action, playerState.Contribution, "Bet");
+                    {
+                        issue = BuildIssue("HISTORY_BET_FACING_BET", $"Action history inconsistency: player {action.PlayerId} bet while facing an outstanding bet.", i, currentBet, lastRaiseSize);
+                        return true;
+                    }
+
+                    if (TryValidateAggressiveAmount(action, playerState.Contribution, "Bet", i, currentBet, lastRaiseSize, out issue))
+                        return true;
+
                     lastRaiseSize = action.Amount - currentBet;
                     currentBet = action.Amount;
                     stateByPlayer[action.PlayerId] = playerState with { Contribution = action.Amount };
@@ -372,16 +528,25 @@ public sealed record SolverHandState
                 case ActionType.Raise:
                     var isBigBlindOptionVsLimpRaise = IsBigBlindOptionVsLimpRaiseAction(i, action, playerState, currentBet);
                     if (toCall.Value == 0 && !isBigBlindOptionVsLimpRaise)
-                        throw new InvalidOperationException($"Action history inconsistency: player {action.PlayerId} raised when no bet was outstanding.");
-                    ValidateAggressiveAmount(action, playerState.Contribution, "Raise");
+                    {
+                        issue = BuildIssue("HISTORY_RAISE_WITHOUT_BET", $"Action history inconsistency: player {action.PlayerId} raised when no bet was outstanding.", i, currentBet, lastRaiseSize);
+                        return true;
+                    }
+
+                    if (TryValidateAggressiveAmount(action, playerState.Contribution, "Raise", i, currentBet, lastRaiseSize, out issue))
+                        return true;
+
                     if (action.Amount <= currentBet)
-                        throw new InvalidOperationException($"Action history inconsistency: raise by player {action.PlayerId} to {action.Amount.Value} does not exceed current bet {currentBet.Value}.");
+                    {
+                        issue = BuildIssue("HISTORY_RAISE_NOT_ABOVE_CURRENT_BET", $"Action history inconsistency: raise by player {action.PlayerId} to {action.Amount.Value} does not exceed current bet {currentBet.Value}.", i, currentBet, lastRaiseSize);
+                        return true;
+                    }
 
                     var raiseIncrement = action.Amount - currentBet;
                     if (lastRaiseSize.Value > 0 && raiseIncrement < lastRaiseSize)
                     {
-                        throw new InvalidOperationException(
-                            $"Action history inconsistency: raise by player {action.PlayerId} to {action.Amount.Value} is below minimum full-raise increment {lastRaiseSize.Value}.");
+                        issue = BuildIssue("HISTORY_RAISE_BELOW_MIN_INCREMENT", $"Action history inconsistency: raise by player {action.PlayerId} to {action.Amount.Value} is below minimum full-raise increment {lastRaiseSize.Value}.", i, currentBet, lastRaiseSize);
+                        return true;
                     }
 
                     lastRaiseSize = raiseIncrement;
@@ -389,7 +554,9 @@ public sealed record SolverHandState
                     stateByPlayer[action.PlayerId] = playerState with { Contribution = action.Amount };
                     break;
                 case ActionType.AllIn:
-                    ValidateAggressiveAmount(action, playerState.Contribution, "All-in");
+                    if (TryValidateAggressiveAmount(action, playerState.Contribution, "All-in", i, currentBet, lastRaiseSize, out issue))
+                        return true;
+
                     if (action.Amount > currentBet)
                     {
                         lastRaiseSize = action.Amount - currentBet;
@@ -400,7 +567,9 @@ public sealed record SolverHandState
                     break;
                 case ActionType.PostSmallBlind:
                 case ActionType.PostBigBlind:
-                    ValidateAggressiveAmount(action, playerState.Contribution, "Blind post");
+                    if (TryValidateAggressiveAmount(action, playerState.Contribution, "Blind post", i, currentBet, lastRaiseSize, out issue))
+                        return true;
+
                     if (action.Amount > currentBet)
                     {
                         lastRaiseSize = action.Amount - currentBet;
@@ -413,9 +582,13 @@ public sealed record SolverHandState
                     stateByPlayer[action.PlayerId] = playerState with { HasFoldedInHistory = true };
                     break;
                 default:
-                    throw new InvalidOperationException($"Unsupported action type in history: {action.ActionType}.");
+                    issue = BuildIssue("HISTORY_UNSUPPORTED_ACTION", $"Unsupported action type in history: {action.ActionType}.", i, currentBet, lastRaiseSize);
+                    return true;
             }
         }
+
+        issue = null;
+        return false;
     }
 
     private bool IsBigBlindOptionVsLimpRaiseAction(
@@ -445,32 +618,92 @@ public sealed record SolverHandState
         return ActionHistory.Take(actionIndex).Any(a => a.ActionType == ActionType.Call);
     }
 
-    private static void ValidateAggressiveAmount(SolverActionEntry action, ChipAmount priorContribution, string actionName)
+    private bool TryValidateAggressiveAmount(
+        SolverActionEntry action,
+        ChipAmount priorContribution,
+        string actionName,
+        int actionIndex,
+        ChipAmount currentBet,
+        ChipAmount lastRaiseSize,
+        out ValidationIssue? issue)
     {
         if (action.Amount.Value <= 0)
-            throw new InvalidOperationException($"{actionName} action for player {action.PlayerId} must use a positive to-amount.");
+        {
+            issue = BuildIssue("HISTORY_AGGRESSIVE_NONPOSITIVE", $"{actionName} action for player {action.PlayerId} must use a positive to-amount.", actionIndex, currentBet, lastRaiseSize);
+            return true;
+        }
 
         if (action.Amount <= priorContribution)
         {
-            Console.WriteLine(
-    $"VALIDATE AGGRO: player={action.PlayerId.Value} action={action.ActionType} " +
-    $"amount={action.Amount.Value} priorContribution={priorContribution.Value}");
-
-            throw new InvalidOperationException($"{actionName} action for player {action.PlayerId} must increase street contribution.");
+            issue = BuildIssue("HISTORY_AGGRESSIVE_NOT_INCREASING", $"{actionName} action for player {action.PlayerId} must increase street contribution.", actionIndex, currentBet, lastRaiseSize);
+            return true;
         }
+
+        issue = null;
+        return false;
     }
 
-    internal void EnsureValid()
+    private ValidationIssue BuildIssue(
+        string errorCode,
+        string message,
+        int? offendingActionIndex = null,
+        ChipAmount? currentBetOverride = null,
+        ChipAmount? lastRaiseSizeOverride = null)
     {
-        ValidateNonNegativeStacks();
-        ValidatePotConsistency();
-        ValidateNoDuplicateCards();
+        return new ValidationIssue(
+            errorCode,
+            message,
+            offendingActionIndex,
+            ActingPlayerId,
+            Street,
+            currentBetOverride ?? CurrentBetSize,
+            Pot,
+            lastRaiseSizeOverride ?? LastRaiseSize,
+            RaisesThisStreet,
+            BuildActionHistorySummary(),
+            BuildPlayerContributionSummary(),
+            ResolveToCallSafe(),
+            ResolveLastAggressor());
+    }
 
-        if (!SolverTraversalGuards.IsTerminalLikeState(this))
-            ValidateActingPlayerIsActive();
+    private string BuildActionHistorySummary()
+    {
+        if (ActionHistory.Count == 0)
+            return "<empty>";
 
-        ValidateBettingState();
-        ValidateActionHistoryConsistency();
+        return string.Join(" | ", ActionHistory.Select((a, i) => $"#{i}:{a.PlayerId}:{a.ActionType}:{a.Amount.Value}"));
+    }
+
+    private string BuildPlayerContributionSummary()
+    {
+        if (Players.Count == 0)
+            return "<no-players>";
+
+        return string.Join(", ",
+            Players.Select(p =>
+                $"{p.PlayerId}[seat={p.SeatIndex},street={p.CurrentStreetContribution.Value},total={p.TotalContribution.Value},stack={p.Stack.Value},folded={p.IsFolded},allIn={p.IsAllIn}]"));
+    }
+
+    private ChipAmount ResolveToCallSafe()
+    {
+        var acting = Players.FirstOrDefault(p => p.PlayerId == ActingPlayerId);
+        if (acting is null)
+            return ChipAmount.Zero;
+
+        var toCall = CurrentBetSize - acting.CurrentStreetContribution;
+        return toCall.Value < 0 ? ChipAmount.Zero : toCall;
+    }
+
+    private PlayerId? ResolveLastAggressor()
+    {
+        for (var i = ActionHistory.Count - 1; i >= 0; i--)
+        {
+            var actionType = ActionHistory[i].ActionType;
+            if (actionType == ActionType.Bet || actionType == ActionType.Raise || actionType == ActionType.AllIn)
+                return ActionHistory[i].PlayerId;
+        }
+
+        return null;
     }
 
     private readonly record struct ActionValidationState(bool HasFoldedInHistory, bool AllIn, ChipAmount Contribution);

@@ -27,6 +27,57 @@ public class SolverHandStateTests
         Assert.Equal(10, state.ToCall.Value);
     }
 
+
+    [Fact]
+    public void Validate_ValidState_ReturnsValidResult()
+    {
+        var p1 = new SolverPlayerState(PlayerId.New(), 0, Position.SB, new ChipAmount(95), new ChipAmount(5), new ChipAmount(5), false, false);
+        var p2 = new SolverPlayerState(PlayerId.New(), 1, Position.BB, new ChipAmount(90), new ChipAmount(10), new ChipAmount(10), false, false);
+
+        var state = CreateState(
+            actingPlayerId: p1.PlayerId,
+            players: [p1, p2],
+            pot: new ChipAmount(15),
+            currentBetSize: new ChipAmount(10),
+            actionHistory:
+            [
+                new SolverActionEntry(p1.PlayerId, ActionType.PostSmallBlind, new ChipAmount(5)),
+                new SolverActionEntry(p2.PlayerId, ActionType.PostBigBlind, new ChipAmount(10))
+            ]);
+
+        var result = state.Validate();
+
+        Assert.True(result.IsValid);
+        Assert.Empty(result.Issues);
+    }
+
+    [Fact]
+    public void Validate_InvalidActionHistory_IncludesStructuredDiagnostics()
+    {
+        var p1 = new SolverPlayerState(PlayerId.New(), 0, Position.SB, new ChipAmount(90), new ChipAmount(10), new ChipAmount(10), false, false);
+        var p2 = new SolverPlayerState(PlayerId.New(), 1, Position.BB, new ChipAmount(90), new ChipAmount(10), new ChipAmount(10), false, false);
+
+        var actions = new[]
+        {
+            new SolverActionEntry(p1.PlayerId, ActionType.PostSmallBlind, new ChipAmount(5)),
+            new SolverActionEntry(p2.PlayerId, ActionType.PostBigBlind, new ChipAmount(10)),
+            new SolverActionEntry(p1.PlayerId, ActionType.Check, ChipAmount.Zero)
+        };
+
+        var ex = Assert.Throws<InvalidOperationException>(() =>
+            CreateState(
+                actingPlayerId: p1.PlayerId,
+                players: [p1, p2],
+                pot: new ChipAmount(20),
+                currentBetSize: new ChipAmount(10),
+                actionHistory: actions));
+
+        Assert.Contains("HISTORY_CHECK_FACING_BET", ex.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("actionIndex=2", ex.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("actions=#0", ex.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("contributions=", ex.Message, StringComparison.OrdinalIgnoreCase);
+    }
+
     [Fact]
     public void Constructor_PotMatchesSummedContributions_ShouldPassValidation()
     {
