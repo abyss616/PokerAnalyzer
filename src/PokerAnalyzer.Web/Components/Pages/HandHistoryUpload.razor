@@ -139,16 +139,26 @@
                         <strong>Action diagnostics</strong>
                         <div class="text-muted small">@_preflopAnalysis.ActionValueSupport</div>
                         <div class="small">Best action margin: @(_preflopAnalysis.BestActionMargin?.ToString("0.##") ?? "n/a")%</div>
-                        <div class="small">Separation score: @(_preflopAnalysis.SeparationScore?.ToString("0.####") ?? "n/a")</div>
+                        <div class="small">Separation score (avg-policy top2 gap): @(_preflopAnalysis.SeparationScore?.ToString("0.####") ?? "n/a")</div>
                         <table class="table table-sm mb-0 mt-2">
-                            <thead><tr><th>Action</th><th class="text-end">Freq</th><th class="text-end">Regret</th></tr></thead>
+                            <thead><tr><th>Action</th><th class="text-end">Avg freq</th><th class="text-end">Current freq</th><th class="text-end">Cumulative regret</th></tr></thead>
                             <tbody>
                                 @foreach (var d in _preflopAnalysis.ActionDiagnostics)
                                 {
-                                    <tr><td>@d.ActionKey</td><td class="text-end">@d.Frequency.ToString("0.##")%</td><td class="text-end">@d.Regret.ToString("0.000")</td></tr>
+                                    <tr><td>@d.ActionKey</td><td class="text-end">@d.Frequency.ToString("0.##")%</td><td class="text-end">@d.CurrentPolicyFrequency.ToString("0.##")%</td><td class="text-end">@d.Regret.ToString("0.000")</td></tr>
                                 }
                             </tbody>
                         </table>
+                        @if (_preflopAnalysis.ActionExplanations.Count > 0)
+                        {
+                            <div class="small mt-2"><strong>Per-action explanation snapshots</strong></div>
+                            <ul class="small mb-0">
+                                @foreach (var explanation in _preflopAnalysis.ActionExplanations)
+                                {
+                                    <li>@explanation.ActionKey: @(explanation.LeafEvaluationDetails?.EvaluatorType ?? "n/a") (@(explanation.LeafEvaluationDetails?.RootActionType ?? "n/a"))</li>
+                                }
+                            </ul>
+                        }
                     </div>
                 </div>
             }

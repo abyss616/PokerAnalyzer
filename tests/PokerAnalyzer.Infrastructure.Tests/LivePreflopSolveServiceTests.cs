@@ -126,11 +126,13 @@ public sealed class LivePreflopSolveServiceTests
 
         Assert.NotNull(result);
         Assert.NotNull(result!.LeafEvaluationDetails);
+        Assert.NotNull(result.ActionExplanations);
+        Assert.Equal(request.LegalActions.Count, result.ActionExplanations!.Count);
 
         var displayedAction = result.ActionDiagnostics
             .OrderByDescending(x => x.Frequency)
             .First()
-            .Action;
+            .ActionKey;
 
         Assert.StartsWith(result.LeafEvaluationDetails!.RootActionType!, displayedAction);
         Assert.Equal("AbstractedHeadsUp", result.LeafEvaluationDetails.EvaluatorType);
@@ -215,4 +217,30 @@ public sealed class LivePreflopSolveServiceTests
                 new SolverActionEntry(bbId, ActionType.PostBigBlind, new ChipAmount(100))
             ]);
     }
+
+
+    [Fact]
+    public async Task GetStrategyResultAsync_DiagnosticsExposeAverageAndCurrentPolicySeparately()
+    {
+        var sut = new LivePreflopSolveService(new InMemoryRegretStore(), new InMemoryAverageStrategyStore(), new InMemoryPreflopTrainingProgressStore(), new PreflopInfoSetMapper(), new NamedPreflopPopulationProfileProvider(PreflopPopulationProfiles.GtoLikeName));
+
+        var request = new PreflopStrategyRequestDto(
+            "v2/UNOPENED/BTN/eff=100",
+            CreateBtnThreeWayRootState(),
+            [new LegalAction(ActionType.Fold), new LegalAction(ActionType.Call, new ChipAmount(100)), new LegalAction(ActionType.Raise, new ChipAmount(250))]);
+
+        var result = await sut.GetStrategyResultAsync(request, CancellationToken.None);
+
+        Assert.NotNull(result);
+        Assert.NotEmpty(result!.ActionDiagnostics!);
+        Assert.All(result.ActionDiagnostics!, x => Assert.InRange(x.Frequency, 0m, 1m));
+        Assert.All(result.ActionDiagnostics!, x => Assert.InRange(x.CurrentPolicyFrequency, 0m, 1m));
+
+        var avgFreqSpread = result.ActionDiagnostics!.Select(x => x.Frequency).Distinct().Count();
+        var currFreqSpread = result.ActionDiagnostics!.Select(x => x.CurrentPolicyFrequency).Distinct().Count();
+        Assert.True(avgFreqSpread > 1 || currFreqSpread > 1);
+
+        Assert.Equal(result.BestActionMargin, result.SeparationScore);
+    }
+
 }

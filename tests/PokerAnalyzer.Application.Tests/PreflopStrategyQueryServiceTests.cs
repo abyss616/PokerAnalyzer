@@ -116,4 +116,65 @@ public sealed class PreflopStrategyQueryServiceTests
         Assert.Equal(-1d, regrets.Get(infoSetKey, call), 10);
         Assert.Equal(4, progress.TotalIterationsCompleted);
     }
+
+
+    [Fact]
+    public void GetStrategyResult_IncludesCurrentPolicyFrequency_AndMarksBestActionFromAverageThenPolicy()
+    {
+        var infoSetKey = "hero_infoset";
+        var fold = new LegalAction(ActionType.Fold);
+        var call = new LegalAction(ActionType.Call, new ChipAmount(100));
+        var raise = new LegalAction(ActionType.Raise, new ChipAmount(400));
+        var legalActions = new[] { fold, call, raise };
+
+        var averageStrategyStore = new InMemoryAverageStrategyStore();
+        averageStrategyStore.Add(infoSetKey, fold, 1d);
+        averageStrategyStore.Add(infoSetKey, call, 1d);
+        averageStrategyStore.Add(infoSetKey, raise, 3d);
+
+        var regretStore = new InMemoryRegretStore();
+        regretStore.Add(infoSetKey, fold, -2d);
+        regretStore.Add(infoSetKey, call, 4d);
+        regretStore.Add(infoSetKey, raise, 1d);
+
+        var sut = new PreflopStrategyQueryService(averageStrategyStore, regretStore, new InMemoryPreflopTrainingProgressStore());
+
+        var result = sut.GetStrategyResult(infoSetKey, legalActions);
+
+        var byAction = result.ActionDiagnostics!.ToDictionary(x => x.ActionKey, StringComparer.Ordinal);
+        Assert.Equal(0.2m, byAction["Fold"].Frequency);
+        Assert.Equal(0m, byAction["Fold"].CurrentPolicyFrequency);
+        Assert.Equal(0.8m, byAction["Call:1"].CurrentPolicyFrequency);
+        Assert.Equal(0.2m, byAction["Raise:4"].CurrentPolicyFrequency);
+        Assert.True(byAction["Raise:4"].IsBestByFrequency);
+        Assert.False(byAction["Call:1"].IsBestByFrequency);
+    }
+
+    [Fact]
+    public void GetStrategyResult_UsesAveragePolicyGapForSeparationScore()
+    {
+        var infoSetKey = "hero_infoset";
+        var fold = new LegalAction(ActionType.Fold);
+        var call = new LegalAction(ActionType.Call, new ChipAmount(100));
+        var raise = new LegalAction(ActionType.Raise, new ChipAmount(400));
+        var legalActions = new[] { fold, call, raise };
+
+        var averageStrategyStore = new InMemoryAverageStrategyStore();
+        averageStrategyStore.Add(infoSetKey, fold, 2d);
+        averageStrategyStore.Add(infoSetKey, call, 2d);
+        averageStrategyStore.Add(infoSetKey, raise, 6d);
+
+        var regretStore = new InMemoryRegretStore();
+        regretStore.Add(infoSetKey, fold, -100d);
+        regretStore.Add(infoSetKey, call, -50d);
+        regretStore.Add(infoSetKey, raise, -25d);
+
+        var sut = new PreflopStrategyQueryService(averageStrategyStore, regretStore, new InMemoryPreflopTrainingProgressStore());
+
+        var result = sut.GetStrategyResult(infoSetKey, legalActions);
+
+        Assert.Equal(0.4d, result.BestActionMargin, 10);
+        Assert.Equal(result.BestActionMargin, result.SeparationScore, 10);
+    }
+
 }

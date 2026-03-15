@@ -9,14 +9,20 @@ public sealed record PreflopStrategyResultDto(
     long ElapsedMilliseconds = 0,
     string SolveMode = "None",
     PreflopLeafEvaluationDetailsDto? LeafEvaluationDetails = null,
+    IReadOnlyList<PreflopActionExplanationDto>? ActionExplanations = null,
     IReadOnlyList<PreflopActionDiagnosticDto>? ActionDiagnostics = null,
     string? ActionValueSupport = null,
     double? BestActionMargin = null,
     double? SeparationScore = null);
 
+public sealed record PreflopActionExplanationDto(
+    string ActionKey,
+    PreflopLeafEvaluationDetailsDto? LeafEvaluationDetails);
+
 public sealed record PreflopActionDiagnosticDto(
     string ActionKey,
     decimal Frequency,
+    decimal CurrentPolicyFrequency,
     double Regret,
     double PositiveRegret,
     bool IsBestByFrequency);

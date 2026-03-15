@@ -39,6 +39,9 @@ public sealed class PreflopStrategyQueryService : IPreflopStrategyQueryService
             averageStrategy[ToActionKey(action)] = (decimal)probability;
         }
 
+        _ = new RegretMatchingPolicyProvider(_regretStore).TryGetPolicy(infoSetKey, legalActions, out var currentPolicy);
+        currentPolicy ??= UniformPolicyBuilder.Build(legalActions);
+
         var regretMagnitude = 0d;
         var diagnostics = new List<PreflopActionDiagnosticDto>(legalActions.Count);
         foreach (var action in legalActions)
@@ -46,13 +49,24 @@ public sealed class PreflopStrategyQueryService : IPreflopStrategyQueryService
             var regret = _regretStore.Get(infoSetKey, action);
             regretMagnitude += Math.Max(0d, regret);
             var actionKey = ToActionKey(action);
-            var frequency = averageStrategy.TryGetValue(actionKey, out var value) ? value : 0m;
-            diagnostics.Add(new PreflopActionDiagnosticDto(actionKey, frequency, regret, Math.Max(0d, regret), false));
+            var averageFrequency = averageStrategy.TryGetValue(actionKey, out var value) ? value : 0m;
+            var currentFrequency = (decimal)(currentPolicy.TryGetValue(action, out var cp) ? cp : 0d);
+            diagnostics.Add(new PreflopActionDiagnosticDto(actionKey, averageFrequency, currentFrequency, regret, Math.Max(0d, regret), false));
         }
+
+        var bestActionKey = diagnostics
+            .OrderByDescending(x => x.Frequency)
+            .ThenByDescending(x => x.CurrentPolicyFrequency)
+            .ThenByDescending(x => x.Regret)
+            .Select(x => x.ActionKey)
+            .FirstOrDefault();
+        diagnostics = diagnostics
+            .Select(x => x with { IsBestByFrequency = string.Equals(x.ActionKey, bestActionKey, StringComparison.Ordinal) })
+            .ToList();
 
         var ordered = diagnostics.OrderByDescending(x => x.Frequency).ToList();
         var bestMargin = ordered.Count > 1 ? (double)(ordered[0].Frequency - ordered[1].Frequency) : 0d;
-        var separation = diagnostics.Sum(x => x.PositiveRegret);
+        var separation = ordered.Count > 1 ? (double)(ordered[0].Frequency - ordered[1].Frequency) : 0d;
 
         return new PreflopStrategyResultDto(
             infoSetKey,
@@ -63,8 +77,9 @@ public sealed class PreflopStrategyQueryService : IPreflopStrategyQueryService
             0,
             "None",
             null,
+            null,
             diagnostics,
-            "Regret/average strategy only (no explicit per-action EV rollouts stored).",
+            "Average frequencies come from cumulative average strategy; current-policy frequencies come from regret matching on positive cumulative regret; regrets are cumulative counterfactual regrets.",
             bestMargin,
             separation);
     }

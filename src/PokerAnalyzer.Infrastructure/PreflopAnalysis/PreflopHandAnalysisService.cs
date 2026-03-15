@@ -123,10 +123,11 @@ public sealed class PreflopHandAnalysisService : IPreflopHandAnalysisService
             strategyResult.BestActionMargin,
             strategyResult.SeparationScore,
             strategyResult.Metadata,
+            strategyResult.ActionExplanations,
             ToTraceDto(extraction.Trace));
     }
 
-    private async Task<(IReadOnlyList<PreflopNodeStrategyItemDto> Strategy, PreflopNodeSolveMetadataDto Metadata, string StrategySource, int IterationsCompleted, double RegretMagnitude, string? HeroHand, IReadOnlyList<PreflopNodeActionDiagnosticDto> ActionDiagnostics, string? ActionValueSupport, decimal? BestActionMargin, decimal? SeparationScore)> ResolveStrategyAsync(
+    private async Task<(IReadOnlyList<PreflopNodeStrategyItemDto> Strategy, PreflopNodeSolveMetadataDto Metadata, string StrategySource, int IterationsCompleted, double RegretMagnitude, string? HeroHand, IReadOnlyList<PreflopNodeActionDiagnosticDto> ActionDiagnostics, IReadOnlyList<PreflopNodeActionExplanationDto> ActionExplanations, string? ActionValueSupport, decimal? BestActionMargin, decimal? SeparationScore)> ResolveStrategyAsync(
         string solverKey,
         SolverHandState snapshotState,
         IReadOnlyList<LegalAction> legalActions,
@@ -148,6 +149,7 @@ public sealed class PreflopHandAnalysisService : IPreflopHandAnalysisService
                 0d,
                 null,
                 Array.Empty<PreflopNodeActionDiagnosticDto>(),
+                Array.Empty<PreflopNodeActionExplanationDto>(),
                 null,
                 null,
                 null);
@@ -159,7 +161,11 @@ public sealed class PreflopHandAnalysisService : IPreflopHandAnalysisService
             .ToList();
 
         var actionDiagnostics = (strategyResult.ActionDiagnostics ?? Array.Empty<PreflopActionDiagnosticDto>())
-            .Select(x => new PreflopNodeActionDiagnosticDto(x.ActionKey, decimal.Round(x.Frequency * 100m, 2), x.Regret, x.PositiveRegret, x.IsBestByFrequency))
+            .Select(x => new PreflopNodeActionDiagnosticDto(x.ActionKey, decimal.Round(x.Frequency * 100m, 2), decimal.Round(x.CurrentPolicyFrequency * 100m, 2), x.Regret, x.PositiveRegret, x.IsBestByFrequency))
+            .ToList();
+
+        var actionExplanations = (strategyResult.ActionExplanations ?? Array.Empty<PreflopActionExplanationDto>())
+            .Select(x => new PreflopNodeActionExplanationDto(x.ActionKey, x.LeafEvaluationDetails))
             .ToList();
 
         var heroHand = strategyResult.LeafEvaluationDetails?.HeroHand;
@@ -178,6 +184,7 @@ public sealed class PreflopHandAnalysisService : IPreflopHandAnalysisService
             strategyResult.RegretMagnitude,
             heroHand,
             actionDiagnostics,
+            actionExplanations,
             strategyResult.ActionValueSupport,
             strategyResult.BestActionMargin.HasValue ? decimal.Round((decimal)strategyResult.BestActionMargin.Value * 100m, 2) : null,
             strategyResult.SeparationScore.HasValue ? decimal.Round((decimal)strategyResult.SeparationScore.Value, 4) : null);
@@ -629,6 +636,7 @@ public sealed class PreflopHandAnalysisService : IPreflopHandAnalysisService
             null,
             null,
             new PreflopNodeSolveMetadataDto("Unavailable", 0, 0, "None", null, null),
+            Array.Empty<PreflopNodeActionExplanationDto>(),
             ToTraceDto(trace ?? EmptyTrace()));
 
     private static PreflopQueryTrace EmptyTrace()
