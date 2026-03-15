@@ -123,7 +123,7 @@ public sealed class InMemoryActionValueStore : IActionValueStore
             ? aggregate
             : (0d, 0);
 
-        byAction[action] = (existing.TotalUtility + totalUtility, existing.Samples + sampleCount);
+        byAction[action] = (existing.Item1 + totalUtility, existing.Item2 + sampleCount);
     }
 
     public bool TryGetAverage(string infoSetKey, LegalAction action, out double averageUtility)
@@ -132,9 +132,9 @@ public sealed class InMemoryActionValueStore : IActionValueStore
 
         if (_values.TryGetValue(infoSetKey, out var byAction)
             && byAction.TryGetValue(action, out var aggregate)
-            && aggregate.Samples > 0)
+            && aggregate.Item2 > 0)
         {
-            averageUtility = aggregate.TotalUtility / aggregate.Samples;
+            averageUtility = aggregate.Item1 / aggregate.Item2;
             return true;
         }
 
@@ -820,7 +820,7 @@ public sealed class PreflopRegretTrainer
         foreach (var (infoSetKey, byAction) in local.ActionValueAggregates)
         {
             foreach (var (action, aggregate) in byAction)
-                _actionValueStore.AddSamples(infoSetKey, action, aggregate.TotalUtility, aggregate.Samples);
+                _actionValueStore.AddSamples(infoSetKey, action, aggregate.Item1, aggregate.Item2);
         }
     }
 
@@ -850,7 +850,7 @@ public sealed class PreflopRegretTrainer
                 ? existing
                 : (0d, 0);
 
-            byAction[action] = (aggregate.TotalUtility + utility, aggregate.Samples + 1);
+            byAction[action] = (aggregate.Item1 + utility, aggregate.Item2 + 1);
         }
 
         private static void Add(Dictionary<string, Dictionary<LegalAction, double>> destination, string infoSetKey, LegalAction action, double delta)
