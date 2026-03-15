@@ -364,6 +364,78 @@ public sealed class EquityBasedPreflopLeafEvaluatorTests
     }
 
     [Fact]
+    public void Evaluate_SbUnopenedMultiway_UsesAbstractedHeadsUp()
+    {
+        var evaluator = new EquityBasedPreflopLeafEvaluator(new TableDrivenOpponentRangeProvider(), new HeuristicPreflopLeafEvaluator(), samplesPerMatchup: 120);
+        var result = evaluator.Evaluate(CreateSbUnopenedMultiwayContext(ActionType.Call));
+
+        Assert.NotNull(result.Details);
+        Assert.Equal("AbstractedHeadsUp", result.Details!.EvaluatorType);
+        Assert.Equal("AbstractedHeadsUp", result.Details.RootEvaluatorMode);
+        Assert.False(result.Details.UsedFallbackEvaluator);
+        Assert.Equal("SyntheticFieldSbUnopened", result.Details.AbstractionSource);
+        Assert.Equal("SyntheticSbUnopenedDefender", result.Details.SyntheticDefenderLabel);
+        Assert.Equal("Unopened", result.Details.NodeFamily);
+        Assert.Equal("SB", result.Details.HeroPosition);
+    }
+
+    [Fact]
+    public void Evaluate_SbUnopenedMultiway_DoesNotFallbackAsUnsupported()
+    {
+        var evaluator = new EquityBasedPreflopLeafEvaluator(new TableDrivenOpponentRangeProvider(), new HeuristicPreflopLeafEvaluator(), samplesPerMatchup: 120);
+        var result = evaluator.Evaluate(CreateSbUnopenedMultiwayContext(ActionType.Raise, new ChipAmount(550)));
+
+        Assert.DoesNotContain("equity evaluator fallback", result.Reason);
+        Assert.DoesNotContain("unsupported root evaluator mode", result.Reason);
+        Assert.NotNull(result.Details);
+        Assert.True(result.Details!.UsedEquityEvaluator);
+        Assert.False(result.Details.UsedFallbackEvaluator);
+    }
+
+    [Fact]
+    public void Evaluate_SbUnopenedMultiway_DifferentiatesFoldCompleteAndRaiseSizes()
+    {
+        var evaluator = new EquityBasedPreflopLeafEvaluator(new TableDrivenOpponentRangeProvider(), new HeuristicPreflopLeafEvaluator(), samplesPerMatchup: 120);
+        var fold = evaluator.Evaluate(CreateSbUnopenedMultiwayContext(ActionType.Fold));
+        var complete = evaluator.Evaluate(CreateSbUnopenedMultiwayContext(ActionType.Call));
+        var raiseFivePointFive = evaluator.Evaluate(CreateSbUnopenedMultiwayContext(ActionType.Raise, new ChipAmount(550)));
+        var raiseNine = evaluator.Evaluate(CreateSbUnopenedMultiwayContext(ActionType.Raise, new ChipAmount(900)));
+
+        Assert.NotNull(fold.Details);
+        Assert.NotNull(complete.Details);
+        Assert.NotNull(raiseFivePointFive.Details);
+        Assert.NotNull(raiseNine.Details);
+
+        Assert.Equal(0d, fold.Details!.HeroUtility);
+        Assert.NotEqual(complete.Details!.HeroUtility, raiseFivePointFive.Details!.HeroUtility);
+        Assert.NotEqual(raiseFivePointFive.Details.HeroUtility, raiseNine.Details!.HeroUtility);
+
+        Assert.Equal(0d, complete.Details.FoldProbability);
+        Assert.Equal(1d, complete.Details.ContinueProbability);
+        Assert.True(raiseFivePointFive.Details.FoldProbability > 0d);
+        Assert.True(raiseNine.Details.FoldProbability > raiseFivePointFive.Details.FoldProbability);
+    }
+
+    [Fact]
+    public void Evaluate_SbUnopenedMultiway_PopulatesDiagnostics()
+    {
+        var evaluator = new EquityBasedPreflopLeafEvaluator(new TableDrivenOpponentRangeProvider(), new HeuristicPreflopLeafEvaluator(), samplesPerMatchup: 120);
+        var result = evaluator.Evaluate(CreateSbUnopenedMultiwayContext(ActionType.Raise, new ChipAmount(900)));
+
+        Assert.NotNull(result.Details);
+        Assert.Equal("SyntheticFieldSbUnopened", result.Details!.AbstractionSource);
+        Assert.Equal("SyntheticSbUnopenedDefender", result.Details.SyntheticDefenderLabel);
+        Assert.NotNull(result.Details.RangeDescription);
+        Assert.NotNull(result.Details.RangeDetail);
+        Assert.NotNull(result.Details.FoldProbability);
+        Assert.NotNull(result.Details.ContinueProbability);
+        Assert.NotNull(result.Details.ImmediateWinComponent);
+        Assert.NotNull(result.Details.ContinueComponent);
+        Assert.NotNull(result.Details.ContinueBranchUtility);
+        Assert.Contains("Action=Raise", result.Details.DisplaySummary);
+    }
+
+    [Fact]
     public void Evaluate_MultiwayContext_FallsBackToHeuristic()
     {
         var evaluator = new EquityBasedPreflopLeafEvaluator(new TableDrivenOpponentRangeProvider(), new HeuristicPreflopLeafEvaluator(), samplesPerMatchup: 120);
@@ -671,6 +743,55 @@ public sealed class EquityBasedPreflopLeafEvaluatorTests
             100,
             new LegalAction(rootAction, rootAction == ActionType.Raise ? raiseAmount ?? new ChipAmount(550) : ChipAmount.Zero),
             "v2/LIMP/CO/eff=100");
+    }
+
+    private static PreflopLeafEvaluationContext CreateSbUnopenedMultiwayContext(ActionType rootAction, ChipAmount? raiseAmount = null)
+    {
+        var heroId = new PlayerId(Guid.Parse("11111111-1111-1111-1111-111111111111"));
+        var btnId = new PlayerId(Guid.Parse("22222222-2222-2222-2222-222222222222"));
+        var bbId = new PlayerId(Guid.Parse("33333333-3333-3333-3333-333333333333"));
+
+        var config = new GameConfig(3, new ChipAmount(50), new ChipAmount(100), ChipAmount.Zero, new ChipAmount(10000));
+        var players = new[]
+        {
+            new SolverPlayerState(btnId, 0, Position.BTN, new ChipAmount(9900), new ChipAmount(100), new ChipAmount(100), false, false),
+            new SolverPlayerState(heroId, 1, Position.SB, new ChipAmount(9950), new ChipAmount(50), new ChipAmount(50), false, false),
+            new SolverPlayerState(bbId, 2, Position.BB, new ChipAmount(9900), new ChipAmount(100), new ChipAmount(100), false, false)
+        };
+
+        var state = new SolverHandState(
+            config,
+            Street.Preflop,
+            buttonSeatIndex: 0,
+            actingPlayerId: heroId,
+            pot: new ChipAmount(150),
+            currentBetSize: new ChipAmount(100),
+            lastRaiseSize: new ChipAmount(100),
+            raisesThisStreet: 0,
+            players,
+            actionHistory: new[]
+            {
+                new SolverActionEntry(heroId, ActionType.PostSmallBlind, new ChipAmount(50)),
+                new SolverActionEntry(bbId, ActionType.PostBigBlind, new ChipAmount(100))
+            },
+            boardCards: Array.Empty<Card>(),
+            deadCards: Array.Empty<Card>(),
+            privateCardsByPlayer: new Dictionary<PlayerId, HoleCards>
+            {
+                [heroId] = HoleCards.Parse("AsKh"),
+                [btnId] = HoleCards.Parse("QdJd"),
+                [bbId] = HoleCards.Parse("9c9d")
+            });
+
+        return new PreflopLeafEvaluationContext(
+            state,
+            state,
+            heroId,
+            Position.SB,
+            HoleCards.Parse("AsKh"),
+            100,
+            new LegalAction(rootAction, rootAction == ActionType.Raise ? raiseAmount ?? new ChipAmount(550) : ChipAmount.Zero),
+            "v2/UNOPENED_SB/SB/eff=100");
     }
 
     private static PreflopLeafEvaluationContext CreateThreeWayContextWithLeafActiveOpponents(string solverKey, int leafActiveOpponents)
