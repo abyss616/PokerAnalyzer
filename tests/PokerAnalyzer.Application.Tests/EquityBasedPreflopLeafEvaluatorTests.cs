@@ -39,22 +39,35 @@ public sealed class EquityBasedPreflopLeafEvaluatorTests
 
 
     [Fact]
-    public void Evaluate_FacingLimp_UsesActionSizeSensitiveUtility()
+    public void Evaluate_LimpOptionBb_UsesActionSizeSensitiveUtilityAndDiagnostics()
     {
         var evaluator = new EquityBasedPreflopLeafEvaluator(new TableDrivenOpponentRangeProvider(), new HeuristicPreflopLeafEvaluator(), samplesPerMatchup: 120);
-        var check = evaluator.Evaluate(CreateHeadsUpContext(HoleCards.Parse("AsKh"), HoleCards.Parse("QdJd"), ActionType.Check, "v2/LIMP_OPTION/BB/eff=118.5/jam=18"));
-        var raiseFivePointFive = evaluator.Evaluate(CreateHeadsUpContext(HoleCards.Parse("AsKh"), HoleCards.Parse("QdJd"), ActionType.Raise, "v2/LIMP_OPTION/BB/eff=118.5/jam=18", new ChipAmount(550)));
-        var raiseNine = evaluator.Evaluate(CreateHeadsUpContext(HoleCards.Parse("AsKh"), HoleCards.Parse("QdJd"), ActionType.Raise, "v2/LIMP_OPTION/BB/eff=118.5/jam=18", new ChipAmount(900)));
+        var check = evaluator.Evaluate(CreateLimpOptionBbContext(HoleCards.Parse("AsKh"), HoleCards.Parse("QdJd"), ActionType.Check));
+        var raiseFivePointFive = evaluator.Evaluate(CreateLimpOptionBbContext(HoleCards.Parse("AsKh"), HoleCards.Parse("QdJd"), ActionType.Raise, new ChipAmount(550)));
+        var raiseNine = evaluator.Evaluate(CreateLimpOptionBbContext(HoleCards.Parse("AsKh"), HoleCards.Parse("QdJd"), ActionType.Raise, new ChipAmount(900)));
 
         Assert.NotNull(check.Details);
         Assert.NotNull(raiseFivePointFive.Details);
         Assert.NotNull(raiseNine.Details);
         Assert.Equal("FacingLimp", check.Details!.NodeFamily);
+        Assert.Equal("BB", check.Details.HeroPosition);
+        Assert.Equal("SB", check.Details.VillainPosition);
+
         Assert.NotEqual(check.Details.HeroUtility, raiseFivePointFive.Details!.HeroUtility);
         Assert.NotEqual(raiseFivePointFive.Details.HeroUtility, raiseNine.Details!.HeroUtility);
+
+        Assert.Equal(0d, check.Details.FoldProbability);
+        Assert.Equal(1d, check.Details.ContinueProbability);
+        Assert.Equal(0d, check.Details.ImmediateWinComponent);
+
+        Assert.NotNull(raiseFivePointFive.Details.FoldProbability);
+        Assert.NotNull(raiseFivePointFive.Details.ContinueProbability);
         Assert.NotNull(raiseFivePointFive.Details.ImmediateWinComponent);
         Assert.NotNull(raiseFivePointFive.Details.ContinueComponent);
         Assert.NotNull(raiseFivePointFive.Details.ContinueBranchUtility);
+
+        Assert.True(raiseNine.Details.FoldProbability > raiseFivePointFive.Details.FoldProbability);
+        Assert.True(raiseNine.Details.ContinueProbability < raiseFivePointFive.Details.ContinueProbability);
     }
 
     [Fact]
@@ -358,6 +371,53 @@ public sealed class EquityBasedPreflopLeafEvaluatorTests
             100,
             new LegalAction(rootAction, rootAction == ActionType.Raise ? raiseAmount ?? new ChipAmount(250) : ChipAmount.Zero),
             solverKey);
+    }
+
+    private static PreflopLeafEvaluationContext CreateLimpOptionBbContext(HoleCards heroCards, HoleCards villainCards, ActionType rootAction, ChipAmount? raiseAmount = null)
+    {
+        var heroId = new PlayerId(Guid.Parse("11111111-1111-1111-1111-111111111111"));
+        var villainId = new PlayerId(Guid.Parse("22222222-2222-2222-2222-222222222222"));
+
+        var config = new GameConfig(2, new ChipAmount(50), new ChipAmount(100), ChipAmount.Zero, new ChipAmount(10000));
+        var players = new[]
+        {
+            new SolverPlayerState(villainId, 0, Position.SB, new ChipAmount(9900), new ChipAmount(100), new ChipAmount(100), false, false),
+            new SolverPlayerState(heroId, 1, Position.BB, new ChipAmount(9900), new ChipAmount(100), new ChipAmount(100), false, false)
+        };
+
+        var root = new SolverHandState(
+            config,
+            Street.Preflop,
+            buttonSeatIndex: 0,
+            actingPlayerId: heroId,
+            pot: new ChipAmount(200),
+            currentBetSize: new ChipAmount(100),
+            lastRaiseSize: new ChipAmount(100),
+            raisesThisStreet: 0,
+            players,
+            actionHistory: new[]
+            {
+                new SolverActionEntry(villainId, ActionType.PostSmallBlind, new ChipAmount(50)),
+                new SolverActionEntry(heroId, ActionType.PostBigBlind, new ChipAmount(100)),
+                new SolverActionEntry(villainId, ActionType.Call, new ChipAmount(100))
+            },
+            boardCards: Array.Empty<Card>(),
+            deadCards: Array.Empty<Card>(),
+            privateCardsByPlayer: new Dictionary<PlayerId, HoleCards>
+            {
+                [heroId] = heroCards,
+                [villainId] = villainCards
+            });
+
+        return new PreflopLeafEvaluationContext(
+            root,
+            root,
+            heroId,
+            Position.BB,
+            heroCards,
+            100,
+            new LegalAction(rootAction, rootAction == ActionType.Raise ? raiseAmount ?? new ChipAmount(550) : ChipAmount.Zero),
+            "v2/LIMP_OPTION/BB/eff=118.5/jam=18");
     }
 
     private static PreflopLeafEvaluationContext CreateThreeWayContext(string solverKey = "v2/VS_OPEN/BTN/eff=100", HoleCards? heroCards = null, ActionType rootAction = ActionType.Raise)
