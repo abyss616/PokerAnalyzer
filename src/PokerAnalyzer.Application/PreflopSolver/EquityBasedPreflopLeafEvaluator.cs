@@ -269,6 +269,37 @@ public sealed class EquityBasedPreflopLeafEvaluator : IPreflopLeafEvaluator
         }
 
         var heroUtility = (heroEquity - 0.5d) * 2d;
+        var continueBranchUtility = heroUtility;
+        double? immediateComponent = null;
+        double? continueComponent = null;
+        var actionType = context.RootAction.ActionType;
+
+        if (nodeFamily == PreflopNodeFamily.FacingLimp)
+        {
+            var bigBlind = Math.Max(1d, context.RootState.Config.BigBlind.Value);
+            var potBb = context.RootState.Pot.Value / bigBlind;
+            var actionAmountBb = (context.RootAction.Amount?.Value ?? 0L) / bigBlind;
+
+            if (actionType == ActionType.Raise)
+            {
+                // Facing limp options in blind-vs-blind spots need action-size-sensitive utility; otherwise
+                // check and multiple raise sizes collapse to identical EV and regrets stay exactly zero.
+                var foldProbability = Math.Clamp(0.12d + (0.045d * Math.Max(0d, actionAmountBb - 5.5d)), 0.08d, 0.42d);
+                var riskBb = Math.Max(0d, actionAmountBb - 1d);
+                var riskPenalty = 0.08d * riskBb;
+
+                immediateComponent = foldProbability * potBb;
+                continueComponent = (1d - foldProbability) * continueBranchUtility;
+                heroUtility = immediateComponent.Value + continueComponent.Value - riskPenalty;
+            }
+            else if (actionType is ActionType.Check or ActionType.Call)
+            {
+                var passivePenalty = 0.03d;
+                heroUtility = continueBranchUtility - passivePenalty;
+                immediateComponent = 0d;
+                continueComponent = heroUtility;
+            }
+        }
         var heroHand = ToHandLabel(context.HeroCards);
         var handClass = ClassifyHand(context.HeroCards);
         var percentile = Math.Clamp((heroEquity - 0.30d) / 0.40d, 0d, 1d);
@@ -299,9 +330,9 @@ public sealed class EquityBasedPreflopLeafEvaluator : IPreflopLeafEvaluator
                 FoldProbability: foldProbability,
                 ContinueProbability: continueProbability,
                 RootActionType: context.RootAction.ActionType.ToString(),
-                ImmediateWinComponent: null,
-                ContinueComponent: null,
-                ContinueBranchUtility: null,
+                ImmediateWinComponent: immediateComponent,
+                ContinueComponent: continueComponent,
+                ContinueBranchUtility: nodeFamily == PreflopNodeFamily.FacingLimp ? continueBranchUtility : null,
                 FilteredCombos: filteredRange.Length,
                 HeroEquity: heroEquity,
                 HeroUtility: heroUtility,
