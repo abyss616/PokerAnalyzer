@@ -54,10 +54,7 @@ public sealed class PreflopStrategyQueryService : IPreflopStrategyQueryService
             var actionKey = ToActionKey(action);
             var averageFrequency = averageStrategy.TryGetValue(actionKey, out var value) ? value : 0m;
             var currentFrequency = (decimal)(currentPolicy.TryGetValue(action, out var cp) ? cp : 0d);
-            var aggregatedActionEv = _actionValueStore.TryGetAverage(infoSetKey, action, out var averageUtility)
-                ? averageUtility
-                : (double?)null;
-            diagnostics.Add(new PreflopActionDiagnosticDto(actionKey, averageFrequency, currentFrequency, regret, Math.Max(0d, regret), aggregatedActionEv, false));
+            diagnostics.Add(new PreflopActionDiagnosticDto(actionKey, averageFrequency, currentFrequency, regret, Math.Max(0d, regret), false));
         }
 
         var bestActionKey = diagnostics
