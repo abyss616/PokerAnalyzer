@@ -496,21 +496,42 @@ public sealed class EquityBasedPreflopLeafEvaluatorTests
     }
 
     [Fact]
-    public void Evaluate_MultiwayContext_FallsBackToHeuristic()
+    public void Evaluate_MultiwayFacingRaise_UsesGeneralizedFacingRaiseAbstraction()
     {
         var evaluator = new EquityBasedPreflopLeafEvaluator(new TableDrivenOpponentRangeProvider(), new HeuristicPreflopLeafEvaluator(), samplesPerMatchup: 120);
-        var context = CreateThreeWayContext("v2/VS_OPEN/BTN/eff=100");
+        var context = CreateFacingRaiseMultiwayContext(Position.BTN, Position.HJ, ActionType.Call);
 
         var result = evaluator.Evaluate(context);
 
-        Assert.Contains("equity evaluator fallback", result.Reason);
-        Assert.Contains("heuristic preflop", result.Reason);
+        Assert.DoesNotContain("equity evaluator fallback", result.Reason);
         Assert.NotNull(result.Details);
-        Assert.True(result.Details!.UsedFallbackEvaluator);
-        Assert.Equal("HeuristicFallback", result.Details.EvaluatorType);
-        Assert.Equal("AKo", result.Details.HeroHand);
-        Assert.NotNull(result.Details.FallbackReason);
-        Assert.Contains("unsupported root evaluator mode", result.Details.FallbackReason!);
+        Assert.False(result.Details!.UsedFallbackEvaluator);
+        Assert.True(result.Details.UsedEquityEvaluator);
+        Assert.Equal("FacingRaise", result.Details.NodeFamily);
+        Assert.Equal("GeneralizedFacingRaise", result.Details.EvaluatorType);
+        Assert.Equal("GeneralizedFacingRaise", result.Details.AbstractionSource);
+        Assert.Equal("HJ", result.Details.VillainPosition);
+        Assert.Contains("class=InPositionVsEarlierOpen", result.Reason);
+    }
+
+    [Fact]
+    public void Evaluate_FacingRaiseGeneralized_SupportsMultipleHeroPositions_AndContextChangesUtility()
+    {
+        var evaluator = new EquityBasedPreflopLeafEvaluator(new TableDrivenOpponentRangeProvider(), new HeuristicPreflopLeafEvaluator(), samplesPerMatchup: 120);
+
+        var btnVsHj = evaluator.Evaluate(CreateFacingRaiseMultiwayContext(Position.BTN, Position.HJ, ActionType.Call));
+        var bbVsBtn = evaluator.Evaluate(CreateFacingRaiseMultiwayContext(Position.BB, Position.BTN, ActionType.Call));
+        var coVsUtgRaise = evaluator.Evaluate(CreateFacingRaiseMultiwayContext(Position.CO, Position.UTG, ActionType.Raise, new ChipAmount(900)));
+        var coVsUtgJam = evaluator.Evaluate(CreateFacingRaiseMultiwayContext(Position.CO, Position.UTG, ActionType.Raise, new ChipAmount(10000)));
+
+        Assert.Equal("BTN", btnVsHj.Details!.HeroPosition);
+        Assert.Equal("BB", bbVsBtn.Details!.HeroPosition);
+        Assert.NotEqual(btnVsHj.Details.HeroUtility, bbVsBtn.Details.HeroUtility);
+
+        Assert.Equal("Raise", coVsUtgRaise.Details!.RootActionType);
+        Assert.Equal("Jam", coVsUtgJam.Details!.RootActionType);
+        Assert.NotEqual(coVsUtgRaise.Details.HeroUtility, coVsUtgJam.Details.HeroUtility);
+        Assert.Contains("class=BlindDefenseVsLateOpen", bbVsBtn.Reason);
     }
 
     [Fact]
@@ -642,6 +663,65 @@ public sealed class EquityBasedPreflopLeafEvaluatorTests
             100,
             new LegalAction(rootAction, rootAction == ActionType.Raise ? raiseAmount ?? new ChipAmount(550) : ChipAmount.Zero),
             "v2/LIMP_OPTION/BB/eff=118.5/jam=18");
+    }
+
+    private static PreflopLeafEvaluationContext CreateFacingRaiseMultiwayContext(Position heroPosition, Position openerPosition, ActionType rootAction, ChipAmount? raiseAmount = null)
+    {
+        var heroId = new PlayerId(Guid.NewGuid());
+        var openerId = new PlayerId(Guid.NewGuid());
+        var thirdId = new PlayerId(Guid.NewGuid());
+        var fourthId = new PlayerId(Guid.NewGuid());
+
+        var config = new GameConfig(6, new ChipAmount(50), new ChipAmount(100), ChipAmount.Zero, new ChipAmount(10000));
+        var players = new[]
+        {
+            new SolverPlayerState(openerId, 0, openerPosition, new ChipAmount(9700), new ChipAmount(300), new ChipAmount(300), false, false),
+            new SolverPlayerState(heroId, 1, heroPosition, new ChipAmount(9900), new ChipAmount(100), new ChipAmount(100), false, false),
+            new SolverPlayerState(thirdId, 2, Position.SB, new ChipAmount(9950), new ChipAmount(50), new ChipAmount(50), false, false),
+            new SolverPlayerState(fourthId, 3, Position.BB, new ChipAmount(9900), new ChipAmount(100), new ChipAmount(100), false, false)
+        }
+        .Where(p => p.Position != heroPosition && p.Position != openerPosition
+            || p.PlayerId == openerId || p.PlayerId == heroId)
+        .ToArray();
+
+        var sb = players.FirstOrDefault(p => p.Position == Position.SB);
+        var bb = players.FirstOrDefault(p => p.Position == Position.BB);
+        var history = new List<SolverActionEntry>();
+        if (sb is not null)
+            history.Add(new SolverActionEntry(sb.PlayerId, ActionType.PostSmallBlind, new ChipAmount(50)));
+        if (bb is not null)
+            history.Add(new SolverActionEntry(bb.PlayerId, ActionType.PostBigBlind, new ChipAmount(100)));
+        history.Add(new SolverActionEntry(openerId, ActionType.Raise, new ChipAmount(300)));
+
+        var state = new SolverHandState(
+            config,
+            Street.Preflop,
+            buttonSeatIndex: 0,
+            actingPlayerId: heroId,
+            pot: new ChipAmount(450),
+            currentBetSize: new ChipAmount(300),
+            lastRaiseSize: new ChipAmount(200),
+            raisesThisStreet: 1,
+            players,
+            actionHistory: history,
+            boardCards: Array.Empty<Card>(),
+            deadCards: Array.Empty<Card>(),
+            privateCardsByPlayer: new Dictionary<PlayerId, HoleCards>
+            {
+                [heroId] = HoleCards.Parse("AsKh"),
+                [openerId] = HoleCards.Parse("QdJd")
+            });
+
+        var solverKey = $"v2/VS_OPEN/{heroPosition}/eff=100/open=3";
+        return new PreflopLeafEvaluationContext(
+            state,
+            state,
+            heroId,
+            heroPosition,
+            HoleCards.Parse("AsKh"),
+            100,
+            new LegalAction(rootAction, rootAction == ActionType.Raise ? raiseAmount ?? new ChipAmount(900) : new ChipAmount(300)),
+            solverKey);
     }
 
     private static PreflopLeafEvaluationContext CreateThreeWayContext(string solverKey = "v2/VS_OPEN/BTN/eff=100", HoleCards? heroCards = null, ActionType rootAction = ActionType.Raise)

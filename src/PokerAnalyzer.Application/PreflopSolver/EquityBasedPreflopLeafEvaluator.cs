@@ -75,6 +75,12 @@ public sealed class EquityBasedPreflopLeafEvaluator : IPreflopLeafEvaluator
         if (context.RootAction.ActionType == ActionType.Fold)
             return EvaluateFold(context, rootEvaluatorMode, rootActiveOpponentCount, leafActiveOpponentCount);
 
+        if ((rootEvaluatorMode == RootEvaluatorMode.AbstractedHeadsUp || rootEvaluatorMode == RootEvaluatorMode.TrueHeadsUp)
+            && TryEvaluateFacingRaiseActionAware(context, nodeFamily, rootActiveOpponentCount, leafActiveOpponentCount, out var facingRaiseEvaluation))
+        {
+            return facingRaiseEvaluation;
+        }
+
         if (rootEvaluatorMode == RootEvaluatorMode.AbstractedHeadsUp
             && (TryEvaluateBtnUnopenedActionAware(context, nodeFamily, rootActiveOpponentCount, leafActiveOpponentCount, out var abstracted)
                 || TryEvaluateUnopenedActionAware(context, nodeFamily, rootActiveOpponentCount, leafActiveOpponentCount, out abstracted)
@@ -93,6 +99,124 @@ public sealed class EquityBasedPreflopLeafEvaluator : IPreflopLeafEvaluator
         }
 
         return Fallback(context, rootEvaluatorMode, rootActiveOpponentCount, leafActiveOpponentCount, $"unsupported root evaluator mode for family={nodeFamily}, rootActiveOpponents={rootActiveOpponentCount}");
+    }
+
+    private bool TryEvaluateFacingRaiseActionAware(PreflopLeafEvaluationContext context, PreflopNodeFamily nodeFamily, int rootActiveOpponentCount, int leafActiveOpponentCount, out PreflopLeafEvaluation evaluation)
+    {
+        evaluation = default!;
+        if (nodeFamily != PreflopNodeFamily.FacingRaise)
+            return false;
+
+        var rootOpponents = context.RootState.Players.Where(p => p.PlayerId != context.HeroPlayerId && p.IsActive).ToArray();
+        if (rootOpponents.Length == 0)
+            return false;
+
+        var opener = ResolveFacingRaiseOpener(context);
+        if (opener is null)
+            return false;
+
+        var facingContext = BuildFacingRaiseContext(context, opener.Position, rootOpponents.Length);
+        var activeProfile = _populationProfileProvider.ActiveProfile;
+        var rangeContributors = new List<(OpponentWeightedRange Range, double Weight, string Label, string Reason)>();
+
+        foreach (var opponent in rootOpponents)
+        {
+            var percentileOverride = GetFacingRaisePercentileOverride(opponent.Position, opener.Position, facingContext, activeProfile);
+            var request = new OpponentRangeRequest(context.HeroPosition, opponent.Position, nodeFamily, context.RootState.RaisesThisStreet, true, context.SolverKey, percentileOverride);
+            if (!_rangeProvider.TryGetRange(request, out var opponentRange, out var opponentReason))
+                return false;
+
+            var weight = GetFacingRaiseContributorWeight(opponent.Position, opener.Position, facingContext);
+            rangeContributors.Add((opponentRange, weight, opponent.Position.ToString(), opponentReason));
+        }
+
+        var combined = BlendRanges(rangeContributors.Select(x => (x.Range, x.Weight)).ToArray());
+        var detail = $"Facing-raise generalized abstraction ({_populationProfileProvider.ActiveProfileName}): hero={facingContext.HeroPosition}, opener={facingContext.OpenerPosition}, behind={facingContext.PlayersLeftBehindHero}, hu={facingContext.IsHeadsUpVsOpener}, ip={facingContext.IsInPositionVsOpener}, class={facingContext.StructuralClass}; contributors={string.Join(", ", rangeContributors.Select(x => $"{x.Label}w={x.Weight:0.00}"))}; {string.Join("; ", rangeContributors.Select(x => $"{x.Label}={x.Reason}"))}";
+
+        var baseEval = EvaluateAgainstRange(
+            context,
+            nodeFamily,
+            villainPosition: null,
+            combined,
+            detail,
+            rootEvaluatorMode: rootActiveOpponentCount == 1 ? RootEvaluatorMode.TrueHeadsUp : RootEvaluatorMode.AbstractedHeadsUp,
+            rootActiveOpponentCount: rootActiveOpponentCount,
+            leafActiveOpponentCount: leafActiveOpponentCount,
+            evaluatorType: "GeneralizedFacingRaise",
+            abstractionSource: "GeneralizedFacingRaise",
+            abstractedOpponentCount: 1,
+            syntheticDefenderLabel: "SyntheticRaiseDefender",
+            foldProbability: null,
+            continueProbability: null,
+            summaryPrefix: "Level-2 generalized facing-raise abstraction");
+
+        if (!baseEval.UtilityByPlayer.TryGetValue(context.HeroPlayerId, out var continueBranchUtility))
+            continueBranchUtility = 0d;
+
+        var bigBlind = Math.Max(1d, context.RootState.Config.BigBlind.Value);
+        var potBb = context.RootState.Pot.Value / bigBlind;
+        var actionType = context.RootAction.ActionType;
+        var actionSizeBb = (context.RootAction.Amount?.Value ?? 0L) / bigBlind;
+        var jamSizeBb = (context.RootState.Players.First(p => p.PlayerId == context.HeroPlayerId).CurrentStreetContribution.Value + context.RootState.Players.First(p => p.PlayerId == context.HeroPlayerId).Stack.Value) / bigBlind;
+        var isJamAction = actionType is ActionType.AllIn || (actionType == ActionType.Raise && actionSizeBb >= jamSizeBb - 0.01d);
+
+        var allFold = 1d;
+        foreach (var opponent in rootOpponents)
+        {
+            var foldProbability = GetFacingRaiseFoldProbability(opponent.Position, opener.Position, facingContext, actionType, actionSizeBb, isJamAction, activeProfile);
+            allFold *= foldProbability;
+        }
+
+        allFold = Math.Clamp(allFold, 0d, 1d);
+        var continueProbability = Math.Clamp(1d - allFold, 0d, 1d);
+
+        var immediateComponent = 0d;
+        var continueComponent = 0d;
+        var heroUtility = continueBranchUtility;
+
+        if (actionType == ActionType.Call)
+        {
+            allFold = 0d;
+            continueProbability = 1d;
+            var squeezeRiskPenalty = GetFacingRaiseSqueezeRiskPenalty(facingContext);
+            var positionalPenalty = facingContext.IsInPositionVsOpener ? 0d : 0.03d;
+            heroUtility = continueBranchUtility - squeezeRiskPenalty - positionalPenalty;
+            continueComponent = heroUtility;
+        }
+        else if (actionType == ActionType.Raise || actionType == ActionType.AllIn)
+        {
+            immediateComponent = allFold * potBb;
+            continueComponent = continueProbability * continueBranchUtility;
+            var riskPenalty = continueProbability * activeProfile.RaiseRiskPenaltyFactor * Math.Max(0d, actionSizeBb - 2d);
+            var leveragePenalty = isJamAction ? 0.12d + (0.02d * facingContext.PlayersLeftBehindHero) : 0.05d + (0.01d * facingContext.PlayersLeftBehindHero);
+            heroUtility = immediateComponent + continueComponent - riskPenalty - leveragePenalty;
+        }
+
+        var utility = baseEval.UtilityByPlayer.ToDictionary(kvp => kvp.Key, kvp => kvp.Value);
+        utility[context.HeroPlayerId] = heroUtility;
+        var actionLabel = isJamAction ? "Jam" : actionType.ToString();
+
+        evaluation = baseEval with
+        {
+            UtilityByPlayer = utility,
+            Reason = $"{baseEval.Reason}, actionAware={actionLabel}, utility={heroUtility:0.000}, class={facingContext.StructuralClass}",
+            Details = baseEval.Details! with
+            {
+                HeroUtility = heroUtility,
+                RootActionType = actionLabel,
+                FoldProbability = allFold,
+                ContinueProbability = continueProbability,
+                ImmediateWinComponent = immediateComponent,
+                ContinueComponent = continueComponent,
+                ContinueBranchUtility = continueBranchUtility,
+                DisplaySummary = $"{baseEval.Details!.DisplaySummary} Action={actionLabel}, EV={heroUtility:0.000}, fold={allFold:0.000}, continue={continueProbability:0.000}, class={facingContext.StructuralClass}, profile={_populationProfileProvider.ActiveProfileName}.",
+                ActivePopulationProfile = _populationProfileProvider.ActiveProfileName,
+                VillainPosition = opener.Position.ToString(),
+                RationaleSummary = $"Facing-raise generalized evaluator ({facingContext.StructuralClass}) models hero={facingContext.HeroPosition}, opener={facingContext.OpenerPosition}, IP={facingContext.IsInPositionVsOpener}, behind={facingContext.PlayersLeftBehindHero}, eff={facingContext.EffectiveStackBb:0.##}bb under {_populationProfileProvider.ActiveProfileName}."
+            }
+        };
+
+        return true;
     }
 
     private bool TryEvaluateFacingLimpActionAware(PreflopLeafEvaluationContext context, PreflopNodeFamily nodeFamily, int rootActiveOpponentCount, int leafActiveOpponentCount, out PreflopLeafEvaluation evaluation)
@@ -692,7 +816,7 @@ public sealed class EquityBasedPreflopLeafEvaluator : IPreflopLeafEvaluator
         if (rootActiveOpponentCount == 1)
             return RootEvaluatorMode.TrueHeadsUp;
 
-        if ((nodeFamily == PreflopNodeFamily.Unopened || nodeFamily == PreflopNodeFamily.FacingLimp)
+        if ((nodeFamily == PreflopNodeFamily.Unopened || nodeFamily == PreflopNodeFamily.FacingLimp || nodeFamily == PreflopNodeFamily.FacingRaise)
             && rootActiveOpponentCount >= 2)
         {
             return RootEvaluatorMode.AbstractedHeadsUp;
@@ -770,6 +894,140 @@ public sealed class EquityBasedPreflopLeafEvaluator : IPreflopLeafEvaluator
         || left.First == right.Second
         || left.Second == right.First
         || left.Second == right.Second;
+
+    private static FacingRaiseStructuralContext BuildFacingRaiseContext(PreflopLeafEvaluationContext context, Position openerPosition, int opponentCount)
+    {
+        var playersLeftBehindHero = CountPlayersLeftBehind(context.RootState.Players, context.HeroPlayerId);
+        var isHeadsUpVsOpener = opponentCount == 1;
+        var isInPosition = IsInPositionPostflop(context.HeroPosition, openerPosition);
+        var structuralClass = ClassifyFacingRaiseStructure(context.HeroPosition, openerPosition, isHeadsUpVsOpener, isInPosition, playersLeftBehindHero);
+        return new FacingRaiseStructuralContext(
+            context.HeroPosition,
+            openerPosition,
+            playersLeftBehindHero,
+            isHeadsUpVsOpener,
+            isInPosition,
+            context.EffectiveStackBb,
+            structuralClass);
+    }
+
+    private SolverPlayerState? ResolveFacingRaiseOpener(PreflopLeafEvaluationContext context)
+    {
+        var playersById = context.RootState.Players.ToDictionary(p => p.PlayerId);
+        var aggressor = context.RootState.ActionHistory
+            .Where(a => a.PlayerId != context.HeroPlayerId && (a.ActionType == ActionType.Bet || a.ActionType == ActionType.Raise || a.ActionType == ActionType.AllIn))
+            .LastOrDefault();
+
+        if (aggressor.PlayerId != default && playersById.TryGetValue(aggressor.PlayerId, out var opener))
+            return opener;
+
+        return context.RootState.Players.FirstOrDefault(p => p.PlayerId != context.HeroPlayerId && p.IsActive);
+    }
+
+    private static string ClassifyFacingRaiseStructure(Position heroPosition, Position openerPosition, bool isHeadsUpVsOpener, bool isInPositionVsOpener, int playersLeftBehindHero)
+    {
+        if (heroPosition is Position.SB or Position.BB && openerPosition is Position.CO or Position.BTN)
+            return "BlindDefenseVsLateOpen";
+
+        if (isInPositionVsOpener && openerPosition is Position.UTG or Position.HJ or Position.CO)
+            return "InPositionVsEarlierOpen";
+
+        if (!isInPositionVsOpener && heroPosition is Position.HJ or Position.CO or Position.BTN)
+            return "OutOfPositionColdDefense";
+
+        if (!isHeadsUpVsOpener && playersLeftBehindHero > 0)
+            return "FieldBehindFacingRaise";
+
+        return "GeneralFacingRaise";
+    }
+
+    private static bool IsInPositionPostflop(Position heroPosition, Position openerPosition)
+        => GetPostflopOrder(heroPosition) > GetPostflopOrder(openerPosition);
+
+    private static int GetPostflopOrder(Position position)
+        => position switch
+        {
+            Position.SB => 0,
+            Position.BB => 1,
+            Position.UTG => 2,
+            Position.HJ => 3,
+            Position.CO => 4,
+            Position.BTN => 5,
+            _ => 0
+        };
+
+    private static double? GetFacingRaisePercentileOverride(Position opponentPosition, Position openerPosition, FacingRaiseStructuralContext context, PreflopPopulationProfile profile)
+    {
+        if (opponentPosition == openerPosition)
+            return 0.14d;
+
+        if (opponentPosition == Position.SB)
+            return profile.SbContinueRangePercentileUnopenedVsBtn;
+
+        if (opponentPosition == Position.BB)
+            return profile.BbContinueRangePercentileUnopenedVsBtn;
+
+        return context.PlayersLeftBehindHero > 0 ? 0.20d : 0.18d;
+    }
+
+    private static double GetFacingRaiseContributorWeight(Position opponentPosition, Position openerPosition, FacingRaiseStructuralContext context)
+    {
+        var baseWeight = opponentPosition == openerPosition ? 1.25d : 0.85d;
+        if (opponentPosition is Position.SB or Position.BB)
+            baseWeight += 0.05d;
+
+        if (context.PlayersLeftBehindHero > 0 && opponentPosition != openerPosition)
+            baseWeight += 0.10d;
+
+        if (!context.IsInPositionVsOpener)
+            baseWeight += 0.05d;
+
+        return baseWeight;
+    }
+
+    private static double GetFacingRaiseFoldProbability(Position opponentPosition, Position openerPosition, FacingRaiseStructuralContext context, ActionType actionType, double actionSizeBb, bool isJamAction, PreflopPopulationProfile profile)
+    {
+        if (actionType == ActionType.Call)
+            return 0d;
+
+        var baseFold = opponentPosition == openerPosition ? 0.42d : 0.54d;
+        if (opponentPosition is Position.SB or Position.BB)
+            baseFold += 0.04d;
+
+        if (context.StructuralClass == "BlindDefenseVsLateOpen")
+            baseFold -= 0.04d;
+
+        if (context.StructuralClass == "FieldBehindFacingRaise")
+            baseFold += 0.03d;
+
+        if (!context.IsInPositionVsOpener)
+            baseFold -= 0.02d;
+
+        var sizeLift = isJamAction
+            ? 0.16d
+            : 0.07d * Math.Max(0d, actionSizeBb - 9d);
+
+        var depthAdjustment = context.EffectiveStackBb >= 50m ? 0.02d : -0.02d;
+        var populationAdjustment = profile.RaiseRiskPenaltyFactor >= 0.015d ? 0.02d : 0d;
+
+        return Math.Clamp(baseFold + sizeLift + depthAdjustment + populationAdjustment, 0.12d, 0.95d);
+    }
+
+    private static double GetFacingRaiseSqueezeRiskPenalty(FacingRaiseStructuralContext context)
+    {
+        var behindPenalty = 0.025d * context.PlayersLeftBehindHero;
+        var oopPenalty = context.IsInPositionVsOpener ? 0d : 0.02d;
+        return behindPenalty + oopPenalty;
+    }
+
+    private readonly record struct FacingRaiseStructuralContext(
+        Position HeroPosition,
+        Position OpenerPosition,
+        int PlayersLeftBehindHero,
+        bool IsHeadsUpVsOpener,
+        bool IsInPositionVsOpener,
+        decimal EffectiveStackBb,
+        string StructuralClass);
 
     private static bool IsLimper(SolverPlayerState player)
         => player.Position is not Position.SB and not Position.BB;
