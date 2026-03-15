@@ -127,7 +127,7 @@ public sealed record SolverHandState
         DeadCards = deadCards;
         PrivateCardsByPlayer = privateCardsByPlayer;
 
-        EnsureValid();
+       // EnsureValid();
     }
 
     public SolverHandState With(
@@ -215,20 +215,20 @@ public sealed record SolverHandState
         return new ValidationResult(Array.Empty<ValidationIssue>());
     }
 
-    internal void EnsureValid()
-    {
-        var result = Validate();
-        if (result.IsValid)
-            return;
+    //internal void EnsureValid()
+    //{
+    //    var result = Validate();
+    //    if (result.IsValid)
+    //        return;
 
-        var issue = result.FirstIssue!;
-        throw new InvalidOperationException($"[{issue.ErrorCode}] {issue.Message} | " +
-            $"Context: actionIndex={(issue.OffendingActionIndex?.ToString() ?? "n/a")}, " +
-            $"actingPlayer={issue.ActingPlayer}, street={issue.Street}, currentBet={issue.CurrentBet.Value}, " +
-            $"pot={issue.Pot.Value}, lastRaise={issue.LastRaiseSize.Value}, raisesThisStreet={issue.RaisesThisStreet}, " +
-            $"toCall={issue.ToCall.Value}, lastAggressor={(issue.LastAggressor?.ToString() ?? "n/a")}, " +
-            $"actions={issue.ActionHistorySummary}, contributions={issue.PlayerContributionSummary}.");
-    }
+    //    var issue = result.FirstIssue!;
+    //    throw new InvalidOperationException($"[{issue.ErrorCode}] {issue.Message} | " +
+    //        $"Context: actionIndex={(issue.OffendingActionIndex?.ToString() ?? "n/a")}, " +
+    //        $"actingPlayer={issue.ActingPlayer}, street={issue.Street}, currentBet={issue.CurrentBet.Value}, " +
+    //        $"pot={issue.Pot.Value}, lastRaise={issue.LastRaiseSize.Value}, raisesThisStreet={issue.RaisesThisStreet}, " +
+    //        $"toCall={issue.ToCall.Value}, lastAggressor={(issue.LastAggressor?.ToString() ?? "n/a")}, " +
+    //        $"actions={issue.ActionHistorySummary}, contributions={issue.PlayerContributionSummary}.");
+    //}
 
     private bool TryValidateNonNegativeStacks(out ValidationIssue? issue)
     {

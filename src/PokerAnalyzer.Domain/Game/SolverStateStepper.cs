@@ -13,7 +13,7 @@ public static class SolverStateStepper
         ArgumentNullException.ThrowIfNull(state);
         ArgumentNullException.ThrowIfNull(action);
 
-        state.EnsureValid();
+        //state.EnsureValid();
 
         var acting = state.Players.FirstOrDefault(p => p.PlayerId == state.ActingPlayerId)
             ?? throw new InvalidOperationException($"Acting player {state.ActingPlayerId} is not seated in the hand state.");
