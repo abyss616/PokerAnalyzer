@@ -363,7 +363,7 @@ public sealed class EquityBasedPreflopLeafEvaluator : IPreflopLeafEvaluator
         var bigBlind = Math.Max(1d, context.RootState.Config.BigBlind.Value);
         var potBb = context.RootState.Pot.Value / bigBlind;
         var actionType = context.RootAction.ActionType;
-        var actionSizeBb = actionType == ActionType.Raise ? context.RootAction.Amount.Value / bigBlind : 1d;
+        var actionSizeBb = actionType == ActionType.Raise ? context.RootAction.Amount?.Value??0.0 / bigBlind : 1d;
         var sizeDelta = Math.Max(0d, actionSizeBb - 5.5d);
 
         var allFold = 1d;
