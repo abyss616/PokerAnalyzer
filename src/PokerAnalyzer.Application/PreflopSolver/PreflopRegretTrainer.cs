@@ -414,6 +414,7 @@ public sealed class PreflopRegretTrainer
 
             var storageKey = _canonicalStorageKey ?? node.InfoSetKey;
             var policy = ResolvePolicy(storageKey, node.LegalActions, node.Policy);
+            Trace.WriteLine($"preflop-trainer infoset={storageKey}, legalActions=[{string.Join(", ", node.LegalActions)}], chosenAction={node.SampledAction}");
 
             foreach (var action in node.LegalActions)
             {
@@ -424,10 +425,14 @@ public sealed class PreflopRegretTrainer
                 nodeValue += policyProbability * actionValues[action];
             }
 
+            Trace.WriteLine($"preflop-trainer actionUtilities infoset={storageKey}: {string.Join(", ", actionValues.Select(kvp => $"{kvp.Key}={kvp.Value:0.0000}"))}, nodeValue={nodeValue:0.0000}");
+
             foreach (var action in node.LegalActions)
             {
                 var regretDelta = actionValues[action] - nodeValue;
                 accumulator.AddRegret(storageKey, action, regretDelta);
+                var cumulativeRegret = _regretStore.Get(storageKey, action) + regretDelta;
+                Trace.WriteLine($"preflop-trainer regretUpdate infoset={storageKey}, action={action}, delta={regretDelta:0.0000}, cumulative={cumulativeRegret:0.0000}");
             }
 
             foreach (var action in node.LegalActions)
