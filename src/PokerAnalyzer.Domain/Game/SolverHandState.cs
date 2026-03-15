@@ -591,31 +591,60 @@ public sealed record SolverHandState
         return false;
     }
 
-    private bool IsBigBlindOptionVsLimpRaiseAction(
-        int actionIndex,
+    private bool TryValidateAggressiveAmount(
         SolverActionEntry action,
-        ActionValidationState playerState,
-        ChipAmount currentBet)
+        ChipAmount priorContribution,
+        string actionName,
+        int actionIndex,
+        ChipAmount currentBet,
+        ChipAmount lastRaiseSize,
+        out ValidationIssue? issue)
     {
-        if (Street != Street.Preflop)
-            return false;
+        if (action.Amount.Value <= 0)
+        {
+            issue = BuildIssue("HISTORY_AGGRESSIVE_NONPOSITIVE", $"{actionName} action for player {action.PlayerId} must use a positive to-amount.", actionIndex, currentBet, lastRaiseSize);
+            return true;
+        }
 
-        var actor = Players.FirstOrDefault(p => p.PlayerId == action.PlayerId);
-        if (actor is null || actor.Position != Position.BB)
-            return false;
+        if (action.Amount <= priorContribution)
+        {
+            issue = BuildIssue("HISTORY_AGGRESSIVE_NOT_INCREASING", $"{actionName} action for player {action.PlayerId} must increase street contribution.", actionIndex, currentBet, lastRaiseSize);
+            return true;
+        }
 
-        if (playerState.Contribution != currentBet)
-            return false;
+        issue = null;
+        return false;
+    }
 
-        var hasAggressiveAction = ActionHistory.Take(actionIndex).Any(a =>
-            a.ActionType == ActionType.Bet ||
-            a.ActionType == ActionType.Raise ||
-            a.ActionType == ActionType.AllIn);
+    private ValidationIssue BuildIssue(
+        string errorCode,
+        string message,
+        int? offendingActionIndex = null,
+        ChipAmount? currentBetOverride = null,
+        ChipAmount? lastRaiseSizeOverride = null)
+    {
+        return new ValidationIssue(
+            errorCode,
+            message,
+            offendingActionIndex,
+            ActingPlayerId,
+            Street,
+            currentBetOverride ?? CurrentBetSize,
+            Pot,
+            lastRaiseSizeOverride ?? LastRaiseSize,
+            RaisesThisStreet,
+            BuildActionHistorySummary(),
+            BuildPlayerContributionSummary(),
+            ResolveToCallSafe(),
+            ResolveLastAggressor());
+    }
 
-        if (hasAggressiveAction)
-            return false;
+    private string BuildActionHistorySummary()
+    {
+        if (ActionHistory.Count == 0)
+            return "<empty>";
 
-        return ActionHistory.Take(actionIndex).Any(a => a.ActionType == ActionType.Call);
+        return string.Join(" | ", ActionHistory.Select((a, i) => $"#{i}:{a.PlayerId}:{a.ActionType}:{a.Amount.Value}"));
     }
 
     private bool TryValidateAggressiveAmount(
