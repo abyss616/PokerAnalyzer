@@ -408,11 +408,11 @@ public sealed class PreflopRegretTrainer
             if (string.IsNullOrWhiteSpace(node.InfoSetKey) || node.StateBeforeAction is null || node.LegalActions.Count == 0)
                 continue;
 
-            var (actionValues, leafDetails) = EvaluateActionValues(node.StateBeforeAction, traversalPlayerId, node.LegalActions, rng);
+            var storageKey = _canonicalStorageKey ?? node.InfoSetKey;
+            var (actionValues, leafDetails) = EvaluateActionValues(node.StateBeforeAction, traversalPlayerId, node.LegalActions, rng, storageKey);
             accumulator.LastLeafEvaluationDetails = leafDetails ?? accumulator.LastLeafEvaluationDetails;
             var nodeValue = 0d;
 
-            var storageKey = _canonicalStorageKey ?? node.InfoSetKey;
             var policy = ResolvePolicy(storageKey, node.LegalActions, node.Policy);
            // Trace.WriteLine($"preflop-trainer infoset={storageKey}, legalActions=[{string.Join(", ", node.LegalActions)}], chosenAction={node.SampledAction}");
 
@@ -757,7 +757,8 @@ public sealed class PreflopRegretTrainer
         SolverHandState stateBeforeAction,
         PlayerId traversalPlayerId,
         IReadOnlyList<LegalAction> legalActions,
-        Random rng)
+        Random rng,
+        string? solverKey)
     {
         var actionValues = new Dictionary<LegalAction, double>(legalActions.Count);
         PreflopLeafEvaluationDetails? latestDetails = null;
@@ -779,7 +780,7 @@ public sealed class PreflopRegretTrainer
                 heroCards,
                 ResolveEffectiveStackBb(stateBeforeAction, traversalPlayerId),
                 action,
-                null);
+                solverKey);
 
             var rollout = _trajectoryTraverser.SampleTrajectory(afterActionState, rng, evaluationContext);
             var utility = rollout.UtilityByPlayer.TryGetValue(traversalPlayerId, out var value)

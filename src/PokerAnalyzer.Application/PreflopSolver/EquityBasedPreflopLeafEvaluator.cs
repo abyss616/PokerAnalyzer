@@ -273,8 +273,10 @@ public sealed class EquityBasedPreflopLeafEvaluator : IPreflopLeafEvaluator
         double? immediateComponent = null;
         double? continueComponent = null;
         var actionType = context.RootAction.ActionType;
+        double? facingLimpFoldProbability = null;
+        double? facingLimpContinueProbability = null;
 
-        if (nodeFamily == PreflopNodeFamily.FacingLimp)
+        if (nodeFamily == PreflopNodeFamily.FacingLimp && string.Equals(villainPosition, nameof(Position.SB), StringComparison.OrdinalIgnoreCase))
         {
             var bigBlind = Math.Max(1d, context.RootState.Config.BigBlind.Value);
             var potBb = context.RootState.Pot.Value / bigBlind;
@@ -285,8 +287,10 @@ public sealed class EquityBasedPreflopLeafEvaluator : IPreflopLeafEvaluator
                 // Facing limp options in blind-vs-blind spots need action-size-sensitive utility; otherwise
                 // check and multiple raise sizes collapse to identical EV and regrets stay exactly zero.
                 var raiseFoldProbability = Math.Clamp(0.12d + (0.045d * Math.Max(0d, actionAmountBb - 5.5d)), 0.08d, 0.42d);
+                facingLimpFoldProbability = raiseFoldProbability;
+                facingLimpContinueProbability = 1d - raiseFoldProbability;
                 var riskBb = Math.Max(0d, actionAmountBb - 1d);
-                var riskPenalty = 0.08d * riskBb;
+                var riskPenalty = _populationProfileProvider.ActiveProfile.RaiseRiskPenaltyFactor * riskBb;
 
                 immediateComponent = raiseFoldProbability * potBb;
                 continueComponent = (1d - raiseFoldProbability) * continueBranchUtility;
@@ -296,6 +300,8 @@ public sealed class EquityBasedPreflopLeafEvaluator : IPreflopLeafEvaluator
             {
                 var passivePenalty = 0.03d;
                 heroUtility = continueBranchUtility - passivePenalty;
+                facingLimpFoldProbability = 0d;
+                facingLimpContinueProbability = 1d;
                 immediateComponent = 0d;
                 continueComponent = heroUtility;
             }
@@ -327,8 +333,8 @@ public sealed class EquityBasedPreflopLeafEvaluator : IPreflopLeafEvaluator
                 IsHeadsUp: rootEvaluatorMode == RootEvaluatorMode.TrueHeadsUp || abstractedOpponentCount == 1,
                 RangeDescription: range.Description,
                 RangeDetail: rangeReason,
-                FoldProbability: foldProbability,
-                ContinueProbability: continueProbability,
+                FoldProbability: foldProbability ?? facingLimpFoldProbability,
+                ContinueProbability: continueProbability ?? facingLimpContinueProbability,
                 RootActionType: context.RootAction.ActionType.ToString(),
                 ImmediateWinComponent: immediateComponent,
                 ContinueComponent: continueComponent,

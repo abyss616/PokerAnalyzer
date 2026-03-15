@@ -414,6 +414,35 @@ public sealed class PreflopRegretTrainerTests
     }
 
 
+    [Fact]
+    public void RunIteration_UsesInfoSetKeyAsSolverKey_ForActionValueLeafEvaluation()
+    {
+        var root = CreateHeadsUpPreflopState();
+        var traversalPlayer = root.Players[0].PlayerId;
+        var opponent = root.Players[1].PlayerId;
+
+        var fold = new LegalAction(ActionType.Fold);
+        var check = new LegalAction(ActionType.Check);
+        var raise = new LegalAction(ActionType.Raise, new ChipAmount(11));
+        var traverser = new SolverKeyCapturingTrajectoryTraverser(root, traversalPlayer, opponent, fold, check, raise);
+
+        var regrets = new InMemoryRegretStore();
+        var trainer = new PreflopRegretTrainer(
+            new FixedRootStateProvider(root),
+            traverser,
+            new FixedTraversalPlayerSelector(traversalPlayer),
+            regrets,
+            new InMemoryAverageStrategyStore());
+
+        trainer.RunIteration(new Random(13));
+
+        Assert.NotEmpty(traverser.CapturedSolverKeys);
+        Assert.All(traverser.CapturedSolverKeys, key => Assert.Equal("traversal_infoset", key));
+        Assert.NotEqual(0d, regrets.Get("traversal_infoset", fold));
+        Assert.NotEqual(0d, regrets.Get("traversal_infoset", raise));
+        Assert.NotEqual(regrets.Get("traversal_infoset", fold), regrets.Get("traversal_infoset", raise));
+    }
+
     private static PreflopRegretTrainer CreateTrainerWithRegretAwareTraverser(
         out InMemoryRegretStore regrets,
         out InMemoryAverageStrategyStore averageStrategy,
@@ -500,7 +529,11 @@ public sealed class PreflopRegretTrainerTests
             },
             boardCards: Array.Empty<Card>(),
             deadCards: Array.Empty<Card>(),
-            privateCardsByPlayer: new Dictionary<PlayerId, HoleCards>());
+            privateCardsByPlayer: new Dictionary<PlayerId, HoleCards>
+            {
+                [sbId] = HoleCards.Parse("AsKh"),
+                [bbId] = HoleCards.Parse("QdJd")
+            });
     }
 
     private sealed class RegretAwareStubTrajectoryTraverser : IPreflopTrajectoryTraverser
@@ -535,7 +568,7 @@ public sealed class PreflopRegretTrainerTests
 
         public TrajectorySample RunIteration(Random rng) => SampleTrajectory(_root, rng);
 
-        public TrajectorySample SampleTrajectory(SolverHandState rootState, Random rng)
+        public TrajectorySample SampleTrajectory(SolverHandState rootState, Random rng, PreflopLeafEvaluationContext? evaluationContext = null)
         {
             if (!_returnedInitialTrajectory)
             {
@@ -589,6 +622,79 @@ public sealed class PreflopRegretTrainerTests
     }
 
 
+    private sealed class SolverKeyCapturingTrajectoryTraverser : IPreflopTrajectoryTraverser
+    {
+        private readonly SolverHandState _root;
+        private readonly PlayerId _traversalPlayer;
+        private readonly PlayerId _opponent;
+        private readonly LegalAction _fold;
+        private readonly LegalAction _check;
+        private readonly LegalAction _raise;
+        private bool _returnedInitialTrajectory;
+
+        public SolverKeyCapturingTrajectoryTraverser(SolverHandState root, PlayerId traversalPlayer, PlayerId opponent, LegalAction fold, LegalAction check, LegalAction raise)
+        {
+            _root = root;
+            _traversalPlayer = traversalPlayer;
+            _opponent = opponent;
+            _fold = fold;
+            _check = check;
+            _raise = raise;
+        }
+
+        public List<string?> CapturedSolverKeys { get; } = new();
+
+        public TrajectorySample RunIteration(Random rng) => SampleTrajectory(_root, rng);
+
+        public TrajectorySample SampleTrajectory(SolverHandState rootState, Random rng, PreflopLeafEvaluationContext? evaluationContext = null)
+        {
+            if (!_returnedInitialTrajectory)
+            {
+                _returnedInitialTrajectory = true;
+                var legalActions = new[] { _fold, _check, _raise };
+                var path = new List<VisitedNode>
+                {
+                    VisitedNode.CreateAction(
+                        depth: 0,
+                        street: Street.Preflop,
+                        actingPlayerId: _traversalPlayer,
+                        infoSetKey: "traversal_infoset",
+                        legalActions: legalActions,
+                        policy: new Dictionary<LegalAction, double> { [_fold] = 1d/3d, [_check] = 1d/3d, [_raise] = 1d/3d },
+                        sampledAction: _check,
+                        stateBeforeAction: rootState),
+                    VisitedNode.CreateAction(
+                        depth: 1,
+                        street: Street.Preflop,
+                        actingPlayerId: _opponent,
+                        infoSetKey: "opponent_infoset",
+                        legalActions: new[] { _fold, _check },
+                        policy: new Dictionary<LegalAction, double> { [_fold] = 0.5d, [_check] = 0.5d },
+                        sampledAction: _check,
+                        stateBeforeAction: rootState.Apply(_check)),
+                    VisitedNode.CreateLeaf(2, Street.Preflop, "leaf")
+                };
+
+                return new TrajectorySample(rootState, new Dictionary<PlayerId, double> { [_traversalPlayer] = 0d, [_opponent] = 0d }, path);
+            }
+
+            CapturedSolverKeys.Add(evaluationContext?.SolverKey);
+            var action = evaluationContext?.RootAction.ActionType ?? ActionType.Check;
+            var utility = action switch
+            {
+                ActionType.Fold => -0.20d,
+                ActionType.Check => 0.12d,
+                ActionType.Raise => 0.31d,
+                _ => 0d
+            };
+
+            return new TrajectorySample(
+                rootState,
+                new Dictionary<PlayerId, double> { [_traversalPlayer] = utility, [_opponent] = -utility },
+                new[] { VisitedNode.CreateLeaf(0, rootState.Street, "rollout leaf") });
+        }
+    }
+
     private sealed class StaticPolicyTrajectoryTraverser : IPreflopTrajectoryTraverser
     {
         private readonly SolverHandState _root;
@@ -631,7 +737,7 @@ public sealed class PreflopRegretTrainerTests
 
         public TrajectorySample RunIteration(Random rng) => SampleTrajectory(_root, rng);
 
-        public TrajectorySample SampleTrajectory(SolverHandState rootState, Random rng)
+        public TrajectorySample SampleTrajectory(SolverHandState rootState, Random rng, PreflopLeafEvaluationContext? evaluationContext = null)
         {
             if (rootState.ActionHistory.Count > _root.ActionHistory.Count)
             {
