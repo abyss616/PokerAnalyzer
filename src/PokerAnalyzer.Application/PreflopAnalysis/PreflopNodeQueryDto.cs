@@ -54,6 +54,7 @@ public sealed record PreflopNodeQueryResultDto(
     decimal? BestActionMargin,
     decimal? SeparationScore,
     PreflopNodeSolveMetadataDto SolveMetadata,
+    IReadOnlyList<PreflopNodeActionExplanationDto> ActionExplanations,
     PreflopNodeTraceDto Trace);
 
 public sealed record PreflopNodeLegalActionDto(
@@ -67,9 +68,14 @@ public sealed record PreflopNodeStrategyItemDto(string ActionKey, decimal Freque
 public sealed record PreflopNodeActionDiagnosticDto(
     string ActionKey,
     decimal Frequency,
+    decimal CurrentPolicyFrequency,
     double Regret,
     double PositiveRegret,
     bool IsBestByFrequency);
+
+public sealed record PreflopNodeActionExplanationDto(
+    string ActionKey,
+    PreflopLeafEvaluationDetailsDto? LeafEvaluationDetails);
 
 public sealed record PreflopNodeRecommendationItemDto(
     string ActionKey,

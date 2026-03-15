@@ -57,6 +57,9 @@ public sealed class LivePreflopSolveService : IPreflopStrategyProvider
         var trainingResult = trainer.RunTraining(DefaultOptions, ct);
 
         var averagePolicy = averageStrategyStore.GetAveragePolicy(request.SolverKey, request.LegalActions);
+        _ = new RegretMatchingPolicyProvider(regretStore).TryGetPolicy(request.SolverKey, request.LegalActions, out var currentPolicy);
+        currentPolicy ??= UniformPolicyBuilder.Build(request.LegalActions);
+
         var strategy = request.LegalActions.ToDictionary(
             ToActionKey,
             action => (decimal)(averagePolicy.TryGetValue(action, out var prob) ? prob : 0d),
@@ -67,17 +70,37 @@ public sealed class LivePreflopSolveService : IPreflopStrategyProvider
             .Select(action =>
             {
                 var key = ToActionKey(action);
-                var frequency = strategy.TryGetValue(key, out var f) ? f : 0m;
+                var averageFrequency = strategy.TryGetValue(key, out var f) ? f : 0m;
+                var currentFrequency = (decimal)(currentPolicy.TryGetValue(action, out var cp) ? cp : 0d);
                 var regret = regretStore.Get(request.SolverKey, action);
-                return new PreflopActionDiagnosticDto(key, frequency, regret, Math.Max(0d, regret), false);
+                return new PreflopActionDiagnosticDto(key, averageFrequency, currentFrequency, regret, Math.Max(0d, regret), false);
             })
             .OrderByDescending(x => x.Frequency)
             .ToList();
 
-        var bestMargin = diagnostics.Count > 1 ? (double)(diagnostics[0].Frequency - diagnostics[1].Frequency) : 0d;
-        var separation = diagnostics.Sum(x => x.PositiveRegret);
-        var displayedAction = SelectDisplayedAction(request.LegalActions, averagePolicy);
-        var deterministicLeafDetails = trainer.ExplainDisplayedActionDeterministically(displayedAction, request.LegalActions);
+        var bestActionKey = diagnostics
+            .OrderByDescending(x => x.Frequency)
+            .ThenByDescending(x => x.CurrentPolicyFrequency)
+            .ThenByDescending(x => x.Regret)
+            .Select(x => x.ActionKey)
+            .FirstOrDefault();
+        diagnostics = diagnostics
+            .Select(x => x with { IsBestByFrequency = string.Equals(x.ActionKey, bestActionKey, StringComparison.Ordinal) })
+            .ToList();
+
+        var orderedByAverage = diagnostics.OrderByDescending(x => x.Frequency).ToList();
+        var bestMargin = orderedByAverage.Count > 1 ? (double)(orderedByAverage[0].Frequency - orderedByAverage[1].Frequency) : 0d;
+        var separation = orderedByAverage.Count > 1 ? (double)(orderedByAverage[0].Frequency - orderedByAverage[1].Frequency) : 0d;
+
+        var explanations = new List<PreflopActionExplanationDto>(request.LegalActions.Count);
+        PreflopLeafEvaluationDetailsDto? bestActionLeafDetails = null;
+        foreach (var action in request.LegalActions)
+        {
+            var leafDetails = MapLeafDetails(trainer.ExplainDisplayedActionDeterministically(action, request.LegalActions));
+            explanations.Add(new PreflopActionExplanationDto(ToActionKey(action), leafDetails));
+            if (string.Equals(ToActionKey(action), bestActionKey, StringComparison.Ordinal))
+                bestActionLeafDetails = leafDetails;
+        }
 
         return Task.FromResult<PreflopStrategyResultDto?>(new PreflopStrategyResultDto(
             request.SolverKey,
@@ -87,9 +110,10 @@ public sealed class LivePreflopSolveService : IPreflopStrategyProvider
             "LiveSolved",
             (long)trainingResult.Elapsed.TotalMilliseconds,
             request.UsePersistentTrainingState ? "Persistent" : "Fresh",
-            MapLeafDetails(deterministicLeafDetails),
+            bestActionLeafDetails,
+            explanations,
             diagnostics,
-            $"Derived from regret matching over action-sensitive preflop leaf utilities using population profile {profileProvider.ActiveProfileName} (BTN unopened opens include fold-equity + continuation components; no explicit postflop EV rollout).",
+            $"Average frequencies come from cumulative average strategy; current-policy frequencies come from regret matching on positive cumulative regret; regrets are cumulative counterfactual regrets. Profile={profileProvider.ActiveProfileName}.",
             bestMargin,
             separation));
     }
@@ -103,27 +127,6 @@ public sealed class LivePreflopSolveService : IPreflopStrategyProvider
     }
 
 
-
-    private static LegalAction SelectDisplayedAction(IReadOnlyList<LegalAction> legalActions, IReadOnlyDictionary<LegalAction, double> averagePolicy)
-    {
-        if (legalActions.Count == 1)
-            return legalActions[0];
-
-        LegalAction? bestAction = null;
-        var bestProbability = double.NegativeInfinity;
-
-        foreach (var action in legalActions)
-        {
-            var probability = averagePolicy.TryGetValue(action, out var value) ? value : 0d;
-            if (bestAction is null || probability > bestProbability)
-            {
-                bestAction = action;
-                bestProbability = probability;
-            }
-        }
-
-        return bestAction ?? legalActions[0];
-    }
 
     private static PreflopLeafEvaluationDetailsDto? MapLeafDetails(PreflopLeafEvaluationDetails? details)
     {
