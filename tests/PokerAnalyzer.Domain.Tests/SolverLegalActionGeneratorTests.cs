@@ -324,6 +324,70 @@ public class SolverLegalActionGeneratorTests
     }
 
     [Fact]
+    public void GenerateLegalActions_FacingRaisePreflop_UsesStandardMenu_FoldCallThreeBetNineAndJam()
+    {
+        var utg = new SolverPlayerState(PlayerId.New(), 0, Position.UTG, new ChipAmount(9700), new ChipAmount(300), new ChipAmount(300), false, false);
+        var heroCo = new SolverPlayerState(PlayerId.New(), 1, Position.CO, new ChipAmount(9900), new ChipAmount(100), new ChipAmount(100), false, false);
+        var btn = new SolverPlayerState(PlayerId.New(), 2, Position.BTN, new ChipAmount(10000), ChipAmount.Zero, ChipAmount.Zero, false, false);
+        var sb = new SolverPlayerState(PlayerId.New(), 3, Position.SB, new ChipAmount(9950), new ChipAmount(50), new ChipAmount(50), false, false);
+        var bb = new SolverPlayerState(PlayerId.New(), 4, Position.BB, new ChipAmount(9900), new ChipAmount(100), new ChipAmount(100), false, false);
+
+        var state = new SolverHandState(
+            config: new GameConfig(6, new ChipAmount(50), new ChipAmount(100), ChipAmount.Zero, new ChipAmount(10000)),
+            street: Street.Preflop,
+            buttonSeatIndex: 2,
+            actingPlayerId: heroCo.PlayerId,
+            pot: new ChipAmount(550),
+            currentBetSize: new ChipAmount(300),
+            lastRaiseSize: new ChipAmount(200),
+            raisesThisStreet: 1,
+            players: [utg, heroCo, btn, sb, bb],
+            actionHistory:
+            [
+                new SolverActionEntry(sb.PlayerId, ActionType.PostSmallBlind, new ChipAmount(50)),
+                new SolverActionEntry(bb.PlayerId, ActionType.PostBigBlind, new ChipAmount(100)),
+                new SolverActionEntry(utg.PlayerId, ActionType.Raise, new ChipAmount(300))
+            ],
+            boardCards: Array.Empty<Card>(),
+            deadCards: Array.Empty<Card>(),
+            privateCardsByPlayer: null);
+
+        var actions = state.GenerateLegalActions();
+
+        Assert.Equal(
+            [
+                new LegalAction(ActionType.Fold),
+                new LegalAction(ActionType.Call, new ChipAmount(300)),
+                new LegalAction(ActionType.Raise, new ChipAmount(900)),
+                new LegalAction(ActionType.Raise, new ChipAmount(10000))
+            ],
+            actions);
+    }
+
+    [Fact]
+    public void GenerateLegalActions_FacingRaisePreflop_AppliesAcrossHeroPositions_WithoutSeatSpecificBranches()
+    {
+        var scenarios = new[]
+        {
+            CreateFacingRaiseScenario(Position.HJ, Position.UTG),
+            CreateFacingRaiseScenario(Position.BTN, Position.CO),
+            CreateFacingRaiseScenario(Position.BB, Position.BTN)
+        };
+
+        foreach (var scenario in scenarios)
+        {
+            var actions = scenario.GenerateLegalActions();
+            Assert.Equal(4, actions.Count);
+            Assert.Equal(ActionType.Fold, actions[0].ActionType);
+            Assert.Equal(ActionType.Call, actions[1].ActionType);
+            Assert.Equal(new ChipAmount(900), actions[2].Amount);
+            Assert.Equal(ActionType.Raise, actions[2].ActionType);
+            Assert.Equal(ActionType.Raise, actions[3].ActionType);
+            Assert.Equal(new ChipAmount(10000), actions[3].Amount);
+        }
+    }
+
+    [Fact]
     public void GenerateLegalActions_CompletedPreflopState_ReturnsEmpty()
     {
         var sb = Player(seat: 0, stack: 97, streetContribution: 0, totalContribution: 3);
@@ -396,6 +460,65 @@ public class SolverLegalActionGeneratorTests
             IsFolded: isFolded,
             IsAllIn: resolvedIsAllIn);
     }
+    private static SolverHandState CreateFacingRaiseScenario(Position heroPosition, Position openerPosition)
+    {
+        var hero = new SolverPlayerState(PlayerId.New(), 1, heroPosition, new ChipAmount(9900), new ChipAmount(100), new ChipAmount(100), false, false);
+        var opener = new SolverPlayerState(PlayerId.New(), 0, openerPosition, new ChipAmount(9700), new ChipAmount(300), new ChipAmount(300), false, false);
+
+        var fillerPositions = new[] { Position.UTG, Position.HJ, Position.CO, Position.BTN, Position.SB, Position.BB }
+            .Where(p => p != heroPosition && p != openerPosition)
+            .Take(3)
+            .ToArray();
+
+        var fillers = fillerPositions
+            .Select((position, index) =>
+            {
+                var contribution = position switch
+                {
+                    Position.SB => 50L,
+                    Position.BB => 100L,
+                    _ => 0L
+                };
+
+                return new SolverPlayerState(
+                    PlayerId.New(),
+                    2 + index,
+                    position,
+                    new ChipAmount(10000 - contribution),
+                    new ChipAmount(contribution),
+                    new ChipAmount(contribution),
+                    false,
+                    false);
+            })
+            .ToArray();
+
+        var players = new[] { opener, hero }.Concat(fillers).ToArray();
+        var sb = players.FirstOrDefault(p => p.Position == Position.SB);
+        var bb = players.FirstOrDefault(p => p.Position == Position.BB);
+
+        var actionHistory = new List<SolverActionEntry>();
+        if (sb is not null)
+            actionHistory.Add(new SolverActionEntry(sb.PlayerId, ActionType.PostSmallBlind, new ChipAmount(50)));
+        if (bb is not null)
+            actionHistory.Add(new SolverActionEntry(bb.PlayerId, ActionType.PostBigBlind, new ChipAmount(100)));
+        actionHistory.Add(new SolverActionEntry(opener.PlayerId, ActionType.Raise, new ChipAmount(300)));
+
+        return new SolverHandState(
+            config: new GameConfig(6, new ChipAmount(50), new ChipAmount(100), ChipAmount.Zero, new ChipAmount(10000)),
+            street: Street.Preflop,
+            buttonSeatIndex: 2,
+            actingPlayerId: hero.PlayerId,
+            pot: new ChipAmount(550),
+            currentBetSize: new ChipAmount(300),
+            lastRaiseSize: new ChipAmount(200),
+            raisesThisStreet: 1,
+            players: players,
+            actionHistory: actionHistory,
+            boardCards: Array.Empty<Card>(),
+            deadCards: Array.Empty<Card>(),
+            privateCardsByPlayer: null);
+    }
+
     private static SolverHandState CreateState(
         PlayerId actingPlayerId,
         IReadOnlyList<SolverPlayerState> players,
