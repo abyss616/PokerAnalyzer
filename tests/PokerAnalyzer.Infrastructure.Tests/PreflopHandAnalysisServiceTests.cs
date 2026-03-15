@@ -240,7 +240,9 @@ public sealed class PreflopHandAnalysisServiceTests
             new InMemoryRegretStore(),
             new InMemoryAverageStrategyStore(),
             new InMemoryPreflopTrainingProgressStore(),
-            new PreflopInfoSetMapper());
+            new PreflopInfoSetMapper(),
+            new NamedPreflopPopulationProfileProvider(PreflopPopulationProfiles.GtoLikeName),
+            new InMemoryActionValueStore());
 
         var result = await BuildService(hand, liveProvider).QueryPreflopNodeByHandNumberAsync(1, CancellationToken.None);
 
