@@ -37,6 +37,26 @@ public sealed class EquityBasedPreflopLeafEvaluatorTests
         Assert.NotNull(result.Details.RationaleSummary);
     }
 
+
+    [Fact]
+    public void Evaluate_FacingLimp_UsesActionSizeSensitiveUtility()
+    {
+        var evaluator = new EquityBasedPreflopLeafEvaluator(new TableDrivenOpponentRangeProvider(), new HeuristicPreflopLeafEvaluator(), samplesPerMatchup: 120);
+        var check = evaluator.Evaluate(CreateHeadsUpContext(HoleCards.Parse("AsKh"), HoleCards.Parse("QdJd"), ActionType.Check, "v2/LIMP_OPTION/BB/eff=118.5/jam=18"));
+        var raiseFivePointFive = evaluator.Evaluate(CreateHeadsUpContext(HoleCards.Parse("AsKh"), HoleCards.Parse("QdJd"), ActionType.Raise, "v2/LIMP_OPTION/BB/eff=118.5/jam=18", new ChipAmount(550)));
+        var raiseNine = evaluator.Evaluate(CreateHeadsUpContext(HoleCards.Parse("AsKh"), HoleCards.Parse("QdJd"), ActionType.Raise, "v2/LIMP_OPTION/BB/eff=118.5/jam=18", new ChipAmount(900)));
+
+        Assert.NotNull(check.Details);
+        Assert.NotNull(raiseFivePointFive.Details);
+        Assert.NotNull(raiseNine.Details);
+        Assert.Equal("FacingLimp", check.Details!.NodeFamily);
+        Assert.NotEqual(check.Details.HeroUtility, raiseFivePointFive.Details!.HeroUtility);
+        Assert.NotEqual(raiseFivePointFive.Details.HeroUtility, raiseNine.Details!.HeroUtility);
+        Assert.NotNull(raiseFivePointFive.Details.ImmediateWinComponent);
+        Assert.NotNull(raiseFivePointFive.Details.ContinueComponent);
+        Assert.NotNull(raiseFivePointFive.Details.ContinueBranchUtility);
+    }
+
     [Fact]
     public void Evaluate_AppliesBlockerFiltering_BeforeEquity()
     {
@@ -294,7 +314,7 @@ public sealed class EquityBasedPreflopLeafEvaluatorTests
         Assert.InRange(Math.Abs((heroVsVillain + villainVsHero) - 1d), 0d, 0.0000001d);
     }
 
-    private static PreflopLeafEvaluationContext CreateHeadsUpContext(HoleCards heroCards, HoleCards villainCards, ActionType rootAction, string solverKey)
+    private static PreflopLeafEvaluationContext CreateHeadsUpContext(HoleCards heroCards, HoleCards villainCards, ActionType rootAction, string solverKey, ChipAmount? raiseAmount = null)
     {
         var heroId = new PlayerId(Guid.Parse("11111111-1111-1111-1111-111111111111"));
         var villainId = new PlayerId(Guid.Parse("22222222-2222-2222-2222-222222222222"));
@@ -336,7 +356,7 @@ public sealed class EquityBasedPreflopLeafEvaluatorTests
             Position.BTN,
             heroCards,
             100,
-            new LegalAction(rootAction, rootAction == ActionType.Raise ? new ChipAmount(250) : ChipAmount.Zero),
+            new LegalAction(rootAction, rootAction == ActionType.Raise ? raiseAmount ?? new ChipAmount(250) : ChipAmount.Zero),
             solverKey);
     }
 
