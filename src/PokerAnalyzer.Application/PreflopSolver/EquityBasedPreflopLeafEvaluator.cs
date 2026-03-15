@@ -907,7 +907,7 @@ public sealed class EquityBasedPreflopLeafEvaluator : IPreflopLeafEvaluator
             playersLeftBehindHero,
             isHeadsUpVsOpener,
             isInPosition,
-            context.EffectiveStackBb,
+            (decimal)context.RootEffectiveStackBb,
             structuralClass);
     }
 
