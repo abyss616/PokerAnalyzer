@@ -78,7 +78,10 @@ public sealed class LivePreflopSolveService : IPreflopStrategyProvider
                 var averageFrequency = strategy.TryGetValue(key, out var f) ? f : 0m;
                 var currentFrequency = (decimal)(currentPolicy.TryGetValue(action, out var cp) ? cp : 0d);
                 var regret = regretStore.Get(request.SolverKey, action);
-                return new PreflopActionDiagnosticDto(key, averageFrequency, currentFrequency, regret, Math.Max(0d, regret), false);
+                var aggregatedActionEv = actionValueStore.TryGetAverage(request.SolverKey, action, out var averageUtility)
+                    ? averageUtility
+                    : (double?)null;
+                return new PreflopActionDiagnosticDto(key, averageFrequency, currentFrequency, regret, Math.Max(0d, regret), aggregatedActionEv, false);
             })
             .OrderByDescending(x => x.Frequency)
             .ToList();
@@ -98,13 +101,13 @@ public sealed class LivePreflopSolveService : IPreflopStrategyProvider
         var separation = orderedByAverage.Count > 1 ? (double)(orderedByAverage[0].Frequency - orderedByAverage[1].Frequency) : 0d;
 
         var explanations = new List<PreflopActionExplanationDto>(request.LegalActions.Count);
-        PreflopLeafEvaluationDetailsDto? bestActionLeafDetails = null;
         foreach (var action in request.LegalActions)
         {
-            var leafDetails = MapLeafDetails(trainer.ExplainDisplayedActionDeterministically(action, request.LegalActions));
-            explanations.Add(new PreflopActionExplanationDto(ToActionKey(action), leafDetails));
-            if (string.Equals(ToActionKey(action), bestActionKey, StringComparison.Ordinal))
-                bestActionLeafDetails = leafDetails;
+            var actionKey = ToActionKey(action);
+            var aggregatedSummary = actionValueStore.TryGetAggregate(request.SolverKey, action, out var aggregate)
+                ? new PreflopActionValueSummaryDto(aggregate.AverageUtility, aggregate.TotalUtility, aggregate.SampleCount)
+                : null;
+            explanations.Add(new PreflopActionExplanationDto(actionKey, aggregatedSummary));
         }
 
         return Task.FromResult<PreflopStrategyResultDto?>(new PreflopStrategyResultDto(
@@ -115,10 +118,10 @@ public sealed class LivePreflopSolveService : IPreflopStrategyProvider
             "LiveSolved",
             (long)trainingResult.Elapsed.TotalMilliseconds,
             request.UsePersistentTrainingState ? "Persistent" : "Fresh",
-            bestActionLeafDetails,
+            null,
             explanations,
             diagnostics,
-            $"Average frequencies come from cumulative average strategy; current-policy frequencies come from regret matching on positive cumulative regret and action-value-based stochastic fallback when all regrets are non-positive; regrets are cumulative counterfactual regrets. Profile={profileProvider.ActiveProfileName}.",
+            $"Average frequencies come from cumulative average strategy; current-policy frequencies come from regret matching on positive cumulative regret and action-value-based stochastic fallback when all regrets are non-positive; regrets are cumulative counterfactual regrets; action EVs are aggregated from training samples (not deterministic single-rollout snapshots). Profile={profileProvider.ActiveProfileName}.",
             bestMargin,
             separation));
     }
@@ -132,51 +135,6 @@ public sealed class LivePreflopSolveService : IPreflopStrategyProvider
     }
 
 
-
-    private static PreflopLeafEvaluationDetailsDto? MapLeafDetails(PreflopLeafEvaluationDetails? details)
-    {
-        if (details is null)
-            return null;
-
-        return new PreflopLeafEvaluationDetailsDto(
-            details.HeroHand,
-            details.UsedEquityEvaluator,
-            details.UsedFallbackEvaluator,
-            details.EvaluatorType,
-            details.AbstractionSource,
-            details.ActualActiveOpponentCount,
-            details.AbstractedOpponentCount,
-            details.SyntheticDefenderLabel,
-            details.NodeFamily,
-            details.HeroPosition,
-            details.VillainPosition,
-            details.IsHeadsUp,
-            details.RangeDescription,
-            details.RangeDetail,
-            details.FoldProbability,
-            details.ContinueProbability,
-            details.RootActionType,
-            details.ImmediateWinComponent,
-            details.ContinueComponent,
-            details.ContinueBranchUtility,
-            details.FilteredCombos,
-            details.HeroEquity,
-            details.HeroUtility,
-            details.EquityVsRangePercentile,
-            details.HandClass,
-            details.BlockerSummary,
-            details.RationaleSummary,
-            details.FallbackReason,
-            details.DisplaySummary,
-            details.RootEvaluatorMode,
-            details.RootActiveOpponentCount,
-            details.LeafActiveOpponentCount,
-            details.SampledTrajectoryDepth,
-            details.UsedDirectAbstractionShortcut,
-            details.TraversalMilliseconds,
-            details.LeafEvaluationMilliseconds,
-            details.ActivePopulationProfile);
-    }
 
     private static string ToActionKey(LegalAction action)
     {

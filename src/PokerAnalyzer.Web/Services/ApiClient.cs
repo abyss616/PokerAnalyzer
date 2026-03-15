@@ -52,8 +52,9 @@ public sealed class ApiClient
     public sealed record PreflopLegalAction(string ActionKey, string ActionType, decimal? SizeBb, bool IsFacingAllIn);
     public sealed record PreflopRecommendationItem(string ActionKey, string DisplayLabel, decimal Frequency, bool IsBestAction);
     public sealed record PreflopStrategyItem(string ActionKey, decimal Frequency);
-    public sealed record PreflopActionDiagnostic(string ActionKey, decimal Frequency, decimal CurrentPolicyFrequency, double Regret, double PositiveRegret, bool IsBestByFrequency);
-    public sealed record PreflopActionExplanation(string ActionKey, PreflopLeafEvaluationDetails? LeafEvaluationDetails);
+    public sealed record PreflopActionDiagnostic(string ActionKey, decimal Frequency, decimal CurrentPolicyFrequency, double Regret, double PositiveRegret, double? AggregatedActionEv, bool IsBestByFrequency);
+    public sealed record PreflopActionExplanation(string ActionKey, PreflopActionValueSummary? AggregatedActionValue, PreflopLeafEvaluationDetails? LeafEvaluationDetails);
+    public sealed record PreflopActionValueSummary(double AverageUtility, double TotalUtility, int Samples);
     public sealed record PreflopSolveMetadata(
         string StrategySource,
         int IterationsCompleted,
