@@ -113,7 +113,7 @@ public sealed class LivePreflopSolveServiceTests
 
 
     [Fact]
-    public async Task GetStrategyResultAsync_UsesAggregatedTrainingActionValuesForExplanations()
+    public async Task GetStrategyResultAsync_UsesDeterministicExplanationForDisplayedAction()
     {
         var sut = new LivePreflopSolveService(new InMemoryRegretStore(), new InMemoryAverageStrategyStore(), new InMemoryPreflopTrainingProgressStore(), new PreflopInfoSetMapper(), new NamedPreflopPopulationProfileProvider(PreflopPopulationProfiles.GtoLikeName), new InMemoryActionValueStore());
 
@@ -125,26 +125,23 @@ public sealed class LivePreflopSolveServiceTests
         var result = await sut.GetStrategyResultAsync(request, CancellationToken.None);
 
         Assert.NotNull(result);
-        Assert.Null(result!.LeafEvaluationDetails);
+        Assert.NotNull(result!.LeafEvaluationDetails);
         Assert.NotNull(result.ActionExplanations);
         Assert.Equal(request.LegalActions.Count, result.ActionExplanations!.Count);
 
-        Assert.All(result.ActionExplanations!, x => Assert.NotNull(x.AggregatedActionValue));
-        Assert.All(result.ActionExplanations!, x => Assert.True(x.AggregatedActionValue!.Samples > 0));
-        Assert.All(result.ActionExplanations!, x => Assert.Null(x.LeafEvaluationDetails));
+        var displayedAction = result.ActionDiagnostics
+            .OrderByDescending(x => x.Frequency)
+            .First()
+            .ActionKey;
 
-        var byActionExplanation = result.ActionExplanations!.ToDictionary(x => x.ActionKey, StringComparer.Ordinal);
-        foreach (var diagnostic in result.ActionDiagnostics!)
-        {
-            Assert.True(byActionExplanation.TryGetValue(diagnostic.ActionKey, out var explanation));
-            Assert.NotNull(diagnostic.AggregatedActionEv);
-            Assert.NotNull(explanation!.AggregatedActionValue);
-            Assert.Equal(diagnostic.AggregatedActionEv!.Value, explanation.AggregatedActionValue!.AverageUtility, 10);
-        }
+        Assert.StartsWith(result.LeafEvaluationDetails!.RootActionType!, displayedAction);
+        Assert.Equal("AbstractedHeadsUp", result.LeafEvaluationDetails.EvaluatorType);
+        Assert.Equal("WeightedBlindsBTNUnopened", result.LeafEvaluationDetails.AbstractionSource);
+        Assert.NotNull(result.LeafEvaluationDetails.HeroEquity);
     }
 
     [Fact]
-    public async Task GetStrategyResultAsync_ActionExplanationNoLongerUsesDeterministicLeafSnapshot()
+    public async Task GetStrategyResultAsync_ExplanationIsStableAcrossRepeatedRuns()
     {
         var sut = new LivePreflopSolveService(new InMemoryRegretStore(), new InMemoryAverageStrategyStore(), new InMemoryPreflopTrainingProgressStore(), new PreflopInfoSetMapper(), new NamedPreflopPopulationProfileProvider(PreflopPopulationProfiles.GtoLikeName), new InMemoryActionValueStore());
 
@@ -156,12 +153,14 @@ public sealed class LivePreflopSolveServiceTests
         var first = await sut.GetStrategyResultAsync(request, CancellationToken.None);
         var second = await sut.GetStrategyResultAsync(request, CancellationToken.None);
 
-        Assert.Null(first?.LeafEvaluationDetails);
-        Assert.Null(second?.LeafEvaluationDetails);
-        Assert.NotNull(first!.ActionExplanations);
-        Assert.NotNull(second!.ActionExplanations);
-        Assert.All(first.ActionExplanations!, x => Assert.NotNull(x.AggregatedActionValue));
-        Assert.All(second.ActionExplanations!, x => Assert.NotNull(x.AggregatedActionValue));
+        Assert.NotNull(first?.LeafEvaluationDetails);
+        Assert.NotNull(second?.LeafEvaluationDetails);
+        Assert.Equal(first!.LeafEvaluationDetails!.EvaluatorType, second!.LeafEvaluationDetails!.EvaluatorType);
+        Assert.Equal(first.LeafEvaluationDetails.AbstractionSource, second.LeafEvaluationDetails.AbstractionSource);
+        Assert.Equal(first.LeafEvaluationDetails.RootActionType, second.LeafEvaluationDetails.RootActionType);
+        Assert.Equal(first.LeafEvaluationDetails.ActualActiveOpponentCount, second.LeafEvaluationDetails.ActualActiveOpponentCount);
+        Assert.NotEqual("HeuristicFallback", first.LeafEvaluationDetails.EvaluatorType);
+        Assert.NotEqual("HeuristicFallback", second.LeafEvaluationDetails.EvaluatorType);
     }
 
 
@@ -236,8 +235,6 @@ public sealed class LivePreflopSolveServiceTests
         Assert.NotEmpty(result!.ActionDiagnostics!);
         Assert.All(result.ActionDiagnostics!, x => Assert.InRange(x.Frequency, 0m, 1m));
         Assert.All(result.ActionDiagnostics!, x => Assert.InRange(x.CurrentPolicyFrequency, 0m, 1m));
-
-        Assert.All(result.ActionDiagnostics!, x => Assert.NotNull(x.AggregatedActionEv));
 
         var avgFreqSpread = result.ActionDiagnostics!.Select(x => x.Frequency).Distinct().Count();
         var currFreqSpread = result.ActionDiagnostics!.Select(x => x.CurrentPolicyFrequency).Distinct().Count();

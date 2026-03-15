@@ -254,9 +254,9 @@ public sealed class PreflopHandAnalysisServiceTests
             },
             foldDetails,
             [
-                new PreflopActionExplanationDto("Fold", null, foldDetails),
-                new PreflopActionExplanationDto("Call:1.5", null, callDetails),
-                new PreflopActionExplanationDto("Raise:4", null, callDetails with { RootActionType = "Raise" })
+                new PreflopActionExplanationDto("Fold", foldDetails),
+                new PreflopActionExplanationDto("Call:1.5", callDetails),
+                new PreflopActionExplanationDto("Raise:4", callDetails with { RootActionType = "Raise" })
             ]);
 
         var result = await BuildService(hand, strategyProvider).QueryPreflopNodeByHandNumberAsync(1, CancellationToken.None);

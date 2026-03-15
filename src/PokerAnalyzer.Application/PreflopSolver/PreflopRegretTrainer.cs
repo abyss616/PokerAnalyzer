@@ -21,12 +21,6 @@ public interface IActionValueStore
 {
     void AddSamples(string infoSetKey, LegalAction action, double totalUtility, int sampleCount);
     bool TryGetAverage(string infoSetKey, LegalAction action, out double averageUtility);
-    bool TryGetAggregate(string infoSetKey, LegalAction action, out ActionValueAggregate aggregate);
-}
-
-public readonly record struct ActionValueAggregate(double TotalUtility, int SampleCount)
-{
-    public double AverageUtility => SampleCount > 0 ? TotalUtility / SampleCount : 0d;
 }
 
 public sealed class InMemoryRegretStore : IRegretStore
@@ -145,22 +139,6 @@ public sealed class InMemoryActionValueStore : IActionValueStore
         }
 
         averageUtility = 0d;
-        return false;
-    }
-
-    public bool TryGetAggregate(string infoSetKey, LegalAction action, out ActionValueAggregate aggregate)
-    {
-        ArgumentNullException.ThrowIfNull(infoSetKey);
-
-        if (_values.TryGetValue(infoSetKey, out var byAction)
-            && byAction.TryGetValue(action, out var actionAggregate)
-            && actionAggregate.Item2 > 0)
-        {
-            aggregate = new ActionValueAggregate(actionAggregate.Item1, actionAggregate.Item2);
-            return true;
-        }
-
-        aggregate = default;
         return false;
     }
 }
@@ -581,6 +559,35 @@ public sealed class PreflopRegretTrainer
             : fallbackPolicy;
     }
 
+
+    public PreflopLeafEvaluationDetails? ExplainDisplayedActionDeterministically(
+        LegalAction rootAction,
+        IReadOnlyList<LegalAction> legalActions,
+        int deterministicSeed = 1337)
+    {
+        ArgumentNullException.ThrowIfNull(rootAction);
+        ArgumentNullException.ThrowIfNull(legalActions);
+
+        var rootState = _rootStateProvider.CreateRootState();
+        var traversalPlayerId = _traversalPlayerSelector.Select(rootState);
+        var hero = rootState.Players.FirstOrDefault(player => player.PlayerId == traversalPlayerId);
+        if (hero is null || !rootState.PrivateCardsByPlayer.TryGetValue(traversalPlayerId, out var heroCards))
+            return null;
+
+        var afterActionState = SolverStateStepper.Step(rootState, rootAction, legalActions);
+        var evaluationContext = new PreflopLeafEvaluationContext(
+            rootState,
+            afterActionState,
+            traversalPlayerId,
+            hero.Position,
+            heroCards,
+            ResolveEffectiveStackBb(rootState, traversalPlayerId),
+            rootAction,
+            _canonicalStorageKey);
+
+        var rollout = _trajectoryTraverser.SampleTrajectory(afterActionState, new Random(deterministicSeed), evaluationContext);
+        return rollout.LeafEvaluationDetails;
+    }
 
     public PreflopTrainingResult RunTraining(
         PreflopTrainingOptions? options = null,

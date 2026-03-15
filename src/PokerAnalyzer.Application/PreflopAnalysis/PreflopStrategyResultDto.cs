@@ -17,8 +17,7 @@ public sealed record PreflopStrategyResultDto(
 
 public sealed record PreflopActionExplanationDto(
     string ActionKey,
-    PreflopActionValueSummaryDto? AggregatedActionValue,
-    PreflopLeafEvaluationDetailsDto? LeafEvaluationDetails = null);
+    PreflopLeafEvaluationDetailsDto? LeafEvaluationDetails);
 
 public sealed record PreflopActionDiagnosticDto(
     string ActionKey,
@@ -26,13 +25,7 @@ public sealed record PreflopActionDiagnosticDto(
     decimal CurrentPolicyFrequency,
     double Regret,
     double PositiveRegret,
-    double? AggregatedActionEv,
     bool IsBestByFrequency);
-
-public sealed record PreflopActionValueSummaryDto(
-    double AverageUtility,
-    double TotalUtility,
-    int Samples);
 
 public sealed record PreflopLeafEvaluationDetailsDto(
     string HeroHand,
