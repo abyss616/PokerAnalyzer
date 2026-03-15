@@ -284,7 +284,7 @@ public sealed class EquityBasedPreflopLeafEvaluatorTests
         Assert.Equal("AbstractedHeadsUp", result.Details!.EvaluatorType);
         Assert.Equal("AbstractedHeadsUp", result.Details.RootEvaluatorMode);
         Assert.False(result.Details.UsedFallbackEvaluator);
-        Assert.Equal("SyntheticFieldBtnFacingLimp", result.Details.AbstractionSource);
+        Assert.Equal("SyntheticFieldFacingLimp", result.Details.AbstractionSource);
         Assert.Equal("SyntheticLimpFieldDefender", result.Details.SyntheticDefenderLabel);
         Assert.Equal("FacingLimp", result.Details.NodeFamily);
     }
@@ -317,6 +317,50 @@ public sealed class EquityBasedPreflopLeafEvaluatorTests
         Assert.NotNull(isoFivePointFive.Details.RangeDescription);
         Assert.NotNull(isoFivePointFive.Details.RangeDetail);
         Assert.NotNull(isoFivePointFive.Details.ContinueBranchUtility);
+    }
+
+    [Fact]
+    public void Evaluate_CoFacingLimpMultiway_UsesAbstractedHeadsUp()
+    {
+        var evaluator = new EquityBasedPreflopLeafEvaluator(new TableDrivenOpponentRangeProvider(), new HeuristicPreflopLeafEvaluator(), samplesPerMatchup: 120);
+        var result = evaluator.Evaluate(CreateCoFacingLimpMultiwayContext(ActionType.Call));
+
+        Assert.NotNull(result.Details);
+        Assert.Equal("AbstractedHeadsUp", result.Details!.EvaluatorType);
+        Assert.Equal("AbstractedHeadsUp", result.Details.RootEvaluatorMode);
+        Assert.False(result.Details.UsedFallbackEvaluator);
+        Assert.Equal("SyntheticFieldFacingLimp", result.Details.AbstractionSource);
+        Assert.Equal("SyntheticLimpFieldDefender", result.Details.SyntheticDefenderLabel);
+        Assert.Equal("FacingLimp", result.Details.NodeFamily);
+        Assert.Equal("CO", result.Details.HeroPosition);
+    }
+
+    [Fact]
+    public void Evaluate_CoFacingLimpMultiway_DifferentiatesCallAndIsoSizes()
+    {
+        var evaluator = new EquityBasedPreflopLeafEvaluator(new TableDrivenOpponentRangeProvider(), new HeuristicPreflopLeafEvaluator(), samplesPerMatchup: 120);
+
+        var call = evaluator.Evaluate(CreateCoFacingLimpMultiwayContext(ActionType.Call));
+        var isoFivePointFive = evaluator.Evaluate(CreateCoFacingLimpMultiwayContext(ActionType.Raise, new ChipAmount(550)));
+        var isoNine = evaluator.Evaluate(CreateCoFacingLimpMultiwayContext(ActionType.Raise, new ChipAmount(900)));
+
+        Assert.NotNull(call.Details);
+        Assert.NotNull(isoFivePointFive.Details);
+        Assert.NotNull(isoNine.Details);
+
+        Assert.NotEqual(call.Details!.HeroUtility, isoFivePointFive.Details!.HeroUtility);
+        Assert.NotEqual(isoFivePointFive.Details.HeroUtility, isoNine.Details!.HeroUtility);
+
+        Assert.Equal(0d, call.Details.FoldProbability);
+        Assert.Equal(1d, call.Details.ContinueProbability);
+        Assert.Equal(0d, call.Details.ImmediateWinComponent);
+
+        Assert.True(isoFivePointFive.Details.FoldProbability > 0d);
+        Assert.True(isoFivePointFive.Details.ContinueProbability < 1d);
+        Assert.True(isoNine.Details.FoldProbability > isoFivePointFive.Details.FoldProbability);
+        Assert.True(isoNine.Details.ContinueProbability < isoFivePointFive.Details.ContinueProbability);
+        Assert.NotNull(isoFivePointFive.Details.ContinueBranchUtility);
+        Assert.Contains("Action=Raise", isoFivePointFive.Details.DisplaySummary);
     }
 
     [Fact]
@@ -571,6 +615,62 @@ public sealed class EquityBasedPreflopLeafEvaluatorTests
             100,
             new LegalAction(rootAction, rootAction == ActionType.Raise ? raiseAmount ?? new ChipAmount(550) : ChipAmount.Zero),
             "v2/LIMP/BTN/eff=100");
+    }
+
+    private static PreflopLeafEvaluationContext CreateCoFacingLimpMultiwayContext(ActionType rootAction, ChipAmount? raiseAmount = null)
+    {
+        var heroId = new PlayerId(Guid.Parse("11111111-1111-1111-1111-111111111111"));
+        var limperId = new PlayerId(Guid.Parse("22222222-2222-2222-2222-222222222222"));
+        var btnId = new PlayerId(Guid.Parse("33333333-3333-3333-3333-333333333333"));
+        var sbId = new PlayerId(Guid.Parse("44444444-4444-4444-4444-444444444444"));
+        var bbId = new PlayerId(Guid.Parse("55555555-5555-5555-5555-555555555555"));
+
+        var config = new GameConfig(5, new ChipAmount(50), new ChipAmount(100), ChipAmount.Zero, new ChipAmount(10000));
+        var players = new[]
+        {
+            new SolverPlayerState(limperId, 0, Position.HJ, new ChipAmount(9900), new ChipAmount(100), new ChipAmount(100), false, false),
+            new SolverPlayerState(heroId, 1, Position.CO, new ChipAmount(9900), new ChipAmount(100), new ChipAmount(100), false, false),
+            new SolverPlayerState(btnId, 2, Position.BTN, new ChipAmount(9900), new ChipAmount(100), new ChipAmount(100), false, false),
+            new SolverPlayerState(sbId, 3, Position.SB, new ChipAmount(9950), new ChipAmount(50), new ChipAmount(50), false, false),
+            new SolverPlayerState(bbId, 4, Position.BB, new ChipAmount(9900), new ChipAmount(100), new ChipAmount(100), false, false)
+        };
+
+        var state = new SolverHandState(
+            config,
+            Street.Preflop,
+            buttonSeatIndex: 2,
+            actingPlayerId: heroId,
+            pot: new ChipAmount(250),
+            currentBetSize: new ChipAmount(100),
+            lastRaiseSize: new ChipAmount(100),
+            raisesThisStreet: 0,
+            players,
+            actionHistory: new[]
+            {
+                new SolverActionEntry(sbId, ActionType.PostSmallBlind, new ChipAmount(50)),
+                new SolverActionEntry(bbId, ActionType.PostBigBlind, new ChipAmount(100)),
+                new SolverActionEntry(limperId, ActionType.Call, new ChipAmount(100))
+            },
+            boardCards: Array.Empty<Card>(),
+            deadCards: Array.Empty<Card>(),
+            privateCardsByPlayer: new Dictionary<PlayerId, HoleCards>
+            {
+                [heroId] = HoleCards.Parse("AsKh"),
+                [limperId] = HoleCards.Parse("QdJd"),
+                [btnId] = HoleCards.Parse("9h8h"),
+                [sbId] = HoleCards.Parse("7c7d"),
+                [bbId] = HoleCards.Parse("8c6c")
+            });
+
+        return new PreflopLeafEvaluationContext(
+            state,
+            state,
+            heroId,
+            Position.CO,
+            HoleCards.Parse("AsKh"),
+            100,
+            new LegalAction(rootAction, rootAction == ActionType.Raise ? raiseAmount ?? new ChipAmount(550) : ChipAmount.Zero),
+            "v2/LIMP/CO/eff=100");
     }
 
     private static PreflopLeafEvaluationContext CreateThreeWayContextWithLeafActiveOpponents(string solverKey, int leafActiveOpponents)
