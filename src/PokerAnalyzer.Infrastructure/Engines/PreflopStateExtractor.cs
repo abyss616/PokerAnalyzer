@@ -1,4 +1,5 @@
 using PokerAnalyzer.Domain.Game;
+using System.Diagnostics;
 using System.Globalization;
 
 namespace PokerAnalyzer.Infrastructure.Engines;
@@ -122,7 +123,8 @@ public sealed class PreflopStateExtractor
                 actingSeat.Position,
                 raiseDepth,
                 actingPlayersFirstActionType,
-                hadPriorCallOrCompletion);
+                hadPriorCallOrCompletion,
+                toCallBb);
 
             var bigBlindSeat = seats.FirstOrDefault(s => s.Position == Position.BB);
             Position? facingPos = lastAggressor.HasValue
@@ -203,6 +205,15 @@ public sealed class PreflopStateExtractor
                 ActingPlayersFirstActionType = actingPlayersFirstActionType
             };
 
+            WriteDebugTrace(
+                priorActionsBeforeActing,
+                hadPriorCallOrCompletion,
+                actingSeat.Position,
+                toCallBb,
+                currentBetBb,
+                historySignature,
+                solverKey);
+
             var validation = PreflopKeyValidator.Validate(key, ctx);
             if (!validation.IsValid)
                 return PreflopExtractionResult.Unsupported(validation.Reason ?? "Unsupported preflop key.", trace);
@@ -265,7 +276,8 @@ public sealed class PreflopStateExtractor
         Position acting,
         int raiseDepth,
         string? actingPlayersFirstActionType,
-        bool hadPriorCallOrCompletion)
+        bool hadPriorCallOrCompletion,
+        decimal toCallBb)
     {
         if (raiseDepth == 0)
         {
@@ -274,7 +286,9 @@ public sealed class PreflopStateExtractor
 
             // In BB option spots, prior SB completion must not collapse to unopened.
             if (hadPriorCallOrCompletion)
-                return "LIMP";
+                return acting == Position.BB && toCallBb == 0m
+                    ? "LIMP_OPTION"
+                    : "LIMP";
 
             return actingPlayersFirstActionType switch
             {
@@ -293,6 +307,23 @@ public sealed class PreflopStateExtractor
             3 => "VS_4BET",
             _ => "VS_5BET"
         };
+    }
+
+    private static void WriteDebugTrace(
+        IReadOnlyList<PreflopRawActionTrace> priorActionsBeforeActing,
+        bool hadPriorCallOrCompletion,
+        Position actingPosition,
+        decimal toCallBb,
+        decimal currentBetBb,
+        string historySignature,
+        string solverKey)
+    {
+        var priorActionSummary = priorActionsBeforeActing.Count == 0
+            ? "none"
+            : string.Join(", ", priorActionsBeforeActing.Select(a => $"{a.Position}:{a.ActionType}:{a.AmountBb}"));
+
+        Debug.WriteLine(
+            $"[PreflopStateExtractor] priorActionsBeforeActing={priorActionSummary}; hadPriorCallOrCompletion={hadPriorCallOrCompletion}; actingPosition={actingPosition}; toCallBb={toCallBb}; currentBetBb={currentBetBb}; historySignature={historySignature}; solverKey={solverKey}");
     }
 
     private static string BuildSolverKey(
