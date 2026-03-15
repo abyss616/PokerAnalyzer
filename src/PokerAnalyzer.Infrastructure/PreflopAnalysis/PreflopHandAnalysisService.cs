@@ -545,19 +545,30 @@ public sealed class PreflopHandAnalysisService : IPreflopHandAnalysisService
 
     private sealed class TraceBetSizeSetProvider : IBetSizeSetProvider
     {
+        private const string FacingRaiseSignaturePrefix = "VS_";
+        private const decimal FacingRaiseThreeBetSizeBb = 9m;
+
         private readonly IReadOnlyList<ChipAmount> _raiseSizes;
 
         public TraceBetSizeSetProvider(PreflopQueryTrace trace)
         {
             var sizes = new HashSet<decimal>();
-            AddIfPositive(sizes, ParseBucket(trace.OpenSizeBucket));
-            AddIfPositive(sizes, ParseBucket(trace.ThreeBetBucket));
-            AddIfPositive(sizes, ParseBucket(trace.FourBetBucket));
 
-            if (trace.ToCallBb > 0)
+            if (IsFacingRaiseSpot(trace))
             {
-                sizes.Add(4m);
-                sizes.Add(9m);
+                sizes.Add(FacingRaiseThreeBetSizeBb);
+            }
+            else
+            {
+                AddIfPositive(sizes, ParseBucket(trace.OpenSizeBucket));
+                AddIfPositive(sizes, ParseBucket(trace.ThreeBetBucket));
+                AddIfPositive(sizes, ParseBucket(trace.FourBetBucket));
+
+                if (trace.ToCallBb > 0)
+                {
+                    sizes.Add(4m);
+                    sizes.Add(FacingRaiseThreeBetSizeBb);
+                }
             }
 
             _raiseSizes = sizes
@@ -572,6 +583,10 @@ public sealed class PreflopHandAnalysisService : IPreflopHandAnalysisService
 
         public IReadOnlyList<ChipAmount> GetRaiseSizes(SolverHandState state)
             => _raiseSizes;
+
+        private static bool IsFacingRaiseSpot(PreflopQueryTrace trace)
+            => trace.HistorySignature.StartsWith(FacingRaiseSignaturePrefix, StringComparison.Ordinal)
+                && trace.ToCallBb > 0m;
     }
 
     private static decimal? ParseBucket(string value)
