@@ -157,6 +157,12 @@ public sealed class LivePreflopSolveService : IPreflopStrategyProvider
         {
             // Preserve existing behavior of returning whatever finished before cancellation.
         }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            // Preserve existing behavior of returning whatever finished before cancellation.
+        }
+
+        var completedRuns = runResults.Where(result => result is not null).Select(result => result!).ToArray();
 
         var completedRuns = runResults.Where(result => result is not null).Select(result => result!).ToArray();
 

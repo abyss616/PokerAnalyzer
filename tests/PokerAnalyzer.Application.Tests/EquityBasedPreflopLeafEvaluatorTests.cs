@@ -572,6 +572,25 @@ public sealed class EquityBasedPreflopLeafEvaluatorTests
         Assert.True(raise.Details.FoldProbability < 0.30d);
     }
 
+
+    [Fact]
+    public void Evaluate_FacingRaise_MicroStakes_BtnVsCo_94o_RaiseGetsHeavilyPenalized()
+    {
+        var microEvaluator = new EquityBasedPreflopLeafEvaluator(
+            new TableDrivenOpponentRangeProvider(),
+            new HeuristicPreflopLeafEvaluator(),
+            samplesPerMatchup: 120,
+            populationProfileProvider: new NamedPreflopPopulationProfileProvider(PreflopPopulationProfiles.MicroStakesLoosePassiveName));
+
+        var call = microEvaluator.Evaluate(CreateFacingRaiseProfileContext(Position.BTN, Position.CO, HoleCards.Parse("9c4d"), ActionType.Call));
+        var raise = microEvaluator.Evaluate(CreateFacingRaiseProfileContext(Position.BTN, Position.CO, HoleCards.Parse("9c4d"), ActionType.Raise, new ChipAmount(900)));
+
+        Assert.NotNull(call.Details);
+        Assert.NotNull(raise.Details);
+        Assert.True(raise.Details!.HeroUtility + 0.12d <= call.Details!.HeroUtility);
+        Assert.True(raise.Details.FoldProbability < 0.24d);
+    }
+
     [Fact]
     public void Evaluate_FacingRaise_MicroStakes_StrongHandsCanStillRaise()
     {
@@ -581,12 +600,17 @@ public sealed class EquityBasedPreflopLeafEvaluatorTests
             samplesPerMatchup: 120,
             populationProfileProvider: new NamedPreflopPopulationProfileProvider(PreflopPopulationProfiles.MicroStakesLoosePassiveName));
 
-        var call = microEvaluator.Evaluate(CreateFacingRaiseProfileContext(Position.BTN, Position.CO, HoleCards.Parse("AsKs"), ActionType.Call));
-        var raise = microEvaluator.Evaluate(CreateFacingRaiseProfileContext(Position.BTN, Position.CO, HoleCards.Parse("AsKs"), ActionType.Raise, new ChipAmount(900)));
+        var akCall = microEvaluator.Evaluate(CreateFacingRaiseProfileContext(Position.BTN, Position.CO, HoleCards.Parse("AsKs"), ActionType.Call));
+        var akRaise = microEvaluator.Evaluate(CreateFacingRaiseProfileContext(Position.BTN, Position.CO, HoleCards.Parse("AsKs"), ActionType.Raise, new ChipAmount(900)));
+        var qqCall = microEvaluator.Evaluate(CreateFacingRaiseProfileContext(Position.BTN, Position.CO, HoleCards.Parse("QdQc"), ActionType.Call));
+        var qqRaise = microEvaluator.Evaluate(CreateFacingRaiseProfileContext(Position.BTN, Position.CO, HoleCards.Parse("QdQc"), ActionType.Raise, new ChipAmount(900)));
 
-        Assert.NotNull(call.Details);
-        Assert.NotNull(raise.Details);
-        Assert.True(raise.Details!.HeroUtility > call.Details!.HeroUtility);
+        Assert.NotNull(akCall.Details);
+        Assert.NotNull(akRaise.Details);
+        Assert.NotNull(qqCall.Details);
+        Assert.NotNull(qqRaise.Details);
+        Assert.True(akRaise.Details!.HeroUtility > akCall.Details!.HeroUtility);
+        Assert.True(qqRaise.Details!.HeroUtility > qqCall.Details!.HeroUtility);
     }
 
     [Fact]
