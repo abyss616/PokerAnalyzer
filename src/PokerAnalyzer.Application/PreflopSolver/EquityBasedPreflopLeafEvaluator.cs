@@ -1043,7 +1043,8 @@ public sealed class EquityBasedPreflopLeafEvaluator : IPreflopLeafEvaluator
         if (isJamAction && classAdjustment < 0d)
             classAdjustment -= 0.02d;
 
-        return Math.Clamp(baseFold + sizeLift + depthAdjustment + populationAdjustment + classAdjustment, 0.08d, 0.90d);
+        var profileAdjustment = profile.FacingRaiseFoldProbabilityAdjustment;
+        return Math.Clamp(baseFold + sizeLift + depthAdjustment + populationAdjustment + classAdjustment + profileAdjustment, 0.08d, 0.90d);
     }
 
     private static double GetFacingRaiseSqueezeRiskPenalty(FacingRaiseStructuralContext context)
