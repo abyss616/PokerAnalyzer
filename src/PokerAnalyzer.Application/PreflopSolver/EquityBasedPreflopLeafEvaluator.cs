@@ -190,13 +190,15 @@ public sealed class EquityBasedPreflopLeafEvaluator : IPreflopLeafEvaluator
         }
         else if (actionType == ActionType.Raise || actionType == ActionType.AllIn)
         {
-            immediateComponent = allFold * potBb;
+            var immediateWinRealization = GetFacingRaiseImmediateWinRealization(context.HeroCards, facingContext, isJamAction);
+            immediateComponent = allFold * potBb * immediateWinRealization;
             continueComponent = continueProbability * continueBranchUtility;
             var riskPenalty = GetFacingRaiseRiskPenalty(continueProbability, actionSizeBb, callAmountBb, context.HeroCards, isJamAction, activeProfile);
             var leveragePenalty = isJamAction ? 0.12d + (0.02d * facingContext.PlayersLeftBehindHero) : 0.05d + (0.01d * facingContext.PlayersLeftBehindHero);
             var realizationPenalty = continueProbability * GetFacingRaiseRealizationPenalty(context.HeroCards, handClass, facingContext, activeProfile);
+            var weakAceRaiseSurcharge = GetFacingRaiseWeakOffsuitAceRaiseSurcharge(context.HeroCards, facingContext, isJamAction);
             var premiumAggressionAdjustment = GetFacingRaisePremiumAggressionAdjustment(context.HeroCards, facingContext, isJamAction);
-            heroUtility = immediateComponent + continueComponent - riskPenalty - leveragePenalty - realizationPenalty + premiumAggressionAdjustment;
+            heroUtility = immediateComponent + continueComponent - riskPenalty - leveragePenalty - realizationPenalty - weakAceRaiseSurcharge + premiumAggressionAdjustment;
         }
 
         var utility = baseEval.UtilityByPlayer.ToDictionary(kvp => kvp.Key, kvp => kvp.Value);
@@ -1071,6 +1073,32 @@ public sealed class EquityBasedPreflopLeafEvaluator : IPreflopLeafEvaluator
 
         var scaledRiskBb = Math.Min(6d, additionalInvestmentBb);
         return continueProbability * profile.RaiseRiskPenaltyFactor * (0.40d * scaledRiskBb) * classRiskMultiplier;
+    }
+
+    private static double GetFacingRaiseImmediateWinRealization(HoleCards heroCards, FacingRaiseStructuralContext context, bool isJamAction)
+    {
+        if (!IsWeakOffsuitAceBluffCandidate(heroCards))
+            return 1d;
+
+        var baseRealization = context.IsInPositionVsOpener ? 0.72d : 0.66d;
+        baseRealization -= 0.03d * Math.Min(2, context.PlayersLeftBehindHero);
+        if (isJamAction)
+            baseRealization -= 0.04d;
+
+        return Math.Clamp(baseRealization, 0.52d, 0.78d);
+    }
+
+    private static double GetFacingRaiseWeakOffsuitAceRaiseSurcharge(HoleCards heroCards, FacingRaiseStructuralContext context, bool isJamAction)
+    {
+        if (!IsWeakOffsuitAceBluffCandidate(heroCards))
+            return 0d;
+
+        var baseSurcharge = context.IsInPositionVsOpener ? 0.040d : 0.055d;
+        baseSurcharge += 0.010d * Math.Min(2, context.PlayersLeftBehindHero);
+        if (isJamAction)
+            baseSurcharge += 0.025d;
+
+        return baseSurcharge;
     }
 
     private static double GetFacingRaisePremiumAggressionAdjustment(HoleCards heroCards, FacingRaiseStructuralContext context, bool isJamAction)

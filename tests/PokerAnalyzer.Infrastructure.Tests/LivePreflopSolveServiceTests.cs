@@ -226,6 +226,38 @@ public sealed class LivePreflopSolveServiceTests
     }
 
 
+
+    [Fact]
+    public async Task GetStrategyResultAsync_FreshMode_IsDeterministicForSameRequest()
+    {
+        var sut = new LivePreflopSolveService(new InMemoryRegretStore(), new InMemoryAverageStrategyStore(), new InMemoryPreflopTrainingProgressStore(), new PreflopInfoSetMapper(), new NamedPreflopPopulationProfileProvider(PreflopPopulationProfiles.GtoLikeName), new InMemoryActionValueStore());
+
+        var request = new PreflopStrategyRequestDto(
+            "v2:test:deterministic-fresh",
+            CreateRootState(),
+            [new LegalAction(ActionType.Fold), new LegalAction(ActionType.Call, new ChipAmount(100)), new LegalAction(ActionType.Raise, new ChipAmount(250))]);
+
+        var first = await sut.GetStrategyResultAsync(request, CancellationToken.None);
+        var second = await sut.GetStrategyResultAsync(request, CancellationToken.None);
+
+        Assert.NotNull(first);
+        Assert.NotNull(second);
+
+        foreach (var action in request.LegalActions)
+        {
+            var key = action.Amount?.Value > 0L
+                ? $"{action.ActionType}:{action.Amount.Value.Value / 100m:0.##}"
+                : action.ActionType.ToString();
+
+            Assert.Equal(first!.AverageStrategy[key], second!.AverageStrategy[key]);
+
+            var firstDiag = first.ActionDiagnostics!.Single(x => x.ActionKey == key);
+            var secondDiag = second.ActionDiagnostics!.Single(x => x.ActionKey == key);
+            Assert.Equal(firstDiag.CurrentPolicyFrequency, secondDiag.CurrentPolicyFrequency);
+            Assert.Equal(firstDiag.Regret, secondDiag.Regret);
+        }
+    }
+
     private static SolverHandState CreateBtnThreeWayRootState()
     {
         var btnId = PlayerId.New();

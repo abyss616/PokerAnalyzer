@@ -136,7 +136,7 @@ public sealed class LivePreflopSolveService : IPreflopStrategyProvider
     private AggregatedSolveData RunFreshMultiRunTraining(PreflopStrategyRequestDto request, IPreflopPopulationProfileProvider profileProvider, CancellationToken ct)
     {
         var runResults = new FreshRunResult?[FreshSolveRunCount];
-        var baseSeed = Random.Shared.Next();
+        var baseSeed = ComputeDeterministicFreshSolveBaseSeed(request);
         var seeds = Enumerable.Range(0, FreshSolveRunCount)
             .Select(runIndex => HashCode.Combine(baseSeed, runIndex))
             .ToArray();
@@ -157,6 +157,12 @@ public sealed class LivePreflopSolveService : IPreflopStrategyProvider
         {
             // Preserve existing behavior of returning whatever finished before cancellation.
         }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            // Preserve existing behavior of returning whatever finished before cancellation.
+        }
+
+        var completedRuns = runResults.Where(result => result is not null).Select(result => result!).ToArray();
 
         var completedRuns = runResults.Where(result => result is not null).Select(result => result!).ToArray();
 
@@ -282,6 +288,44 @@ public sealed class LivePreflopSolveService : IPreflopStrategyProvider
             actionValueSampleCounts,
             trainingResult.IterationsCompleted,
             (long)trainingResult.Elapsed.TotalMilliseconds);
+    }
+
+
+    private static int ComputeDeterministicFreshSolveBaseSeed(PreflopStrategyRequestDto request)
+    {
+        unchecked
+        {
+            var hash = (int)2166136261;
+            hash = AccumulateHash(hash, request.SolverKey);
+            hash = AccumulateHash(hash, request.RootState.ActionHistorySignature);
+            hash = AccumulateHash(hash, request.PopulationProfileName);
+            hash = (hash * 16777619) ^ request.RootState.Pot.Value.GetHashCode();
+            hash = (hash * 16777619) ^ request.RootState.CurrentBetSize.Value.GetHashCode();
+            hash = (hash * 16777619) ^ request.RootState.ToCall.Value.GetHashCode();
+
+            foreach (var action in request.LegalActions)
+            {
+                hash = (hash * 16777619) ^ (int)action.ActionType;
+                hash = (hash * 16777619) ^ (action.Amount?.Value.GetHashCode() ?? 0);
+            }
+
+            return hash;
+        }
+    }
+
+    private static int AccumulateHash(int seed, string? value)
+    {
+        unchecked
+        {
+            var hash = seed;
+            if (string.IsNullOrEmpty(value))
+                return hash;
+
+            foreach (var ch in value)
+                hash = (hash * 16777619) ^ ch;
+
+            return hash;
+        }
     }
 
     private PreflopRegretTrainer CreateTrainer(
