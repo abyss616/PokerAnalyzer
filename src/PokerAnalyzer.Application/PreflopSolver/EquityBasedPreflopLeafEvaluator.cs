@@ -184,7 +184,8 @@ public sealed class EquityBasedPreflopLeafEvaluator : IPreflopLeafEvaluator
             continueProbability = 1d;
             var squeezeRiskPenalty = GetFacingRaiseSqueezeRiskPenalty(facingContext);
             var positionalPenalty = facingContext.IsInPositionVsOpener ? 0d : 0.01d;
-            heroUtility = continueBranchUtility - squeezeRiskPenalty - positionalPenalty;
+            var marginalCallPenalty = GetFacingRaiseMarginalCallPenalty(context.HeroCards, handClass, facingContext, activeProfile);
+            heroUtility = continueBranchUtility - squeezeRiskPenalty - positionalPenalty - marginalCallPenalty;
             continueComponent = heroUtility;
         }
         else if (actionType == ActionType.Raise || actionType == ActionType.AllIn)
@@ -1096,6 +1097,30 @@ public sealed class EquityBasedPreflopLeafEvaluator : IPreflopLeafEvaluator
             return profile.OffsuitBroadwayRealizationPenalty + positionalPenalty + (0.5d * behindPenalty);
 
         return positionalPenalty * 0.5d;
+    }
+
+    private static double GetFacingRaiseMarginalCallPenalty(HoleCards heroCards, string handClass, FacingRaiseStructuralContext context, PreflopPopulationProfile profile)
+    {
+        var ranks = new[] { heroCards.First.Rank, heroCards.Second.Rank }.OrderByDescending(ToRankValue).ToArray();
+        var high = ToRankValue(ranks[0]);
+        var low = ToRankValue(ranks[1]);
+        var suited = heroCards.First.Suit == heroCards.Second.Suit;
+
+        var basePenalty = 0d;
+        if (string.Equals(handClass, "Suited wheel", StringComparison.Ordinal) && high <= 10)
+            basePenalty = 0.020d;
+        else if (string.Equals(handClass, "Suited connector/gapper", StringComparison.Ordinal) && high <= 10)
+            basePenalty = 0.018d;
+        else if (!suited && string.Equals(handClass, "Offsuit connector/gapper", StringComparison.Ordinal) && high <= 10 && low <= 7)
+            basePenalty = 0.012d;
+
+        if (basePenalty <= 0d)
+            return 0d;
+
+        var positionalPenalty = context.IsInPositionVsOpener ? 0d : 0.006d;
+        var behindPenalty = 0.004d * Math.Min(2, context.PlayersLeftBehindHero);
+        var profileScale = profile.RaiseRiskPenaltyFactor >= 0.11d ? 1.10d : 1d;
+        return (basePenalty + positionalPenalty + behindPenalty) * profileScale;
     }
 
     private readonly record struct FacingRaiseStructuralContext(
