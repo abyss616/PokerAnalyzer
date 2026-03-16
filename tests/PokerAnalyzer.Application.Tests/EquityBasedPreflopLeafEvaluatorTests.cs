@@ -669,6 +669,28 @@ public sealed class EquityBasedPreflopLeafEvaluatorTests
         Assert.True(raise.Details.FoldProbability < 0.25d);
     }
 
+
+    [Theory]
+    [InlineData("Ad4c")]
+    [InlineData("Ad3c")]
+    [InlineData("Ad2c")]
+    public void Evaluate_FacingRaise_MicroStakes_SbVsCo_WeakOffsuitWheelAces_AreNotRaiseFavored(string hand)
+    {
+        var microEvaluator = new EquityBasedPreflopLeafEvaluator(
+            new TableDrivenOpponentRangeProvider(),
+            new HeuristicPreflopLeafEvaluator(),
+            samplesPerMatchup: 120,
+            populationProfileProvider: new NamedPreflopPopulationProfileProvider(PreflopPopulationProfiles.MicroStakesLoosePassiveName));
+
+        var call = microEvaluator.Evaluate(CreateFacingRaiseProfileContext(Position.SB, Position.CO, HoleCards.Parse(hand), ActionType.Call));
+        var raise = microEvaluator.Evaluate(CreateFacingRaiseProfileContext(Position.SB, Position.CO, HoleCards.Parse(hand), ActionType.Raise, new ChipAmount(900)));
+
+        Assert.NotNull(call.Details);
+        Assert.NotNull(raise.Details);
+        Assert.True(raise.Details!.HeroUtility <= call.Details!.HeroUtility);
+        Assert.True(raise.Details.ImmediateWinComponent < 0.30d);
+    }
+
     [Fact]
     public void Evaluate_FacingRaise_MicroStakes_BtnVsCo_55_IsNoLongerNearPureRaiseCandidate()
     {
