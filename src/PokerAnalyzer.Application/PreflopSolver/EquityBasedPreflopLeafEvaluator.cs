@@ -1037,6 +1037,8 @@ public sealed class EquityBasedPreflopLeafEvaluator : IPreflopLeafEvaluator
         var classAdjustment = 0d;
         if (IsWeakOffsuitAceBluffCandidate(heroCards))
             classAdjustment -= context.IsInPositionVsOpener ? 0.08d : 0.10d;
+        else if (IsOffsuitTrashFacingRaiseBluffCandidate(heroCards))
+            classAdjustment -= context.IsInPositionVsOpener ? 0.14d : 0.16d;
         else if (IsLowPairFacingRaiseCandidate(heroCards))
             classAdjustment -= context.IsInPositionVsOpener ? 0.06d : 0.08d;
 
@@ -1058,6 +1060,7 @@ public sealed class EquityBasedPreflopLeafEvaluator : IPreflopLeafEvaluator
         var additionalInvestmentBb = Math.Max(0d, actionSizeBb - callAmountBb);
         var classRiskMultiplier = IsWeakOffsuitAceBluffCandidate(heroCards)
             ? 1.35d
+            : IsOffsuitTrashFacingRaiseBluffCandidate(heroCards) ? 1.70d
             : IsLowPairFacingRaiseCandidate(heroCards) ? 1.20d : 1d;
 
         if (isJamAction)
@@ -1099,10 +1102,14 @@ public sealed class EquityBasedPreflopLeafEvaluator : IPreflopLeafEvaluator
         var positionalPenalty = context.IsInPositionVsOpener ? 0d : 0.02d;
         var behindPenalty = 0.01d * context.PlayersLeftBehindHero;
 
-        if (string.Equals(handClass, "Weak offsuit ace", StringComparison.Ordinal)
-            || string.Equals(handClass, "Offsuit trash", StringComparison.Ordinal))
+        if (string.Equals(handClass, "Weak offsuit ace", StringComparison.Ordinal))
         {
-            return profile.WeakOffsuitRealizationPenalty + positionalPenalty + behindPenalty + 0.03d;
+            return profile.WeakOffsuitRealizationPenalty + positionalPenalty + behindPenalty + 0.05d;
+        }
+
+        if (string.Equals(handClass, "Offsuit trash", StringComparison.Ordinal))
+        {
+            return profile.WeakOffsuitRealizationPenalty + positionalPenalty + behindPenalty + 0.08d;
         }
 
         if (string.Equals(handClass, "Offsuit broadway", StringComparison.Ordinal))
@@ -1128,6 +1135,15 @@ public sealed class EquityBasedPreflopLeafEvaluator : IPreflopLeafEvaluator
         var first = ToRankValue(heroCards.First.Rank);
         var second = ToRankValue(heroCards.Second.Rank);
         return first == second && first <= 6;
+    }
+
+    private static bool IsOffsuitTrashFacingRaiseBluffCandidate(HoleCards heroCards)
+    {
+        var ranks = new[] { heroCards.First.Rank, heroCards.Second.Rank }.OrderByDescending(ToRankValue).ToArray();
+        var high = ToRankValue(ranks[0]);
+        var low = ToRankValue(ranks[1]);
+        var suited = heroCards.First.Suit == heroCards.Second.Suit;
+        return !suited && high <= 10 && low <= 6;
     }
 
     private static double GetFacingRaiseMarginalCallPenalty(HoleCards heroCards, string handClass, FacingRaiseStructuralContext context, PreflopPopulationProfile profile)
