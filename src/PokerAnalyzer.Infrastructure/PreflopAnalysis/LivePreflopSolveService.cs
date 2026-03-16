@@ -164,8 +164,6 @@ public sealed class LivePreflopSolveService : IPreflopStrategyProvider
 
         var completedRuns = runResults.Where(result => result is not null).Select(result => result!).ToArray();
 
-        var completedRuns = runResults.Where(result => result is not null).Select(result => result!).ToArray();
-
         if (completedRuns.Length == 0)
         {
             var uniform = UniformPolicyBuilder.Build(request.LegalActions);
