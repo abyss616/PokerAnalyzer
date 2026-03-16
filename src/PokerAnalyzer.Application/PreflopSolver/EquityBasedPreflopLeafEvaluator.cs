@@ -167,7 +167,7 @@ public sealed class EquityBasedPreflopLeafEvaluator : IPreflopLeafEvaluator
         var allFold = 1d;
         foreach (var opponent in rootOpponents)
         {
-            var foldProbability = GetFacingRaiseFoldProbability(opponent.Position, opener.Position, facingContext, actionType, actionSizeBb, isJamAction, activeProfile);
+            var foldProbability = GetFacingRaiseFoldProbability(opponent.Position, opener.Position, facingContext, context.HeroCards, actionType, actionSizeBb, isJamAction, activeProfile);
             allFold *= foldProbability;
         }
 
@@ -192,9 +192,9 @@ public sealed class EquityBasedPreflopLeafEvaluator : IPreflopLeafEvaluator
         {
             immediateComponent = allFold * potBb;
             continueComponent = continueProbability * continueBranchUtility;
-            var riskPenalty = GetFacingRaiseRiskPenalty(continueProbability, actionSizeBb, callAmountBb, isJamAction, activeProfile);
+            var riskPenalty = GetFacingRaiseRiskPenalty(continueProbability, actionSizeBb, callAmountBb, context.HeroCards, isJamAction, activeProfile);
             var leveragePenalty = isJamAction ? 0.12d + (0.02d * facingContext.PlayersLeftBehindHero) : 0.05d + (0.01d * facingContext.PlayersLeftBehindHero);
-            var realizationPenalty = continueProbability * GetFacingRaiseRealizationPenalty(handClass, facingContext, activeProfile);
+            var realizationPenalty = continueProbability * GetFacingRaiseRealizationPenalty(context.HeroCards, handClass, facingContext, activeProfile);
             var premiumAggressionAdjustment = GetFacingRaisePremiumAggressionAdjustment(context.HeroCards, facingContext, isJamAction);
             heroUtility = immediateComponent + continueComponent - riskPenalty - leveragePenalty - realizationPenalty + premiumAggressionAdjustment;
         }
@@ -1007,7 +1007,7 @@ public sealed class EquityBasedPreflopLeafEvaluator : IPreflopLeafEvaluator
         return baseWeight;
     }
 
-    private static double GetFacingRaiseFoldProbability(Position opponentPosition, Position openerPosition, FacingRaiseStructuralContext context, ActionType actionType, double actionSizeBb, bool isJamAction, PreflopPopulationProfile profile)
+    private static double GetFacingRaiseFoldProbability(Position opponentPosition, Position openerPosition, FacingRaiseStructuralContext context, HoleCards heroCards, ActionType actionType, double actionSizeBb, bool isJamAction, PreflopPopulationProfile profile)
     {
         if (actionType == ActionType.Call)
             return 0d;
@@ -1034,7 +1034,16 @@ public sealed class EquityBasedPreflopLeafEvaluator : IPreflopLeafEvaluator
             ? -0.05d
             : profile.RaiseRiskPenaltyFactor <= 0.075d ? 0.02d : 0d;
 
-        return Math.Clamp(baseFold + sizeLift + depthAdjustment + populationAdjustment, 0.08d, 0.90d);
+        var classAdjustment = 0d;
+        if (IsWeakOffsuitAceBluffCandidate(heroCards))
+            classAdjustment -= context.IsInPositionVsOpener ? 0.08d : 0.10d;
+        else if (IsLowPairFacingRaiseCandidate(heroCards))
+            classAdjustment -= context.IsInPositionVsOpener ? 0.06d : 0.08d;
+
+        if (isJamAction && classAdjustment < 0d)
+            classAdjustment -= 0.02d;
+
+        return Math.Clamp(baseFold + sizeLift + depthAdjustment + populationAdjustment + classAdjustment, 0.08d, 0.90d);
     }
 
     private static double GetFacingRaiseSqueezeRiskPenalty(FacingRaiseStructuralContext context)
@@ -1044,18 +1053,21 @@ public sealed class EquityBasedPreflopLeafEvaluator : IPreflopLeafEvaluator
         return behindPenalty + oopPenalty;
     }
 
-    private static double GetFacingRaiseRiskPenalty(double continueProbability, double actionSizeBb, double callAmountBb, bool isJamAction, PreflopPopulationProfile profile)
+    private static double GetFacingRaiseRiskPenalty(double continueProbability, double actionSizeBb, double callAmountBb, HoleCards heroCards, bool isJamAction, PreflopPopulationProfile profile)
     {
         var additionalInvestmentBb = Math.Max(0d, actionSizeBb - callAmountBb);
+        var classRiskMultiplier = IsWeakOffsuitAceBluffCandidate(heroCards)
+            ? 1.35d
+            : IsLowPairFacingRaiseCandidate(heroCards) ? 1.20d : 1d;
 
         if (isJamAction)
         {
             var jamRiskBb = Math.Max(4d, additionalInvestmentBb);
-            return continueProbability * profile.RaiseRiskPenaltyFactor * (0.85d * jamRiskBb);
+            return continueProbability * profile.RaiseRiskPenaltyFactor * (0.85d * jamRiskBb) * classRiskMultiplier;
         }
 
         var scaledRiskBb = Math.Min(6d, additionalInvestmentBb);
-        return continueProbability * profile.RaiseRiskPenaltyFactor * (0.40d * scaledRiskBb);
+        return continueProbability * profile.RaiseRiskPenaltyFactor * (0.40d * scaledRiskBb) * classRiskMultiplier;
     }
 
     private static double GetFacingRaisePremiumAggressionAdjustment(HoleCards heroCards, FacingRaiseStructuralContext context, bool isJamAction)
@@ -1082,7 +1094,7 @@ public sealed class EquityBasedPreflopLeafEvaluator : IPreflopLeafEvaluator
         return baseBoost * positionScale * behindScale * jamScale;
     }
 
-    private static double GetFacingRaiseRealizationPenalty(string handClass, FacingRaiseStructuralContext context, PreflopPopulationProfile profile)
+    private static double GetFacingRaiseRealizationPenalty(HoleCards heroCards, string handClass, FacingRaiseStructuralContext context, PreflopPopulationProfile profile)
     {
         var positionalPenalty = context.IsInPositionVsOpener ? 0d : 0.02d;
         var behindPenalty = 0.01d * context.PlayersLeftBehindHero;
@@ -1096,7 +1108,26 @@ public sealed class EquityBasedPreflopLeafEvaluator : IPreflopLeafEvaluator
         if (string.Equals(handClass, "Offsuit broadway", StringComparison.Ordinal))
             return profile.OffsuitBroadwayRealizationPenalty + positionalPenalty + (0.5d * behindPenalty);
 
+        if (string.Equals(handClass, "Pair", StringComparison.Ordinal) && IsLowPairFacingRaiseCandidate(heroCards))
+            return 0.045d + positionalPenalty + (0.75d * behindPenalty);
+
         return positionalPenalty * 0.5d;
+    }
+
+    private static bool IsWeakOffsuitAceBluffCandidate(HoleCards heroCards)
+    {
+        var ranks = new[] { heroCards.First.Rank, heroCards.Second.Rank }.OrderByDescending(ToRankValue).ToArray();
+        var high = ToRankValue(ranks[0]);
+        var low = ToRankValue(ranks[1]);
+        var suited = heroCards.First.Suit == heroCards.Second.Suit;
+        return !suited && high == 14 && low <= 6;
+    }
+
+    private static bool IsLowPairFacingRaiseCandidate(HoleCards heroCards)
+    {
+        var first = ToRankValue(heroCards.First.Rank);
+        var second = ToRankValue(heroCards.Second.Rank);
+        return first == second && first <= 6;
     }
 
     private static double GetFacingRaiseMarginalCallPenalty(HoleCards heroCards, string handClass, FacingRaiseStructuralContext context, PreflopPopulationProfile profile)

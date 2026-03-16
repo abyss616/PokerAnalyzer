@@ -626,6 +626,60 @@ public sealed class EquityBasedPreflopLeafEvaluatorTests
         Assert.True(raise.Details!.HeroUtility <= call.Details!.HeroUtility);
     }
 
+
+    [Fact]
+    public void Evaluate_FacingRaise_MicroStakes_SbVsCo_A5o_IsNoLongerNearPureRaiseCandidate()
+    {
+        var microEvaluator = new EquityBasedPreflopLeafEvaluator(
+            new TableDrivenOpponentRangeProvider(),
+            new HeuristicPreflopLeafEvaluator(),
+            samplesPerMatchup: 120,
+            populationProfileProvider: new NamedPreflopPopulationProfileProvider(PreflopPopulationProfiles.MicroStakesLoosePassiveName));
+
+        var call = microEvaluator.Evaluate(CreateFacingRaiseProfileContext(Position.SB, Position.CO, HoleCards.Parse("Ad5c"), ActionType.Call));
+        var raise = microEvaluator.Evaluate(CreateFacingRaiseProfileContext(Position.SB, Position.CO, HoleCards.Parse("Ad5c"), ActionType.Raise, new ChipAmount(900)));
+
+        Assert.NotNull(call.Details);
+        Assert.NotNull(raise.Details);
+        Assert.True(raise.Details!.HeroUtility <= call.Details!.HeroUtility);
+        Assert.True(raise.Details.FoldProbability < 0.25d);
+    }
+
+    [Fact]
+    public void Evaluate_FacingRaise_MicroStakes_BtnVsCo_55_IsNoLongerNearPureRaiseCandidate()
+    {
+        var microEvaluator = new EquityBasedPreflopLeafEvaluator(
+            new TableDrivenOpponentRangeProvider(),
+            new HeuristicPreflopLeafEvaluator(),
+            samplesPerMatchup: 120,
+            populationProfileProvider: new NamedPreflopPopulationProfileProvider(PreflopPopulationProfiles.MicroStakesLoosePassiveName));
+
+        var call = microEvaluator.Evaluate(CreateFacingRaiseProfileContext(Position.BTN, Position.CO, HoleCards.Parse("5d5c"), ActionType.Call));
+        var raise = microEvaluator.Evaluate(CreateFacingRaiseProfileContext(Position.BTN, Position.CO, HoleCards.Parse("5d5c"), ActionType.Raise, new ChipAmount(900)));
+
+        Assert.NotNull(call.Details);
+        Assert.NotNull(raise.Details);
+        Assert.True(raise.Details!.HeroUtility <= call.Details!.HeroUtility);
+        Assert.True(raise.Details.FoldProbability < 0.27d);
+    }
+
+    [Fact]
+    public void Evaluate_FacingRaise_MicroStakes_SbVsCo_KJo_MixedContinueRegionRemainsReasonable()
+    {
+        var microEvaluator = new EquityBasedPreflopLeafEvaluator(
+            new TableDrivenOpponentRangeProvider(),
+            new HeuristicPreflopLeafEvaluator(),
+            samplesPerMatchup: 120,
+            populationProfileProvider: new NamedPreflopPopulationProfileProvider(PreflopPopulationProfiles.MicroStakesLoosePassiveName));
+
+        var call = microEvaluator.Evaluate(CreateFacingRaiseProfileContext(Position.SB, Position.CO, HoleCards.Parse("KdJc"), ActionType.Call));
+        var raise = microEvaluator.Evaluate(CreateFacingRaiseProfileContext(Position.SB, Position.CO, HoleCards.Parse("KdJc"), ActionType.Raise, new ChipAmount(900)));
+
+        Assert.NotNull(call.Details);
+        Assert.NotNull(raise.Details);
+        Assert.True(call.Details!.HeroUtility - raise.Details!.HeroUtility < 0.35d);
+    }
+
     [Fact]
     public void Evaluate_FacingRaise_MicroStakes_MarginalSuitedCalls_GetExtraPenaltyWithoutImpactingPremiumCalls()
     {
