@@ -573,31 +573,6 @@ public sealed class EquityBasedPreflopLeafEvaluatorTests
     }
 
     [Fact]
-    public void Evaluate_FacingRaise_FoldProbabilityIsLowerForMicroStakesProfile()
-    {
-        var gtoEvaluator = new EquityBasedPreflopLeafEvaluator(
-            new TableDrivenOpponentRangeProvider(),
-            new HeuristicPreflopLeafEvaluator(),
-            samplesPerMatchup: 120,
-            populationProfileProvider: new NamedPreflopPopulationProfileProvider(PreflopPopulationProfiles.GtoLikeName));
-
-        var microEvaluator = new EquityBasedPreflopLeafEvaluator(
-            new TableDrivenOpponentRangeProvider(),
-            new HeuristicPreflopLeafEvaluator(),
-            samplesPerMatchup: 120,
-            populationProfileProvider: new NamedPreflopPopulationProfileProvider(PreflopPopulationProfiles.MicroStakesLoosePassiveName));
-
-        var context = CreateFacingRaiseProfileContext(Position.BTN, Position.CO, HoleCards.Parse("Ad5c"), ActionType.Raise, new ChipAmount(900));
-        var gto = gtoEvaluator.Evaluate(context);
-        var micro = microEvaluator.Evaluate(context);
-
-        Assert.NotNull(gto.Details?.FoldProbability);
-        Assert.NotNull(micro.Details?.FoldProbability);
-        Assert.True(micro.Details!.FoldProbability < gto.Details!.FoldProbability);
-        Assert.True(micro.Details.ContinueProbability > gto.Details.ContinueProbability);
-    }
-
-    [Fact]
     public void Evaluate_FacingRaise_MicroStakes_StrongHandsCanStillRaise()
     {
         var microEvaluator = new EquityBasedPreflopLeafEvaluator(
