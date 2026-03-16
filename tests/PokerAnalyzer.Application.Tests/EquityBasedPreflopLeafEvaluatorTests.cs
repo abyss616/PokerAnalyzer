@@ -1231,7 +1231,7 @@ public sealed class EquityBasedPreflopLeafEvaluatorTests
                 : player with { IsFolded = leafActiveOpponents == 0 })
             .ToArray();
 
-        var leaf = baseline.LeafState with { Players = updatedPlayers };
+        var leaf = baseline.LeafState.With(players: updatedPlayers);
         return baseline with { LeafState = leaf };
     }
 
