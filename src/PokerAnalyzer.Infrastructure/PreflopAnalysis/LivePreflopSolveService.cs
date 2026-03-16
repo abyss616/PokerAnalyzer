@@ -7,7 +7,7 @@ namespace PokerAnalyzer.Infrastructure.PreflopAnalysis;
 public sealed class LivePreflopSolveService : IPreflopStrategyProvider
 {
     private const int FreshSolveRunCount = 6;
-    private const int FreshSolveIterationsPerRun = 100;
+    private const int FreshSolveIterationsPerRun = 300;
     private static readonly PreflopTrainingOptions PersistentTrainingOptions = PreflopTrainingOptions.ForIterations(300);
     private static readonly PreflopTrainingOptions FreshSolveTrainingOptions = PreflopTrainingOptions.ForIterations(FreshSolveIterationsPerRun);
 
@@ -100,7 +100,7 @@ public sealed class LivePreflopSolveService : IPreflopStrategyProvider
             bestActionLeafDetails,
             explanations,
             diagnostics,
-            $"Average frequencies come from {(request.UsePersistentTrainingState ? "cumulative average strategy" : $"mean frequencies across {FreshSolveRunCount} independent stochastic fresh runs")} ; current-policy frequencies come from {(request.UsePersistentTrainingState ? "regret matching on cumulative persistent regrets" : "mean regret-matching policies across independent fresh runs")} and action-value-based stochastic fallback when all regrets are non-positive; regrets are {(request.UsePersistentTrainingState ? "cumulative counterfactual regrets" : "mean cumulative counterfactual regrets across fresh runs")}. Profile={profileProvider.ActiveProfileName}.",
+            $"Average frequencies come from {(request.UsePersistentTrainingState ? "cumulative average strategy" : $"mean frequencies across {FreshSolveRunCount} x {FreshSolveIterationsPerRun} independent stochastic fresh-run iterations")} ; current-policy frequencies come from {(request.UsePersistentTrainingState ? "regret matching on cumulative persistent regrets" : $"mean regret-matching policies across {FreshSolveRunCount} x {FreshSolveIterationsPerRun} fresh-run regrets")} and action-value-based stochastic fallback when all regrets are non-positive; regrets are {(request.UsePersistentTrainingState ? "cumulative counterfactual regrets" : $"mean cumulative counterfactual regrets across {FreshSolveRunCount} x {FreshSolveIterationsPerRun} fresh-run iterations")}. Profile={profileProvider.ActiveProfileName}.",
             bestMargin,
             separation));
     }
@@ -141,7 +141,9 @@ public sealed class LivePreflopSolveService : IPreflopStrategyProvider
         var iterationsCompleted = 0;
         long elapsedMilliseconds = 0;
 
-        PreflopRegretTrainer? explanationTrainer = null;
+        var averageWeightSums = request.LegalActions.ToDictionary(action => action, _ => 0d);
+        var actionValueSums = request.LegalActions.ToDictionary(action => action, _ => 0d);
+        var actionValueSampleCounts = request.LegalActions.ToDictionary(action => action, _ => 0);
 
         for (var runIndex = 0; runIndex < FreshSolveRunCount && !ct.IsCancellationRequested; runIndex++)
         {
@@ -170,16 +172,23 @@ public sealed class LivePreflopSolveService : IPreflopStrategyProvider
             perRunCurrentPolicies.Add(currentPolicy);
 
             foreach (var action in request.LegalActions)
+            {
                 regretSums[action] += runRegretStore.Get(request.SolverKey, action);
 
-            explanationTrainer ??= trainer;
+                averageWeightSums[action] += runAverageStore.Get(request.SolverKey, action);
+                if (runActionValueStore.TryGetAverage(request.SolverKey, action, out var averageUtility))
+                {
+                    actionValueSums[action] += averageUtility;
+                    actionValueSampleCounts[action]++;
+                }
+            }
         }
 
         if (perRunAveragePolicies.Count == 0)
         {
             var uniform = UniformPolicyBuilder.Build(request.LegalActions);
             var zeroRegrets = request.LegalActions.ToDictionary(action => action, _ => 0d);
-            explanationTrainer ??= CreateTrainer(
+            var explanationTrainer = CreateTrainer(
                 request,
                 profileProvider,
                 new InMemoryRegretStore(),
@@ -202,6 +211,29 @@ public sealed class LivePreflopSolveService : IPreflopStrategyProvider
         var averagedRegrets = regretSums.ToDictionary(kvp => kvp.Key, kvp => kvp.Value / perRunAveragePolicies.Count);
         var regretMagnitude = request.LegalActions.Sum(a => Math.Max(0d, averagedRegrets[a]));
 
+        var aggregatedRegretStore = new InMemoryRegretStore();
+        var aggregatedAverageStore = new InMemoryAverageStrategyStore();
+        var aggregatedActionValueStore = new InMemoryActionValueStore();
+        foreach (var action in request.LegalActions)
+        {
+            aggregatedRegretStore.Add(request.SolverKey, action, averagedRegrets[action]);
+            aggregatedAverageStore.Add(request.SolverKey, action, averageWeightSums[action] / perRunAveragePolicies.Count);
+
+            if (actionValueSampleCounts[action] > 0)
+            {
+                var averagedUtility = actionValueSums[action] / actionValueSampleCounts[action];
+                aggregatedActionValueStore.AddSamples(request.SolverKey, action, averagedUtility, 1);
+            }
+        }
+
+        var explanationTrainer = CreateTrainer(
+            request,
+            profileProvider,
+            aggregatedRegretStore,
+            aggregatedAverageStore,
+            new InMemoryPreflopTrainingProgressStore(),
+            aggregatedActionValueStore);
+
         return new AggregatedSolveData(
             averagedPolicy,
             averagedCurrentPolicy,
@@ -209,7 +241,7 @@ public sealed class LivePreflopSolveService : IPreflopStrategyProvider
             iterationsCompleted,
             regretMagnitude,
             elapsedMilliseconds,
-            explanationTrainer!);
+            explanationTrainer);
     }
 
     private PreflopRegretTrainer CreateTrainer(

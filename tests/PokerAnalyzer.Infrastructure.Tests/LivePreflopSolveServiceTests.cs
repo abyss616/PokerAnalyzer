@@ -82,7 +82,8 @@ public sealed class LivePreflopSolveServiceTests
 
         Assert.NotNull(result);
         Assert.Equal("Fresh", result!.SolveMode);
-        Assert.Equal(600, result.IterationsCompleted);
+        Assert.Equal(1800, result.IterationsCompleted);
+        Assert.Contains("6 x 300", result.ActionValueSupport);
     }
 
     [Fact]
@@ -354,7 +355,7 @@ public sealed class LivePreflopSolveServiceTests
             request.SolverKey,
             actionValueStore);
 
-        _ = trainer.RunTraining(PreflopTrainingOptions.ForIterations(100), CancellationToken.None, randomSeed: Random.Shared.Next());
+        _ = trainer.RunTraining(PreflopTrainingOptions.ForIterations(300), CancellationToken.None, randomSeed: Random.Shared.Next());
         var policy = averageStore.GetAveragePolicy(request.SolverKey, request.LegalActions);
         var foldAction = request.LegalActions.Single(x => x.ActionType == ActionType.Fold);
         return policy.TryGetValue(foldAction, out var value) ? value : 0d;
