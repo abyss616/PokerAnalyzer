@@ -135,56 +135,32 @@ public sealed class LivePreflopSolveService : IPreflopStrategyProvider
 
     private AggregatedSolveData RunFreshMultiRunTraining(PreflopStrategyRequestDto request, IPreflopPopulationProfileProvider profileProvider, CancellationToken ct)
     {
-        var perRunAveragePolicies = new List<IReadOnlyDictionary<LegalAction, double>>(FreshSolveRunCount);
-        var perRunCurrentPolicies = new List<IReadOnlyDictionary<LegalAction, double>>(FreshSolveRunCount);
-        var regretSums = request.LegalActions.ToDictionary(action => action, _ => 0d);
-        var iterationsCompleted = 0;
-        long elapsedMilliseconds = 0;
-
-        var averageWeightSums = request.LegalActions.ToDictionary(action => action, _ => 0d);
-        var actionValueSums = request.LegalActions.ToDictionary(action => action, _ => 0d);
-        var actionValueSampleCounts = request.LegalActions.ToDictionary(action => action, _ => 0);
-
-        for (var runIndex = 0; runIndex < FreshSolveRunCount && !ct.IsCancellationRequested; runIndex++)
+        var runResults = new FreshRunResult?[FreshSolveRunCount];
+        var baseSeed = Random.Shared.Next();
+        var seeds = Enumerable.Range(0, FreshSolveRunCount)
+            .Select(runIndex => HashCode.Combine(baseSeed, runIndex))
+            .ToArray();
+        var options = new ParallelOptions
         {
-            var runRegretStore = new InMemoryRegretStore();
-            var runAverageStore = new InMemoryAverageStrategyStore();
-            var runProgressStore = new InMemoryPreflopTrainingProgressStore();
-            var runActionValueStore = new InMemoryActionValueStore();
+            CancellationToken = ct,
+            MaxDegreeOfParallelism = Math.Min(FreshSolveRunCount, Environment.ProcessorCount)
+        };
 
-            var trainer = CreateTrainer(
-                request,
-                profileProvider,
-                runRegretStore,
-                runAverageStore,
-                runProgressStore,
-                runActionValueStore);
-
-            var trainingResult = trainer.RunTraining(FreshSolveTrainingOptions, ct, randomSeed: Random.Shared.Next());
-            iterationsCompleted += trainingResult.IterationsCompleted;
-            elapsedMilliseconds += (long)trainingResult.Elapsed.TotalMilliseconds;
-
-            var averagePolicy = runAverageStore.GetAveragePolicy(request.SolverKey, request.LegalActions);
-            _ = new RegretMatchingPolicyProvider(runRegretStore, runActionValueStore).TryGetPolicy(request.SolverKey, request.LegalActions, out var currentPolicy);
-            currentPolicy ??= UniformPolicyBuilder.Build(request.LegalActions);
-
-            perRunAveragePolicies.Add(averagePolicy);
-            perRunCurrentPolicies.Add(currentPolicy);
-
-            foreach (var action in request.LegalActions)
+        try
+        {
+            Parallel.ForEach(Enumerable.Range(0, FreshSolveRunCount), options, runIndex =>
             {
-                regretSums[action] += runRegretStore.Get(request.SolverKey, action);
-
-                averageWeightSums[action] += runAverageStore.Get(request.SolverKey, action);
-                if (runActionValueStore.TryGetAverage(request.SolverKey, action, out var averageUtility))
-                {
-                    actionValueSums[action] += averageUtility;
-                    actionValueSampleCounts[action]++;
-                }
-            }
+                runResults[runIndex] = ExecuteFreshRun(request, profileProvider, seeds[runIndex], ct);
+            });
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            // Preserve existing behavior of returning whatever finished before cancellation.
         }
 
-        if (perRunAveragePolicies.Count == 0)
+        var completedRuns = runResults.Where(result => result is not null).Select(result => result!).ToArray();
+
+        if (completedRuns.Length == 0)
         {
             var uniform = UniformPolicyBuilder.Build(request.LegalActions);
             var zeroRegrets = request.LegalActions.ToDictionary(action => action, _ => 0d);
@@ -202,14 +178,33 @@ public sealed class LivePreflopSolveService : IPreflopStrategyProvider
                 zeroRegrets,
                 0,
                 0d,
-                elapsedMilliseconds,
+                0,
                 fallbackExplanationTrainer);
         }
 
+        var perRunAveragePolicies = completedRuns.Select(run => run.AveragePolicy).ToList();
+        var perRunCurrentPolicies = completedRuns.Select(run => run.CurrentPolicy).ToList();
         var averagedPolicy = AveragePolicies(perRunAveragePolicies, request.LegalActions);
         var averagedCurrentPolicy = AveragePolicies(perRunCurrentPolicies, request.LegalActions);
-        var averagedRegrets = regretSums.ToDictionary(kvp => kvp.Key, kvp => kvp.Value / perRunAveragePolicies.Count);
+
+        var regretSums = request.LegalActions.ToDictionary(
+            action => action,
+            action => completedRuns.Sum(run => run.Regrets[action]));
+        var averagedRegrets = regretSums.ToDictionary(kvp => kvp.Key, kvp => kvp.Value / completedRuns.Length);
         var regretMagnitude = request.LegalActions.Sum(a => Math.Max(0d, averagedRegrets[a]));
+
+        var iterationsCompleted = completedRuns.Sum(run => run.IterationsCompleted);
+        var elapsedMilliseconds = completedRuns.Sum(run => run.ElapsedMilliseconds);
+
+        var averageWeightSums = request.LegalActions.ToDictionary(
+            action => action,
+            action => completedRuns.Sum(run => run.AverageWeights[action]));
+        var actionValueSums = request.LegalActions.ToDictionary(
+            action => action,
+            action => completedRuns.Sum(run => run.ActionValueSums[action]));
+        var actionValueSampleCounts = request.LegalActions.ToDictionary(
+            action => action,
+            action => completedRuns.Sum(run => run.ActionValueSampleCounts[action]));
 
         var aggregatedRegretStore = new InMemoryRegretStore();
         var aggregatedAverageStore = new InMemoryAverageStrategyStore();
@@ -217,7 +212,7 @@ public sealed class LivePreflopSolveService : IPreflopStrategyProvider
         foreach (var action in request.LegalActions)
         {
             aggregatedRegretStore.Add(request.SolverKey, action, averagedRegrets[action]);
-            aggregatedAverageStore.Add(request.SolverKey, action, averageWeightSums[action] / perRunAveragePolicies.Count);
+            aggregatedAverageStore.Add(request.SolverKey, action, averageWeightSums[action] / completedRuns.Length);
 
             if (actionValueSampleCounts[action] > 0)
             {
@@ -242,6 +237,51 @@ public sealed class LivePreflopSolveService : IPreflopStrategyProvider
             regretMagnitude,
             elapsedMilliseconds,
             explanationTrainer);
+    }
+
+    private FreshRunResult ExecuteFreshRun(PreflopStrategyRequestDto request, IPreflopPopulationProfileProvider profileProvider, int randomSeed, CancellationToken ct)
+    {
+        var runRegretStore = new InMemoryRegretStore();
+        var runAverageStore = new InMemoryAverageStrategyStore();
+        var runProgressStore = new InMemoryPreflopTrainingProgressStore();
+        var runActionValueStore = new InMemoryActionValueStore();
+
+        var trainer = CreateTrainer(
+            request,
+            profileProvider,
+            runRegretStore,
+            runAverageStore,
+            runProgressStore,
+            runActionValueStore);
+
+        var trainingResult = trainer.RunTraining(FreshSolveTrainingOptions, ct, randomSeed: randomSeed);
+        var averagePolicy = runAverageStore.GetAveragePolicy(request.SolverKey, request.LegalActions);
+        _ = new RegretMatchingPolicyProvider(runRegretStore, runActionValueStore).TryGetPolicy(request.SolverKey, request.LegalActions, out var currentPolicy);
+        currentPolicy ??= UniformPolicyBuilder.Build(request.LegalActions);
+
+        var regrets = request.LegalActions.ToDictionary(action => action, action => runRegretStore.Get(request.SolverKey, action));
+        var averageWeights = request.LegalActions.ToDictionary(action => action, action => runAverageStore.Get(request.SolverKey, action));
+        var actionValueSums = request.LegalActions.ToDictionary(action => action, _ => 0d);
+        var actionValueSampleCounts = request.LegalActions.ToDictionary(action => action, _ => 0);
+
+        foreach (var action in request.LegalActions)
+        {
+            if (runActionValueStore.TryGetAverage(request.SolverKey, action, out var averageUtility))
+            {
+                actionValueSums[action] = averageUtility;
+                actionValueSampleCounts[action] = 1;
+            }
+        }
+
+        return new FreshRunResult(
+            averagePolicy,
+            currentPolicy,
+            regrets,
+            averageWeights,
+            actionValueSums,
+            actionValueSampleCounts,
+            trainingResult.IterationsCompleted,
+            (long)trainingResult.Elapsed.TotalMilliseconds);
     }
 
     private PreflopRegretTrainer CreateTrainer(
@@ -352,4 +392,14 @@ public sealed class LivePreflopSolveService : IPreflopStrategyProvider
         double RegretMagnitude,
         long ElapsedMilliseconds,
         PreflopRegretTrainer ExplanationTrainer);
+
+    private sealed record FreshRunResult(
+        IReadOnlyDictionary<LegalAction, double> AveragePolicy,
+        IReadOnlyDictionary<LegalAction, double> CurrentPolicy,
+        IReadOnlyDictionary<LegalAction, double> Regrets,
+        IReadOnlyDictionary<LegalAction, double> AverageWeights,
+        IReadOnlyDictionary<LegalAction, double> ActionValueSums,
+        IReadOnlyDictionary<LegalAction, int> ActionValueSampleCounts,
+        int IterationsCompleted,
+        long ElapsedMilliseconds);
 }
