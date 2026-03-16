@@ -188,7 +188,7 @@ public sealed class LivePreflopSolveService : IPreflopStrategyProvider
         {
             var uniform = UniformPolicyBuilder.Build(request.LegalActions);
             var zeroRegrets = request.LegalActions.ToDictionary(action => action, _ => 0d);
-            var explanationTrainer = CreateTrainer(
+            var fallbackExplanationTrainer = CreateTrainer(
                 request,
                 profileProvider,
                 new InMemoryRegretStore(),
@@ -203,7 +203,7 @@ public sealed class LivePreflopSolveService : IPreflopStrategyProvider
                 0,
                 0d,
                 elapsedMilliseconds,
-                explanationTrainer);
+                fallbackExplanationTrainer);
         }
 
         var averagedPolicy = AveragePolicies(perRunAveragePolicies, request.LegalActions);
