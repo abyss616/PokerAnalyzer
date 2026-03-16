@@ -5,7 +5,6 @@ public sealed record PreflopPopulationProfile(
     double BbContinueUnopenedVsBtn,
     double SbContinueRangePercentileUnopenedVsBtn,
     double BbContinueRangePercentileUnopenedVsBtn,
-    double FacingRaiseFoldProbabilityAdjustment,
     double RaiseRiskPenaltyFactor,
     double OffsuitBroadwayRealizationPenalty,
     double WeakOffsuitRealizationPenalty);
@@ -21,7 +20,6 @@ public static class PreflopPopulationProfiles
         BbContinueUnopenedVsBtn: 0.34d,
         SbContinueRangePercentileUnopenedVsBtn: 0.45d,
         BbContinueRangePercentileUnopenedVsBtn: 0.45d,
-        FacingRaiseFoldProbabilityAdjustment: 0.00d,
         RaiseRiskPenaltyFactor: 0.08d,
         OffsuitBroadwayRealizationPenalty: 0.00d,
         WeakOffsuitRealizationPenalty: 0.00d);
@@ -31,7 +29,6 @@ public static class PreflopPopulationProfiles
         BbContinueUnopenedVsBtn: 0.48d,
         SbContinueRangePercentileUnopenedVsBtn: 0.52d,
         BbContinueRangePercentileUnopenedVsBtn: 0.62d,
-        FacingRaiseFoldProbabilityAdjustment: -0.06d,
         RaiseRiskPenaltyFactor: 0.12d,
         OffsuitBroadwayRealizationPenalty: 0.03d,
         WeakOffsuitRealizationPenalty: 0.05d);
@@ -41,7 +38,6 @@ public static class PreflopPopulationProfiles
         BbContinueUnopenedVsBtn: 0.30d,
         SbContinueRangePercentileUnopenedVsBtn: 0.36d,
         BbContinueRangePercentileUnopenedVsBtn: 0.40d,
-        FacingRaiseFoldProbabilityAdjustment: 0.00d,
         RaiseRiskPenaltyFactor: 0.07d,
         OffsuitBroadwayRealizationPenalty: 0.01d,
         WeakOffsuitRealizationPenalty: 0.02d);
