@@ -590,6 +590,43 @@ public sealed class EquityBasedPreflopLeafEvaluatorTests
     }
 
     [Fact]
+    public void Evaluate_FacingRaise_MicroStakes_SbVsCo_Kk_GetsClearThreeBetIncentive()
+    {
+        var microEvaluator = new EquityBasedPreflopLeafEvaluator(
+            new TableDrivenOpponentRangeProvider(),
+            new HeuristicPreflopLeafEvaluator(),
+            samplesPerMatchup: 120,
+            populationProfileProvider: new NamedPreflopPopulationProfileProvider(PreflopPopulationProfiles.MicroStakesLoosePassiveName));
+
+        var call = microEvaluator.Evaluate(CreateFacingRaiseProfileContext(Position.SB, Position.CO, HoleCards.Parse("KcKd"), ActionType.Call));
+        var raise = microEvaluator.Evaluate(CreateFacingRaiseProfileContext(Position.SB, Position.CO, HoleCards.Parse("KcKd"), ActionType.Raise, new ChipAmount(900)));
+        var jam = microEvaluator.Evaluate(CreateFacingRaiseProfileContext(Position.SB, Position.CO, HoleCards.Parse("KcKd"), ActionType.Raise, new ChipAmount(10000)));
+
+        Assert.NotNull(call.Details);
+        Assert.NotNull(raise.Details);
+        Assert.NotNull(jam.Details);
+        Assert.True(raise.Details!.HeroUtility > call.Details!.HeroUtility);
+        Assert.True(raise.Details.HeroUtility > jam.Details!.HeroUtility);
+    }
+
+    [Fact]
+    public void Evaluate_FacingRaise_MicroStakes_SbVsCo_AJo_RemainsMostlyCallFold()
+    {
+        var microEvaluator = new EquityBasedPreflopLeafEvaluator(
+            new TableDrivenOpponentRangeProvider(),
+            new HeuristicPreflopLeafEvaluator(),
+            samplesPerMatchup: 120,
+            populationProfileProvider: new NamedPreflopPopulationProfileProvider(PreflopPopulationProfiles.MicroStakesLoosePassiveName));
+
+        var call = microEvaluator.Evaluate(CreateFacingRaiseProfileContext(Position.SB, Position.CO, HoleCards.Parse("AdJc"), ActionType.Call));
+        var raise = microEvaluator.Evaluate(CreateFacingRaiseProfileContext(Position.SB, Position.CO, HoleCards.Parse("AdJc"), ActionType.Raise, new ChipAmount(900)));
+
+        Assert.NotNull(call.Details);
+        Assert.NotNull(raise.Details);
+        Assert.True(raise.Details!.HeroUtility <= call.Details!.HeroUtility);
+    }
+
+    [Fact]
     public void Evaluate_UnopenedBtn_ProfileDeltaRemainsIntact_AfterFacingRaiseTuning()
     {
         var gtoEvaluator = new EquityBasedPreflopLeafEvaluator(

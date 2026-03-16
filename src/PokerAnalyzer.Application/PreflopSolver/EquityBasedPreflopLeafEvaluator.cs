@@ -159,6 +159,8 @@ public sealed class EquityBasedPreflopLeafEvaluator : IPreflopLeafEvaluator
         var potBb = context.RootState.Pot.Value / bigBlind;
         var actionType = context.RootAction.ActionType;
         var actionSizeBb = (context.RootAction.Amount?.Value ?? 0L) / bigBlind;
+        var heroState = context.RootState.Players.First(p => p.PlayerId == context.HeroPlayerId);
+        var callAmountBb = Math.Max(0d, (context.RootState.CurrentBetSize.Value - heroState.CurrentStreetContribution.Value) / bigBlind);
         var jamSizeBb = (context.RootState.Players.First(p => p.PlayerId == context.HeroPlayerId).CurrentStreetContribution.Value + context.RootState.Players.First(p => p.PlayerId == context.HeroPlayerId).Stack.Value) / bigBlind;
         var isJamAction = actionType is ActionType.AllIn || (actionType == ActionType.Raise && actionSizeBb >= jamSizeBb - 0.01d);
 
@@ -189,10 +191,11 @@ public sealed class EquityBasedPreflopLeafEvaluator : IPreflopLeafEvaluator
         {
             immediateComponent = allFold * potBb;
             continueComponent = continueProbability * continueBranchUtility;
-            var riskPenalty = continueProbability * activeProfile.RaiseRiskPenaltyFactor * Math.Max(0d, actionSizeBb - 2d);
+            var riskPenalty = GetFacingRaiseRiskPenalty(continueProbability, actionSizeBb, callAmountBb, isJamAction, activeProfile);
             var leveragePenalty = isJamAction ? 0.12d + (0.02d * facingContext.PlayersLeftBehindHero) : 0.05d + (0.01d * facingContext.PlayersLeftBehindHero);
             var realizationPenalty = continueProbability * GetFacingRaiseRealizationPenalty(handClass, facingContext, activeProfile);
-            heroUtility = immediateComponent + continueComponent - riskPenalty - leveragePenalty - realizationPenalty;
+            var premiumAggressionAdjustment = GetFacingRaisePremiumAggressionAdjustment(context.HeroCards, facingContext, isJamAction);
+            heroUtility = immediateComponent + continueComponent - riskPenalty - leveragePenalty - realizationPenalty + premiumAggressionAdjustment;
         }
 
         var utility = baseEval.UtilityByPlayer.ToDictionary(kvp => kvp.Key, kvp => kvp.Value);
@@ -1038,6 +1041,44 @@ public sealed class EquityBasedPreflopLeafEvaluator : IPreflopLeafEvaluator
         var behindPenalty = 0.015d * context.PlayersLeftBehindHero;
         var oopPenalty = context.IsInPositionVsOpener ? 0d : 0.02d;
         return behindPenalty + oopPenalty;
+    }
+
+    private static double GetFacingRaiseRiskPenalty(double continueProbability, double actionSizeBb, double callAmountBb, bool isJamAction, PreflopPopulationProfile profile)
+    {
+        var additionalInvestmentBb = Math.Max(0d, actionSizeBb - callAmountBb);
+
+        if (isJamAction)
+        {
+            var jamRiskBb = Math.Max(4d, additionalInvestmentBb);
+            return continueProbability * profile.RaiseRiskPenaltyFactor * (0.85d * jamRiskBb);
+        }
+
+        var scaledRiskBb = Math.Min(6d, additionalInvestmentBb);
+        return continueProbability * profile.RaiseRiskPenaltyFactor * (0.40d * scaledRiskBb);
+    }
+
+    private static double GetFacingRaisePremiumAggressionAdjustment(HoleCards heroCards, FacingRaiseStructuralContext context, bool isJamAction)
+    {
+        var ranks = new[] { heroCards.First.Rank, heroCards.Second.Rank }.OrderByDescending(ToRankValue).ToArray();
+        var high = ToRankValue(ranks[0]);
+        var low = ToRankValue(ranks[1]);
+        var suited = heroCards.First.Suit == heroCards.Second.Suit;
+
+        var baseBoost = 0d;
+        if (high == low && high is >= 13)
+            baseBoost = 0.23d; // AA/KK
+        else if ((high == low && high == 12) || (high == 14 && low == 13))
+            baseBoost = 0.16d; // QQ/AK
+        else if ((high == low && high == 11) || (high == 14 && low == 12 && suited) || (high == 14 && low == 11 && suited))
+            baseBoost = 0.08d; // JJ/AQs/AJs
+
+        if (baseBoost <= 0d)
+            return 0d;
+
+        var positionScale = context.IsInPositionVsOpener ? 1d : 0.90d;
+        var behindScale = Math.Max(0.85d, 1d - (0.05d * context.PlayersLeftBehindHero));
+        var jamScale = isJamAction ? 0.15d : 1d;
+        return baseBoost * positionScale * behindScale * jamScale;
     }
 
     private static double GetFacingRaiseRealizationPenalty(string handClass, FacingRaiseStructuralContext context, PreflopPopulationProfile profile)
