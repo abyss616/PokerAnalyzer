@@ -627,6 +627,27 @@ public sealed class EquityBasedPreflopLeafEvaluatorTests
     }
 
     [Fact]
+    public void Evaluate_FacingRaise_MicroStakes_MarginalSuitedCalls_GetExtraPenaltyWithoutImpactingPremiumCalls()
+    {
+        var microEvaluator = new EquityBasedPreflopLeafEvaluator(
+            new TableDrivenOpponentRangeProvider(),
+            new HeuristicPreflopLeafEvaluator(),
+            samplesPerMatchup: 120,
+            populationProfileProvider: new NamedPreflopPopulationProfileProvider(PreflopPopulationProfiles.MicroStakesLoosePassiveName));
+
+        var marginalCall = microEvaluator.Evaluate(CreateFacingRaiseProfileContext(Position.BTN, Position.CO, HoleCards.Parse("7s5s"), ActionType.Call));
+        var premiumCall = microEvaluator.Evaluate(CreateFacingRaiseProfileContext(Position.BTN, Position.CO, HoleCards.Parse("AsKs"), ActionType.Call));
+
+        Assert.NotNull(marginalCall.Details);
+        Assert.NotNull(premiumCall.Details);
+
+        var marginalGap = marginalCall.Details!.ContinueBranchUtility - marginalCall.Details.HeroUtility;
+        var premiumGap = premiumCall.Details!.ContinueBranchUtility - premiumCall.Details.HeroUtility;
+
+        Assert.True(marginalGap > premiumGap + 0.01d);
+    }
+
+    [Fact]
     public void Evaluate_UnopenedBtn_ProfileDeltaRemainsIntact_AfterFacingRaiseTuning()
     {
         var gtoEvaluator = new EquityBasedPreflopLeafEvaluator(
