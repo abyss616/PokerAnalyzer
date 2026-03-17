@@ -47,7 +47,27 @@ public sealed class ApiClient
         decimal? SeparationScore,
         PreflopSolveMetadata SolveMetadata,
         IReadOnlyList<PreflopActionExplanation> ActionExplanations,
-        PreflopTrace Trace);
+        PreflopTrace Trace,
+        int? DecisionIndex,
+        IReadOnlyList<PreflopDecisionSnapshot>? DecisionSnapshots);
+
+    public sealed record PreflopDecisionSnapshot(
+        int DecisionIndex,
+        string HistorySignature,
+        string HeroPosition,
+        string? VillainPosition,
+        decimal PotBb,
+        decimal ToCallBb,
+        decimal EffectiveStackBb,
+        int RaiseDepth,
+        IReadOnlyList<PreflopNodeAction> ActionHistory,
+        IReadOnlyList<PreflopNodeAction> VillainActionsSincePreviousHeroAction,
+        IReadOnlyList<PreflopLegalAction> LegalActions,
+        string? CanonicalKey,
+        string? SolverKey,
+        string? ActualHeroAction);
+
+    public sealed record PreflopNodeAction(Guid PlayerId, string ActionType, decimal AmountBb);
 
     public sealed record PreflopLegalAction(string ActionKey, string ActionType, decimal? SizeBb, bool IsFacingAllIn);
     public sealed record PreflopRecommendationItem(string ActionKey, string DisplayLabel, decimal Frequency, bool IsBestAction);
