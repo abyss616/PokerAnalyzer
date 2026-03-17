@@ -189,7 +189,7 @@ public sealed class PreflopHandAnalysisService : IPreflopHandAnalysisService
             extraction.Trace.EffectiveStackBb,
             extraction.Key.RaiseDepth,
             BuildSizingSummary(extraction.Trace),
-            legalActions.Select(ToLegalActionDto).ToList(),
+            legalActions.Select(action => ToLegalActionDto(action, extraction.Trace.ToCallBb)).ToList(),
             Array.Empty<PreflopNodeRecommendationItemDto>(),
             "No solved strategy available for this node.",
             false,
@@ -246,13 +246,14 @@ public sealed class PreflopHandAnalysisService : IPreflopHandAnalysisService
         var snapshotState = BuildSnapshotState(request, extraction.Trace);
         var legalActions = BuildLegalActions(snapshotState, extraction.Trace);
 
-        var strategyResult = await ResolveStrategyAsync(extraction.Key.SolverKey, snapshotState, legalActions, request.UsePersistentTrainingState, request.PopulationProfileName, ct);
+        var strategyResult = await ResolveStrategyAsync(extraction.Key.SolverKey, snapshotState, legalActions, extraction.Trace.ToCallBb, request.UsePersistentTrainingState, request.PopulationProfileName, ct);
         var recommendationResult = BuildRecommendations(
             legalActions,
             strategyResult.Strategy,
             strategyResult.StrategySource,
             strategyResult.IterationsCompleted,
-            strategyResult.RegretMagnitude);
+            strategyResult.RegretMagnitude,
+            extraction.Trace.ToCallBb);
 
         var canonicalKey = BuildCanonicalKey(extraction.Key, request.HeroHoleCards);
         return new PreflopNodeQueryResultDto(
@@ -269,7 +270,7 @@ public sealed class PreflopHandAnalysisService : IPreflopHandAnalysisService
             extraction.Trace.EffectiveStackBb,
             extraction.Key.RaiseDepth,
             BuildSizingSummary(extraction.Trace),
-            legalActions.Select(ToLegalActionDto).ToList(),
+            legalActions.Select(action => ToLegalActionDto(action, extraction.Trace.ToCallBb)).ToList(),
             recommendationResult.Recommendations,
             recommendationResult.SummaryRecommendation,
             recommendationResult.HasStrategy,
@@ -292,6 +293,7 @@ public sealed class PreflopHandAnalysisService : IPreflopHandAnalysisService
         string solverKey,
         SolverHandState snapshotState,
         IReadOnlyList<LegalAction> legalActions,
+        decimal toCallBb,
         bool usePersistentTrainingState,
         string? populationProfileName,
         CancellationToken ct)
@@ -317,16 +319,16 @@ public sealed class PreflopHandAnalysisService : IPreflopHandAnalysisService
         }
 
         var items = strategy
-            .Select(kv => new PreflopNodeStrategyItemDto(kv.Key, decimal.Round(kv.Value * 100m, 2)))
+            .Select(kv => new PreflopNodeStrategyItemDto(NormalizeActionKey(kv.Key, toCallBb), decimal.Round(kv.Value * 100m, 2)))
             .OrderByDescending(x => x.Frequency)
             .ToList();
 
         var actionDiagnostics = (strategyResult.ActionDiagnostics ?? Array.Empty<PreflopActionDiagnosticDto>())
-            .Select(x => new PreflopNodeActionDiagnosticDto(x.ActionKey, decimal.Round(x.Frequency * 100m, 2), decimal.Round(x.CurrentPolicyFrequency * 100m, 2), x.Regret, x.PositiveRegret, x.IsBestByFrequency))
+            .Select(x => new PreflopNodeActionDiagnosticDto(NormalizeActionKey(x.ActionKey, toCallBb), decimal.Round(x.Frequency * 100m, 2), decimal.Round(x.CurrentPolicyFrequency * 100m, 2), x.Regret, x.PositiveRegret, x.IsBestByFrequency))
             .ToList();
 
         var actionExplanations = (strategyResult.ActionExplanations ?? Array.Empty<PreflopActionExplanationDto>())
-            .Select(x => new PreflopNodeActionExplanationDto(x.ActionKey, x.LeafEvaluationDetails))
+            .Select(x => new PreflopNodeActionExplanationDto(NormalizeActionKey(x.ActionKey, toCallBb), x.LeafEvaluationDetails))
             .ToList();
 
         var topLevelLeafDetails = SelectTopLevelLeafDetails(strategyResult.LeafEvaluationDetails, strategyResult.ActionExplanations);
@@ -387,7 +389,8 @@ public sealed class PreflopHandAnalysisService : IPreflopHandAnalysisService
         IReadOnlyList<PreflopNodeStrategyItemDto> strategy,
         string strategySource,
         int iterationsCompleted,
-        double regretMagnitude)
+        double regretMagnitude,
+        decimal toCallBb)
     {
         if (legalActions.Count == 0)
         {
@@ -401,7 +404,7 @@ public sealed class PreflopHandAnalysisService : IPreflopHandAnalysisService
                 "No legal-action strategy mapping was found for this node.");
         }
 
-        var legalActionDtos = legalActions.Select(ToLegalActionDto).ToList();
+        var legalActionDtos = legalActions.Select(action => ToLegalActionDto(action, toCallBb)).ToList();
         var strategyByAction = strategy.ToDictionary(x => x.ActionKey, x => x.Frequency, StringComparer.Ordinal);
         var recommendations = legalActionDtos
             .Select(action => new PreflopNodeRecommendationItemDto(
@@ -556,7 +559,7 @@ public sealed class PreflopHandAnalysisService : IPreflopHandAnalysisService
         return state.GenerateLegalActions(new TraceBetSizeSetProvider(trace));
     }
 
-    private static PreflopNodeLegalActionDto ToLegalActionDto(LegalAction action)
+    private static PreflopNodeLegalActionDto ToLegalActionDto(LegalAction action, decimal toCallBb)
     {
         var amountBb = action.Amount is null
     ? (decimal?)null
@@ -566,7 +569,7 @@ public sealed class PreflopHandAnalysisService : IPreflopHandAnalysisService
         {
             ActionType.Fold => "Fold",
             ActionType.Check => "Check",
-            ActionType.Call => $"Call:{amountBb:0.##}",
+            ActionType.Call => $"Call:{toCallBb:0.##}",
             ActionType.Raise => action.Amount is null ? "Raise" : $"Raise:{amountBb:0.##}",
             ActionType.Bet => action.Amount is null ? "Bet" : $"Bet:{amountBb:0.##}",
             _ => action.ActionType.ToString()
@@ -574,6 +577,11 @@ public sealed class PreflopHandAnalysisService : IPreflopHandAnalysisService
 
         return new PreflopNodeLegalActionDto(actionKey, action.ActionType, amountBb, false);
     }
+
+    private static string NormalizeActionKey(string actionKey, decimal toCallBb)
+        => actionKey.StartsWith("Call:", StringComparison.Ordinal)
+            ? $"Call:{toCallBb:0.##}"
+            : actionKey;
 
     private static SolverHandState BuildSnapshotState(PreflopNodeQueryRequestDto request, PreflopQueryTrace trace)
     {
