@@ -15,9 +15,9 @@ public sealed class PreflopAnalysisController : ControllerBase
     }
 
     [HttpGet("preflop-analysis/hand-number/{handNumber:long}")]
-    public async Task<ActionResult<PreflopNodeQueryResultDto>> AnalyzeByHandNumber(long handNumber, [FromQuery] string? populationProfile, CancellationToken ct)
+    public async Task<ActionResult<PreflopNodeQueryResultDto>> AnalyzeByHandNumber(long handNumber, [FromQuery] string? populationProfile, [FromQuery] int? decisionIndex, CancellationToken ct)
     {
-        var result = await _service.QueryPreflopNodeByHandNumberAsync(handNumber, ct, populationProfile);
+        var result = await _service.QueryPreflopNodeByHandNumberAsync(handNumber, ct, populationProfile, decisionIndex);
         if (result is null)
             return NotFound();
 

@@ -165,6 +165,37 @@ public sealed class PreflopHandAnalysisServiceTests
         Assert.Equal(new[] { "Fold", "Call:1", "Raise:2.5" }, result.LegalActions.Select(a => a.ActionKey).ToArray());
     }
 
+    [Fact]
+    public async Task QueryPreflopNodeByHandNumberAsync_ProducesMultipleSnapshots_WhenHeroActsTwicePreflop()
+    {
+        var hand = BuildHeroOpenThenFaceThreeBetHand();
+
+        var result = await BuildService(hand).QueryPreflopNodeByHandNumberAsync(1, CancellationToken.None);
+
+        Assert.NotNull(result);
+        Assert.NotNull(result!.DecisionSnapshots);
+        Assert.True(result.DecisionSnapshots!.Count >= 2);
+        Assert.Equal(1, result.DecisionSnapshots[0].DecisionIndex);
+        Assert.Equal(2, result.DecisionSnapshots[1].DecisionIndex);
+        Assert.Equal("UNOPENED", result.DecisionSnapshots[0].HistorySignature);
+        Assert.Equal("VS_3BET", result.DecisionSnapshots[1].HistorySignature);
+    }
+
+    [Fact]
+    public async Task QueryPreflopNodeByHandNumberAsync_SelectsRequestedDecisionIndex_WhenHeroActsTwicePreflop()
+    {
+        var hand = BuildHeroOpenThenFaceThreeBetHand();
+
+        var result = await BuildService(hand).QueryPreflopNodeByHandNumberAsync(1, CancellationToken.None, decisionIndex: 2);
+
+        Assert.NotNull(result);
+        Assert.True(result!.IsSupported);
+        Assert.Equal(2, result.DecisionIndex);
+        Assert.Equal("VS_3BET", result.HistorySignature);
+        Assert.NotNull(result.DecisionSnapshots);
+        Assert.Equal(2, result.DecisionSnapshots!.Count);
+    }
+
 
     [Fact]
     public async Task QueryPreflopNodeByHandNumberAsync_MapsLeafEvaluationDetailsIntoSolveMetadata()
@@ -400,6 +431,29 @@ public sealed class PreflopHandAnalysisServiceTests
                 new HandAction { Street = Street.Preflop, Player = "SB", Type = ActionType.PostSmallBlind, Amount = 0.5m },
                 new HandAction { Street = Street.Preflop, Player = "BB", Type = ActionType.PostBigBlind, Amount = 1m },
                 new HandAction { Street = Street.Preflop, Player = "Hero", Type = ActionType.Call, Amount = 1m }
+            ]
+        });
+    }
+
+    private static Hand BuildHeroOpenThenFaceThreeBetHand()
+    {
+        return WithSequenceNumbers(new Hand
+        {
+            GameCode = 9007,
+            Players =
+            [
+                new HandPlayer { Id = Guid.NewGuid(), Name = "SB", Seat = 1, StackStart = 100m, IsHero = false },
+                new HandPlayer { Id = Guid.NewGuid(), Name = "BB", Seat = 2, StackStart = 100m, IsHero = false },
+                new HandPlayer { Id = Guid.NewGuid(), Name = "Hero", Seat = 6, StackStart = 100m, IsHero = true }
+            ],
+            Actions =
+            [
+                new HandAction { Street = Street.Preflop, Player = "SB", Type = ActionType.PostSmallBlind, Amount = 0.5m },
+                new HandAction { Street = Street.Preflop, Player = "BB", Type = ActionType.PostBigBlind, Amount = 1m },
+                new HandAction { Street = Street.Preflop, Player = "Hero", Type = ActionType.Raise, ToAmount = 2.5m },
+                new HandAction { Street = Street.Preflop, Player = "SB", Type = ActionType.Fold, Amount = 0m },
+                new HandAction { Street = Street.Preflop, Player = "BB", Type = ActionType.Raise, ToAmount = 9m },
+                new HandAction { Street = Street.Preflop, Player = "Hero", Type = ActionType.Call, ToAmount = 9m }
             ]
         });
     }
