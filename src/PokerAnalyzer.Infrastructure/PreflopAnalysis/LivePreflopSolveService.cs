@@ -7,8 +7,8 @@ namespace PokerAnalyzer.Infrastructure.PreflopAnalysis;
 public sealed class LivePreflopSolveService : IPreflopStrategyProvider
 {
     private const int FreshSolveRunCount = 40;
-    private const int FreshSolveIterationsPerRun = 500;
-    private static readonly PreflopTrainingOptions PersistentTrainingOptions = PreflopTrainingOptions.ForIterations(400);
+    private const int FreshSolveIterationsPerRun = 300;
+    private static readonly PreflopTrainingOptions PersistentTrainingOptions = PreflopTrainingOptions.ForIterations(300);
     private static readonly PreflopTrainingOptions FreshSolveTrainingOptions = PreflopTrainingOptions.ForIterations(FreshSolveIterationsPerRun);
 
     private readonly IRegretStore _regretStore;
