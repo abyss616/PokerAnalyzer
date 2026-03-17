@@ -631,6 +631,8 @@ public sealed class EquityBasedPreflopLeafEvaluator : IPreflopLeafEvaluator
         var continueBranchUtility = heroUtility;
         double? immediateComponent = null;
         double? continueComponent = null;
+        double? derivedFoldProbability = null;
+        double? derivedContinueProbability = null;
         var actionType = context.RootAction.ActionType;
         double? facingLimpFoldProbability = null;
         double? facingLimpContinueProbability = null;
@@ -665,6 +667,15 @@ public sealed class EquityBasedPreflopLeafEvaluator : IPreflopLeafEvaluator
                 continueComponent = heroUtility;
             }
         }
+
+        if (actionType is ActionType.Check or ActionType.Call)
+        {
+            derivedFoldProbability = 0d;
+            derivedContinueProbability = 1d;
+            immediateComponent ??= 0d;
+            continueComponent ??= heroUtility;
+        }
+
         var heroHand = ToHandLabel(context.HeroCards);
         var handClass = ClassifyHand(context.HeroCards);
         var percentile = Math.Clamp((heroEquity - 0.30d) / 0.40d, 0d, 1d);
@@ -692,12 +703,12 @@ public sealed class EquityBasedPreflopLeafEvaluator : IPreflopLeafEvaluator
                 IsHeadsUp: rootEvaluatorMode == RootEvaluatorMode.TrueHeadsUp || abstractedOpponentCount == 1,
                 RangeDescription: range.Description,
                 RangeDetail: rangeReason,
-                FoldProbability: foldProbability ?? facingLimpFoldProbability,
-                ContinueProbability: continueProbability ?? facingLimpContinueProbability,
+                FoldProbability: foldProbability ?? facingLimpFoldProbability ?? derivedFoldProbability,
+                ContinueProbability: continueProbability ?? facingLimpContinueProbability ?? derivedContinueProbability,
                 RootActionType: context.RootAction.ActionType.ToString(),
                 ImmediateWinComponent: immediateComponent,
                 ContinueComponent: continueComponent,
-                ContinueBranchUtility: nodeFamily == PreflopNodeFamily.FacingLimp ? continueBranchUtility : null,
+                ContinueBranchUtility: continueBranchUtility,
                 FilteredCombos: filteredRange.Length,
                 HeroEquity: heroEquity,
                 HeroUtility: heroUtility,
