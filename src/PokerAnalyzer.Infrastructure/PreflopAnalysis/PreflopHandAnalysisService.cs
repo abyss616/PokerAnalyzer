@@ -45,27 +45,27 @@ public sealed class PreflopHandAnalysisService : IPreflopHandAnalysisService
         if (hand is null)
             return null;
 
-        var decisionNodes = await BuildDecisionNodesFromHandAsync(hand, ct, populationProfileName);
-        if (decisionNodes is null)
+        var decisionSnapshots = BuildDecisionSnapshotsFromHand(hand, populationProfileName);
+        if (decisionSnapshots is null)
             return BuildUnsupported("Could not construct preflop query from hand history.");
 
-        if (decisionNodes.Count == 0)
+        if (decisionSnapshots.Count == 0)
             return BuildUnsupported("No voluntary hero preflop decisions were found in the hand.");
 
         var selectedDecision = decisionIndex.GetValueOrDefault(1);
-        if (selectedDecision <= 0 || selectedDecision > decisionNodes.Count)
-            return BuildUnsupported($"Requested decision index '{selectedDecision}' is out of range. Available decisions: 1..{decisionNodes.Count}.");
+        if (selectedDecision <= 0 || selectedDecision > decisionSnapshots.Count)
+            return BuildUnsupported($"Requested decision index '{selectedDecision}' is out of range. Available decisions: 1..{decisionSnapshots.Count}.");
 
-        var selectedNode = decisionNodes[selectedDecision - 1];
-        var selected = selectedNode.Node;
+        var selectedSnapshot = decisionSnapshots[selectedDecision - 1];
+        var selected = await QueryPreflopNodeAsync(selectedSnapshot.Request, ct);
         return selected with
         {
-            DecisionIndex = selectedNode.DecisionIndex,
-            DecisionSnapshots = decisionNodes.Select(d => d.Snapshot).ToList()
+            DecisionIndex = selectedSnapshot.DecisionIndex,
+            DecisionSnapshots = decisionSnapshots.Select(d => d.Snapshot).ToList()
         };
     }
 
-    private async Task<List<(int DecisionIndex, PreflopNodeQueryResultDto Node, PreflopDecisionSnapshotDto Snapshot)>?> BuildDecisionNodesFromHandAsync(Hand hand, CancellationToken ct, string? populationProfileName)
+    private List<DecisionSnapshotContext>? BuildDecisionSnapshotsFromHand(Hand hand, string? populationProfileName)
     {
         var orderedActions = GetOrderedActions(hand);
         if (!HasValidPreflopBlindOrdering(orderedActions))
@@ -98,7 +98,7 @@ public sealed class PreflopHandAnalysisService : IPreflopHandAnalysisService
             .Select(x => x.index)
             .ToList();
 
-        var nodes = new List<(int DecisionIndex, PreflopNodeQueryResultDto Node, PreflopDecisionSnapshotDto Snapshot)>();
+        var snapshots = new List<DecisionSnapshotContext>();
         var previousHeroDecisionIndex = -1;
 
         for (var i = 0; i < heroDecisionIndices.Count; i++)
@@ -118,31 +118,100 @@ public sealed class PreflopHandAnalysisService : IPreflopHandAnalysisService
                 actionHistory,
                 PopulationProfileName: populationProfileName);
 
-            var node = await QueryPreflopNodeAsync(request, ct);
+            var snapshotNode = BuildSnapshotNode(request);
             var heroAction = preflopActions[decisionActionIndex];
             var villainActions = BuildVillainActionsSincePreviousHero(preflopActions, previousHeroDecisionIndex, decisionActionIndex, seatMap, blindInfo.Value.BigBlind, hero.Name);
             var snapshot = new PreflopDecisionSnapshotDto(
                 i + 1,
-                node.HistorySignature,
-                node.ActingPosition,
-                node.FacingPosition,
-                node.PotBb,
-                node.ToCallBb,
-                node.EffectiveStackBb,
-                node.RaiseDepth,
+                snapshotNode.HistorySignature,
+                snapshotNode.ActingPosition,
+                snapshotNode.FacingPosition,
+                snapshotNode.PotBb,
+                snapshotNode.ToCallBb,
+                snapshotNode.EffectiveStackBb,
+                snapshotNode.RaiseDepth,
                 actionHistory,
                 villainActions,
-                node.LegalActions,
-                node.CanonicalKey,
-                node.SolverKey,
+                snapshotNode.LegalActions,
+                snapshotNode.CanonicalKey,
+                snapshotNode.SolverKey,
                 BuildActualHeroActionKey(heroAction, blindInfo.Value.BigBlind));
 
-            nodes.Add((i + 1, node, snapshot));
+            snapshots.Add(new DecisionSnapshotContext(i + 1, request, snapshot));
             previousHeroDecisionIndex = decisionActionIndex;
         }
 
-        return nodes;
+        return snapshots;
     }
+
+    private PreflopNodeQueryResultDto BuildSnapshotNode(PreflopNodeQueryRequestDto request)
+    {
+        var seatById = request.Seats.ToDictionary(x => new PlayerId(x.PlayerId));
+        var actingPlayerId = new PlayerId(request.ActingPlayerId);
+        if (!seatById.ContainsKey(actingPlayerId))
+            return BuildUnsupported("Acting player was not found in seat map.");
+
+        var seats = request.Seats
+            .OrderBy(s => s.Seat)
+            .Select(s => new PlayerSeat(
+                new PlayerId(s.PlayerId),
+                s.Name,
+                s.Seat,
+                s.Position,
+                new ChipAmount((long)Math.Round(s.StartingStackBb * 100m, MidpointRounding.AwayFromZero))))
+            .ToList();
+
+        var actions = request.PublicActionHistory
+            .Select(a => new PreflopInputAction(new PlayerId(a.PlayerId), a.ActionType, a.AmountBb))
+            .ToList();
+
+        var extractorSmallBlind = BbToSolverChips(request.SmallBlind / request.BigBlind);
+        var extractorBigBlind = BbToSolverChips(1m);
+        var extraction = _extractor.TryExtract(seats, actions, actingPlayerId, extractorSmallBlind, extractorBigBlind);
+        if (!extraction.IsSupported || extraction.Key is null)
+            return BuildUnsupported(extraction.UnsupportedReason ?? "Preflop extraction was unsupported.", extraction.Trace);
+
+        var snapshotState = BuildSnapshotState(request, extraction.Trace);
+        var legalActions = BuildLegalActions(snapshotState, extraction.Trace);
+        var canonicalKey = BuildCanonicalKey(extraction.Key, request.HeroHoleCards);
+
+        return new PreflopNodeQueryResultDto(
+            true,
+            null,
+            canonicalKey,
+            extraction.Key.SolverKey,
+            Street.Preflop,
+            extraction.Key.ActingPosition,
+            extraction.Key.FacingPosition,
+            extraction.Key.HistorySignature,
+            extraction.Trace.PotBb,
+            extraction.Trace.ToCallBb,
+            extraction.Trace.EffectiveStackBb,
+            extraction.Key.RaiseDepth,
+            BuildSizingSummary(extraction.Trace),
+            legalActions.Select(ToLegalActionDto).ToList(),
+            Array.Empty<PreflopNodeRecommendationItemDto>(),
+            "No solved strategy available for this node.",
+            false,
+            false,
+            false,
+            "Unavailable",
+            null,
+            null,
+            Array.Empty<PreflopNodeStrategyItemDto>(),
+            Array.Empty<PreflopNodeActionDiagnosticDto>(),
+            null,
+            null,
+            null,
+            new PreflopNodeSolveMetadataDto("Unavailable", 0, 0, "None", null, null),
+            Array.Empty<PreflopNodeActionExplanationDto>(),
+            ToTraceDto(extraction.Trace));
+    }
+
+    private sealed record DecisionSnapshotContext(
+        int DecisionIndex,
+        PreflopNodeQueryRequestDto Request,
+        PreflopDecisionSnapshotDto Snapshot);
 
     public async Task<PreflopNodeQueryResultDto> QueryPreflopNodeAsync(PreflopNodeQueryRequestDto request, CancellationToken ct)
     {
