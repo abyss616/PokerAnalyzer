@@ -545,8 +545,11 @@ public sealed class PreflopHandAnalysisService : IPreflopHandAnalysisService
 
     private sealed class TraceBetSizeSetProvider : IBetSizeSetProvider
     {
-        private const string FacingRaiseSignaturePrefix = "VS_";
+        private const string FacingOpenSignature = "VS_OPEN";
+        private const string FacingThreeBetSignature = "VS_3BET";
+        private const string FacingFourBetSignature = "VS_4BET";
         private const decimal FacingRaiseThreeBetSizeBb = 9m;
+        private const decimal Facing3BetFourBetSizeBb = 22m;
 
         private readonly IReadOnlyList<ChipAmount> _raiseSizes;
 
@@ -557,6 +560,14 @@ public sealed class PreflopHandAnalysisService : IPreflopHandAnalysisService
             if (IsFacingRaiseSpot(trace))
             {
                 sizes.Add(FacingRaiseThreeBetSizeBb);
+            }
+            else if (IsFacingThreeBetSpot(trace))
+            {
+                sizes.Add(Facing3BetFourBetSizeBb);
+            }
+            else if (IsFacingFourBetSpot(trace))
+            {
+                sizes.Add(Facing3BetFourBetSizeBb);
             }
             else
             {
@@ -585,7 +596,15 @@ public sealed class PreflopHandAnalysisService : IPreflopHandAnalysisService
             => _raiseSizes;
 
         private static bool IsFacingRaiseSpot(PreflopQueryTrace trace)
-            => trace.HistorySignature.StartsWith(FacingRaiseSignaturePrefix, StringComparison.Ordinal)
+            => trace.HistorySignature.StartsWith(FacingOpenSignature, StringComparison.Ordinal)
+                && trace.ToCallBb > 0m;
+
+        private static bool IsFacingThreeBetSpot(PreflopQueryTrace trace)
+            => trace.HistorySignature.StartsWith(FacingThreeBetSignature, StringComparison.Ordinal)
+                && trace.ToCallBb > 0m;
+
+        private static bool IsFacingFourBetSpot(PreflopQueryTrace trace)
+            => trace.HistorySignature.StartsWith(FacingFourBetSignature, StringComparison.Ordinal)
                 && trace.ToCallBb > 0m;
     }
 

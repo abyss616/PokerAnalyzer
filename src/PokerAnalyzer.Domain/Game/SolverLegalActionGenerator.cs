@@ -10,6 +10,8 @@ public static class SolverLegalActionGenerator
     private const long FacingLimpRaiseNineBbDenominator = 1;
     private const long FacingRaiseThreeBetNineBbNumerator = 9;
     private const long FacingRaiseThreeBetNineBbDenominator = 1;
+    private const long FacingThreeBetFourBetTwentyTwoBbNumerator = 22;
+    private const long FacingThreeBetFourBetTwentyTwoBbDenominator = 1;
 
     public static IReadOnlyList<LegalAction> GenerateLegalActions(
         SolverHandState state,
@@ -188,6 +190,17 @@ public static class SolverLegalActionGenerator
             return actions.AsReadOnly();
         }
 
+        if (IsFacingThreeBetPreflopSpot(state))
+        {
+            var minTotalBetFacingThreeBet = state.CurrentBetSize + state.LastRaiseSize;
+            var fourBetToTwentyTwoBb = ResolveFacingThreeBetFourBetTwentyTwoBb(state.Config.BigBlind);
+
+            TryAddRaiseTarget(actions, fourBetToTwentyTwoBb, minTotalBetFacingThreeBet, maxTotalBet);
+            TryAddRaiseTarget(actions, maxTotalBet, minTotalBetFacingThreeBet, maxTotalBet);
+
+            return actions.AsReadOnly();
+        }
+
         var minTotalBet = state.CurrentBetSize + state.LastRaiseSize;
         var canFullRaise = maxTotalBet >= minTotalBet;
 
@@ -318,6 +331,20 @@ public static class SolverLegalActionGenerator
             a.ActionType == ActionType.AllIn);
     }
 
+    private static bool IsFacingThreeBetPreflopSpot(SolverHandState state)
+    {
+        if (state.Street != Street.Preflop || state.ToCall.Value <= 0)
+            return false;
+
+        if (state.RaisesThisStreet != 2)
+            return false;
+
+        return state.ActionHistory.Any(a =>
+            a.ActionType == ActionType.Bet ||
+            a.ActionType == ActionType.Raise ||
+            a.ActionType == ActionType.AllIn);
+    }
+
     private static ChipAmount ResolveUnopenedPreflopOpenSize(ChipAmount bigBlind)
     {
         return ResolveFixedBbTarget(
@@ -352,6 +379,15 @@ public static class SolverLegalActionGenerator
             FacingRaiseThreeBetNineBbNumerator,
             FacingRaiseThreeBetNineBbDenominator,
             "9bb");
+    }
+
+    private static ChipAmount ResolveFacingThreeBetFourBetTwentyTwoBb(ChipAmount bigBlind)
+    {
+        return ResolveFixedBbTarget(
+            bigBlind,
+            FacingThreeBetFourBetTwentyTwoBbNumerator,
+            FacingThreeBetFourBetTwentyTwoBbDenominator,
+            "22bb");
     }
 
     private static ChipAmount ResolveFixedBbTarget(ChipAmount bigBlind, long numerator, long denominator, string displayBb)
