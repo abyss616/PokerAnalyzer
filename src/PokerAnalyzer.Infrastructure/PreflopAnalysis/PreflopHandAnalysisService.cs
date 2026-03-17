@@ -39,7 +39,7 @@ public sealed class PreflopHandAnalysisService : IPreflopHandAnalysisService
             result.IsSupported ? "See structured solver node details." : result.UnsupportedReason ?? NotYetImplemented);
     }
 
-    public async Task<PreflopNodeQueryResultDto?> QueryPreflopNodeByHandNumberAsync(long handNumber, CancellationToken ct, string? populationProfileName = null)
+    public async Task<PreflopNodeQueryResultDto?> QueryPreflopNodeByHandNumberAsync(long handNumber, CancellationToken ct, string? populationProfileName = null, int? decisionIndex = null)
     {
         var hand = await _hands.GetHandByGameCodeAsync(handNumber, ct);
         if (hand is null)
@@ -52,10 +52,15 @@ public sealed class PreflopHandAnalysisService : IPreflopHandAnalysisService
         if (decisionNodes.Count == 0)
             return BuildUnsupported("No voluntary hero preflop decisions were found in the hand.");
 
-        var selected = decisionNodes[0].Node;
+        var selectedDecision = decisionIndex.GetValueOrDefault(1);
+        if (selectedDecision <= 0 || selectedDecision > decisionNodes.Count)
+            return BuildUnsupported($"Requested decision index '{selectedDecision}' is out of range. Available decisions: 1..{decisionNodes.Count}.");
+
+        var selectedNode = decisionNodes[selectedDecision - 1];
+        var selected = selectedNode.Node;
         return selected with
         {
-            DecisionIndex = decisionNodes[0].DecisionIndex,
+            DecisionIndex = selectedNode.DecisionIndex,
             DecisionSnapshots = decisionNodes.Select(d => d.Snapshot).ToList()
         };
     }

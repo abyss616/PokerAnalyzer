@@ -195,11 +195,17 @@ public sealed class ApiClient
     public async Task<PreflopHandAnalysisResult?> AnalyzePreflopByHandNumberAsync(
         long handNumber,
         string? populationProfile = null,
+        int? decisionIndex = null,
         CancellationToken ct = default)
     {
         var url = $"api/preflop-analysis/hand-number/{handNumber}";
+        var queryParts = new List<string>();
         if (!string.IsNullOrWhiteSpace(populationProfile))
-            url += $"?populationProfile={Uri.EscapeDataString(populationProfile)}";
+            queryParts.Add($"populationProfile={Uri.EscapeDataString(populationProfile)}");
+        if (decisionIndex.HasValue)
+            queryParts.Add($"decisionIndex={decisionIndex.Value}");
+        if (queryParts.Count > 0)
+            url += $"?{string.Join("&", queryParts)}";
 
         using var resp = await _http.GetAsync(url, ct);
         if (resp.StatusCode == System.Net.HttpStatusCode.NotFound)

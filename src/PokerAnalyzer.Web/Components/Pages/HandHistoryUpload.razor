@@ -67,7 +67,7 @@
                     <div class="card-body">
                         <div class="d-flex align-items-center gap-2 flex-wrap">
                             <strong>Hero preflop decision:</strong>
-                            <select class="form-select" style="max-width: 420px" @bind="_selectedDecisionSnapshotIndex">
+                            <select class="form-select" style="max-width: 420px" value="@_selectedDecisionSnapshotIndex" @onchange="OnSelectedDecisionChangedAsync">
                                 @for (var i = 0; i < snapshots.Count; i++)
                                 {
                                     var snapshot = snapshots[i];
@@ -353,6 +353,7 @@
     private CancellationTokenSource? _analysisTimerCts;
     private PokerAnalyzer.Web.Services.ApiClient.PreflopHandAnalysisResult? _preflopAnalysis;
     private int _selectedDecisionSnapshotIndex;
+    private long? _lastAnalyzedHandNumber;
     private readonly List<string> _traceLines = new();
     private IReadOnlyList<PokerStatsGridModel> _playerStats = Array.Empty<PokerStatsGridModel>();
     private static readonly IReadOnlyList<StatColumn> StatColumns = new[]
@@ -458,6 +459,7 @@
         _analysisError = null;
         _preflopAnalysis = null;
         _selectedDecisionSnapshotIndex = 0;
+        _lastAnalyzedHandNumber = null;
         ResetAnalysisTimer();
 
         if (!long.TryParse(_analysisHandNumberInput, out var handNumber) || handNumber <= 0)
@@ -480,6 +482,7 @@
             }
             else
             {
+                _lastAnalyzedHandNumber = handNumber;
                 _selectedDecisionSnapshotIndex = 0;
             }
         }
@@ -528,6 +531,26 @@
 
     private static string FormatElapsed(TimeSpan elapsed)
         => $"{(int)elapsed.TotalMinutes:00}:{elapsed.Seconds:00}.{elapsed.Milliseconds:000}";
+
+    private async Task OnSelectedDecisionChangedAsync(ChangeEventArgs args)
+    {
+        if (!int.TryParse(args?.Value?.ToString(), out var selectedIndex))
+            return;
+
+        _selectedDecisionSnapshotIndex = selectedIndex;
+        if (_lastAnalyzedHandNumber is null)
+            return;
+
+        var snapshots = _preflopAnalysis?.DecisionSnapshots;
+        if (snapshots is null || selectedIndex < 0 || selectedIndex >= snapshots.Count)
+            return;
+
+        var targetDecisionIndex = snapshots[selectedIndex].DecisionIndex;
+        _preflopAnalysis = await Api.AnalyzePreflopByHandNumberAsync(
+            _lastAnalyzedHandNumber.Value,
+            _selectedPopulationProfile,
+            targetDecisionIndex);
+    }
 
 
     private static string GetStrategyBadgeClass(string? status)

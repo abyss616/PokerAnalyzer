@@ -181,6 +181,21 @@ public sealed class PreflopHandAnalysisServiceTests
         Assert.Equal("VS_3BET", result.DecisionSnapshots[1].HistorySignature);
     }
 
+    [Fact]
+    public async Task QueryPreflopNodeByHandNumberAsync_SelectsRequestedDecisionIndex_WhenHeroActsTwicePreflop()
+    {
+        var hand = BuildHeroOpenThenFaceThreeBetHand();
+
+        var result = await BuildService(hand).QueryPreflopNodeByHandNumberAsync(1, CancellationToken.None, decisionIndex: 2);
+
+        Assert.NotNull(result);
+        Assert.True(result!.IsSupported);
+        Assert.Equal(2, result.DecisionIndex);
+        Assert.Equal("VS_3BET", result.HistorySignature);
+        Assert.NotNull(result.DecisionSnapshots);
+        Assert.Equal(2, result.DecisionSnapshots!.Count);
+    }
+
 
     [Fact]
     public async Task QueryPreflopNodeByHandNumberAsync_MapsLeafEvaluationDetailsIntoSolveMetadata()
