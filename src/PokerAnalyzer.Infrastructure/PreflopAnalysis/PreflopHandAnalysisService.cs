@@ -252,7 +252,8 @@ public sealed class PreflopHandAnalysisService : IPreflopHandAnalysisService
             strategyResult.Strategy,
             strategyResult.StrategySource,
             strategyResult.IterationsCompleted,
-            strategyResult.RegretMagnitude);
+            strategyResult.RegretMagnitude,
+            extraction.Trace.ToCallBb);
 
         var canonicalKey = BuildCanonicalKey(extraction.Key, request.HeroHoleCards);
         return new PreflopNodeQueryResultDto(
@@ -388,7 +389,8 @@ public sealed class PreflopHandAnalysisService : IPreflopHandAnalysisService
         IReadOnlyList<PreflopNodeStrategyItemDto> strategy,
         string strategySource,
         int iterationsCompleted,
-        double regretMagnitude)
+        double regretMagnitude,
+        decimal toCallBb)
     {
         if (legalActions.Count == 0)
         {
@@ -402,7 +404,7 @@ public sealed class PreflopHandAnalysisService : IPreflopHandAnalysisService
                 "No legal-action strategy mapping was found for this node.");
         }
 
-        var legalActionDtos = legalActions.Select(ToLegalActionDto).ToList();
+        var legalActionDtos = legalActions.Select(action => ToLegalActionDto(action, toCallBb)).ToList();
         var strategyByAction = strategy.ToDictionary(x => x.ActionKey, x => x.Frequency, StringComparer.Ordinal);
         var recommendations = legalActionDtos
             .Select(action => new PreflopNodeRecommendationItemDto(
