@@ -67,13 +67,20 @@
                     <div class="card-body">
                         <div class="d-flex align-items-center gap-2 flex-wrap">
                             <strong>Hero preflop decision:</strong>
-                            <select class="form-select" style="max-width: 420px" value="@_selectedDecisionSnapshotIndex" @onchange="OnSelectedDecisionChangedAsync">
+                            <select class="form-select" style="max-width: 420px" value="@_selectedDecisionSnapshotIndex" @onchange="OnSelectedDecisionChangedAsync" disabled="@_isSwitchingDecision">
                                 @for (var i = 0; i < snapshots.Count; i++)
                                 {
                                     var snapshot = snapshots[i];
                                     <option value="@i">Action @snapshot.DecisionIndex — @snapshot.HistorySignature (@snapshot.ActualHeroAction)</option>
                                 }
                             </select>
+                            @if (_isSwitchingDecision)
+                            {
+                                <span class="d-inline-flex align-items-center gap-2 text-primary small" role="status" aria-live="polite">
+                                    <span class="spinner-border spinner-border-sm" aria-hidden="true"></span>
+                                    <span>Solving selected action...</span>
+                                </span>
+                            }
                         </div>
 
                         @if (selectedSnapshot is not null)
@@ -354,6 +361,7 @@
     private PokerAnalyzer.Web.Services.ApiClient.PreflopHandAnalysisResult? _preflopAnalysis;
     private int _selectedDecisionSnapshotIndex;
     private long? _lastAnalyzedHandNumber;
+    private bool _isSwitchingDecision;
     private readonly List<string> _traceLines = new();
     private IReadOnlyList<PokerStatsGridModel> _playerStats = Array.Empty<PokerStatsGridModel>();
     private static readonly IReadOnlyList<StatColumn> StatColumns = new[]
@@ -546,10 +554,25 @@
             return;
 
         var targetDecisionIndex = snapshots[selectedIndex].DecisionIndex;
-        _preflopAnalysis = await Api.AnalyzePreflopByHandNumberAsync(
-            _lastAnalyzedHandNumber.Value,
-            _selectedPopulationProfile,
-            targetDecisionIndex);
+        _analysisError = null;
+        _isSwitchingDecision = true;
+        await InvokeAsync(StateHasChanged);
+
+        try
+        {
+            _preflopAnalysis = await Api.AnalyzePreflopByHandNumberAsync(
+                _lastAnalyzedHandNumber.Value,
+                _selectedPopulationProfile,
+                targetDecisionIndex);
+        }
+        catch (Exception ex)
+        {
+            _analysisError = ex.Message;
+        }
+        finally
+        {
+            _isSwitchingDecision = false;
+        }
     }
 
 
