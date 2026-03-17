@@ -55,7 +55,25 @@ public sealed record PreflopNodeQueryResultDto(
     decimal? SeparationScore,
     PreflopNodeSolveMetadataDto SolveMetadata,
     IReadOnlyList<PreflopNodeActionExplanationDto> ActionExplanations,
-    PreflopNodeTraceDto Trace);
+    PreflopNodeTraceDto Trace,
+    int? DecisionIndex = null,
+    IReadOnlyList<PreflopDecisionSnapshotDto>? DecisionSnapshots = null);
+
+public sealed record PreflopDecisionSnapshotDto(
+    int DecisionIndex,
+    string HistorySignature,
+    Position HeroPosition,
+    Position? VillainPosition,
+    decimal PotBb,
+    decimal ToCallBb,
+    decimal EffectiveStackBb,
+    int RaiseDepth,
+    IReadOnlyList<PreflopNodeActionDto> ActionHistory,
+    IReadOnlyList<PreflopNodeActionDto> VillainActionsSincePreviousHeroAction,
+    IReadOnlyList<PreflopNodeLegalActionDto> LegalActions,
+    string? CanonicalKey,
+    string? SolverKey,
+    string? ActualHeroAction);
 
 public sealed record PreflopNodeLegalActionDto(
     string ActionKey,
