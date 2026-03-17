@@ -31,7 +31,6 @@ public sealed class PreflopStateExtractor
         var raiseDepth = 0;
         PlayerId? lastAggressor = null;
         var raiseSizesBb = new List<decimal>();
-        string? actingPlayersFirstActionType = null;
         var hadPriorCallOrCompletion = false;
 
         void PostBlind(Position position, decimal amount)
@@ -52,18 +51,6 @@ public sealed class PreflopStateExtractor
             {
                 if (!byId.ContainsKey(act.PlayerId))
                     continue;
-
-                if (act.PlayerId == actingPlayerId
-                    && act.Type is not "POST_SB" and not "POST_BB"
-                    && actingPlayersFirstActionType is null)
-                {
-                    // Fixture/action feeds may include the hero's chosen action.
-                    // Capture the action type for signature shaping (OPEN/LIMP/etc.)
-                    // but stop processing at this point so ToCall/stack context stays
-                    // as the pre-decision state.
-                    actingPlayersFirstActionType = act.Type;
-                    break;
-                }
 
                 var amountChips = act.AmountBb * bigBlind;
                 raw.Add(new PreflopRawActionTrace(Street.Preflop, act.PlayerId, byId[act.PlayerId].Position, act.Type, amountChips, act.AmountBb));
@@ -122,7 +109,6 @@ public sealed class PreflopStateExtractor
             var historySignature = BuildSignature(
                 actingSeat.Position,
                 raiseDepth,
-                actingPlayersFirstActionType,
                 hadPriorCallOrCompletion,
                 toCallBb);
 
@@ -202,7 +188,7 @@ public sealed class PreflopStateExtractor
                 RawActionHistory = raw,
                 PriorActionsBeforeActing = priorActionsBeforeActing,
                 HadPriorCallOrCompletion = hadPriorCallOrCompletion,
-                ActingPlayersFirstActionType = actingPlayersFirstActionType
+                ActingPlayersFirstActionType = null
             };
 
             WriteDebugTrace(
@@ -275,7 +261,6 @@ public sealed class PreflopStateExtractor
     private static string BuildSignature(
         Position acting,
         int raiseDepth,
-        string? actingPlayersFirstActionType,
         bool hadPriorCallOrCompletion,
         decimal toCallBb)
     {
@@ -290,14 +275,7 @@ public sealed class PreflopStateExtractor
                     ? "LIMP_OPTION"
                     : "LIMP";
 
-            return actingPlayersFirstActionType switch
-            {
-                "RAISE_TO" or "ALL_IN" => "OPEN",
-                "CALL" => "LIMP",
-                "CHECK" => "UNOPENED_CHECK",   // or whatever you already use for BB check nodes
-                "FOLD" => "UNOPENED_FOLD",     // if folds are modeled
-                _ => "UNOPENED"                // safest non-OPEN fallback
-            };
+            return "UNOPENED";
         }
 
         return raiseDepth switch

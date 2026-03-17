@@ -259,6 +259,42 @@ public sealed class PreflopCompilerFixturesTests
     }
 
     [Fact]
+    public void Extraction_MultiDecision_Slices_Classify_Unopened_Then_Vs3Bet_For_Same_Hero()
+    {
+        var extractor = new PreflopStateExtractor();
+        var coId = PlayerId.New();
+        var sbId = PlayerId.New();
+        var bbId = PlayerId.New();
+        var seats = new List<PlayerSeat>
+        {
+            new(coId, "CO", 1, Position.CO, new ChipAmount(100m)),
+            new(sbId, "SB", 2, Position.SB, new ChipAmount(100m)),
+            new(bbId, "BB", 3, Position.BB, new ChipAmount(100m))
+        };
+
+        // Action 1 (hero first decision): unopened CO facing blinds.
+        var action1 = extractor.TryExtract(seats, [], coId, smallBlind: 0.5m, bigBlind: 1m);
+        Assert.True(action1.IsSupported, action1.UnsupportedReason);
+        Assert.NotNull(action1.Key);
+        Assert.Equal("UNOPENED", action1.Key!.HistorySignature);
+
+        // Action 2 (hero second decision): hero opened and now faces BB 3bet.
+        var actionsBeforeAction2 = new List<PreflopInputAction>
+        {
+            new(coId, "RAISE_TO", 2.5m),
+            new(sbId, "FOLD", 0m),
+            new(bbId, "RAISE_TO", 9m)
+        };
+
+        var action2 = extractor.TryExtract(seats, actionsBeforeAction2, coId, smallBlind: 0.5m, bigBlind: 1m);
+        Assert.True(action2.IsSupported, action2.UnsupportedReason);
+        Assert.NotNull(action2.Key);
+        Assert.Equal("VS_3BET", action2.Key!.HistorySignature);
+        Assert.Equal(2, action2.Key.RaiseDepth);
+        Assert.True(action2.Key.ToCallBb > 0m);
+    }
+
+    [Fact]
     public void Validation_Valid_Unopened_Sb_Spot_Passes()
     {
         var key = new PreflopInfoSetKey(Position.SB, null, "UNOPENED_SB", 0, 0.5m, 100m, null, null, null, null, null, 18m, "k");
