@@ -55,7 +55,48 @@
 
     @if (_preflopAnalysis is not null)
     {
+        var snapshots = _preflopAnalysis.DecisionSnapshots ?? Array.Empty<PokerAnalyzer.Web.Services.ApiClient.PreflopDecisionSnapshot>();
+        var selectedSnapshot = snapshots.Count > 0 && _selectedDecisionSnapshotIndex >= 0 && _selectedDecisionSnapshotIndex < snapshots.Count
+            ? snapshots[_selectedDecisionSnapshotIndex]
+            : null;
+
         <div class="mt-3">
+            @if (snapshots.Count > 0)
+            {
+                <div class="card border-secondary mb-3">
+                    <div class="card-body">
+                        <div class="d-flex align-items-center gap-2 flex-wrap">
+                            <strong>Hero preflop decision:</strong>
+                            <select class="form-select" style="max-width: 420px" value="@_selectedDecisionSnapshotIndex" @onchange="OnSelectedDecisionChangedAsync" disabled="@_isSwitchingDecision">
+                                @for (var i = 0; i < snapshots.Count; i++)
+                                {
+                                    var snapshot = snapshots[i];
+                                    <option value="@i">Action @snapshot.DecisionIndex — @snapshot.HistorySignature (@snapshot.ActualHeroAction)</option>
+                                }
+                            </select>
+                            @if (_isSwitchingDecision)
+                            {
+                                <span class="d-inline-flex align-items-center gap-2 text-primary small" role="status" aria-live="polite">
+                                    <span class="spinner-border spinner-border-sm" aria-hidden="true"></span>
+                                    <span>Solving selected action...</span>
+                                </span>
+                            }
+                        </div>
+
+                        @if (selectedSnapshot is not null)
+                        {
+                            <div class="mt-2 small">
+                                <div><strong>History:</strong> @selectedSnapshot.HistorySignature</div>
+                                <div><strong>Spot:</strong> @selectedSnapshot.HeroPosition vs @selectedSnapshot.VillainPosition</div>
+                                <div><strong>Pot / ToCall / Effective:</strong> @selectedSnapshot.PotBb bb / @selectedSnapshot.ToCallBb bb / @selectedSnapshot.EffectiveStackBb bb</div>
+                                <div><strong>Raise depth:</strong> @selectedSnapshot.RaiseDepth</div>
+                                <div><strong>Actual hero action:</strong> @selectedSnapshot.ActualHeroAction</div>
+                            </div>
+                        }
+                    </div>
+                </div>
+            }
+
             <div><strong>Support status:</strong> @(_preflopAnalysis.IsSupported ? "Supported" : "Unsupported")</div>
             @if (!_preflopAnalysis.IsSupported && !string.IsNullOrWhiteSpace(_preflopAnalysis.UnsupportedReason))
             {
@@ -318,6 +359,9 @@
     private string _analysisElapsedDisplay = "00:00.000";
     private CancellationTokenSource? _analysisTimerCts;
     private PokerAnalyzer.Web.Services.ApiClient.PreflopHandAnalysisResult? _preflopAnalysis;
+    private int _selectedDecisionSnapshotIndex;
+    private long? _lastAnalyzedHandNumber;
+    private bool _isSwitchingDecision;
     private readonly List<string> _traceLines = new();
     private IReadOnlyList<PokerStatsGridModel> _playerStats = Array.Empty<PokerStatsGridModel>();
     private static readonly IReadOnlyList<StatColumn> StatColumns = new[]
@@ -422,6 +466,8 @@
     {
         _analysisError = null;
         _preflopAnalysis = null;
+        _selectedDecisionSnapshotIndex = 0;
+        _lastAnalyzedHandNumber = null;
         ResetAnalysisTimer();
 
         if (!long.TryParse(_analysisHandNumberInput, out var handNumber) || handNumber <= 0)
@@ -439,7 +485,14 @@
         {
             _preflopAnalysis = await Api.AnalyzePreflopByHandNumberAsync(handNumber, _selectedPopulationProfile);
             if (_preflopAnalysis is null)
+            {
                 _analysisError = "Hand number not found.";
+            }
+            else
+            {
+                _lastAnalyzedHandNumber = handNumber;
+                _selectedDecisionSnapshotIndex = 0;
+            }
         }
         catch (Exception ex)
         {
@@ -486,6 +539,41 @@
 
     private static string FormatElapsed(TimeSpan elapsed)
         => $"{(int)elapsed.TotalMinutes:00}:{elapsed.Seconds:00}.{elapsed.Milliseconds:000}";
+
+    private async Task OnSelectedDecisionChangedAsync(ChangeEventArgs args)
+    {
+        if (!int.TryParse(args?.Value?.ToString(), out var selectedIndex))
+            return;
+
+        _selectedDecisionSnapshotIndex = selectedIndex;
+        if (_lastAnalyzedHandNumber is null)
+            return;
+
+        var snapshots = _preflopAnalysis?.DecisionSnapshots;
+        if (snapshots is null || selectedIndex < 0 || selectedIndex >= snapshots.Count)
+            return;
+
+        var targetDecisionIndex = snapshots[selectedIndex].DecisionIndex;
+        _analysisError = null;
+        _isSwitchingDecision = true;
+        await InvokeAsync(StateHasChanged);
+
+        try
+        {
+            _preflopAnalysis = await Api.AnalyzePreflopByHandNumberAsync(
+                _lastAnalyzedHandNumber.Value,
+                _selectedPopulationProfile,
+                targetDecisionIndex);
+        }
+        catch (Exception ex)
+        {
+            _analysisError = ex.Message;
+        }
+        finally
+        {
+            _isSwitchingDecision = false;
+        }
+    }
 
 
     private static string GetStrategyBadgeClass(string? status)

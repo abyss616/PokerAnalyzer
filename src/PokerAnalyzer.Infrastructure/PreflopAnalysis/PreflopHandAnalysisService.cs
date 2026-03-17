@@ -39,17 +39,109 @@ public sealed class PreflopHandAnalysisService : IPreflopHandAnalysisService
             result.IsSupported ? "See structured solver node details." : result.UnsupportedReason ?? NotYetImplemented);
     }
 
-    public async Task<PreflopNodeQueryResultDto?> QueryPreflopNodeByHandNumberAsync(long handNumber, CancellationToken ct, string? populationProfileName = null)
+    public async Task<PreflopNodeQueryResultDto?> QueryPreflopNodeByHandNumberAsync(long handNumber, CancellationToken ct, string? populationProfileName = null, int? decisionIndex = null)
     {
         var hand = await _hands.GetHandByGameCodeAsync(handNumber, ct);
         if (hand is null)
             return null;
 
-        var request = BuildRequestFromHand(hand, populationProfileName);
-        if (request is null)
+        var decisionNodes = await BuildDecisionNodesFromHandAsync(hand, ct, populationProfileName);
+        if (decisionNodes is null)
             return BuildUnsupported("Could not construct preflop query from hand history.");
 
-        return await QueryPreflopNodeAsync(request, ct);
+        if (decisionNodes.Count == 0)
+            return BuildUnsupported("No voluntary hero preflop decisions were found in the hand.");
+
+        var selectedDecision = decisionIndex.GetValueOrDefault(1);
+        if (selectedDecision <= 0 || selectedDecision > decisionNodes.Count)
+            return BuildUnsupported($"Requested decision index '{selectedDecision}' is out of range. Available decisions: 1..{decisionNodes.Count}.");
+
+        var selectedNode = decisionNodes[selectedDecision - 1];
+        var selected = selectedNode.Node;
+        return selected with
+        {
+            DecisionIndex = selectedNode.DecisionIndex,
+            DecisionSnapshots = decisionNodes.Select(d => d.Snapshot).ToList()
+        };
+    }
+
+    private async Task<List<(int DecisionIndex, PreflopNodeQueryResultDto Node, PreflopDecisionSnapshotDto Snapshot)>?> BuildDecisionNodesFromHandAsync(Hand hand, CancellationToken ct, string? populationProfileName)
+    {
+        var orderedActions = GetOrderedActions(hand);
+        if (!HasValidPreflopBlindOrdering(orderedActions))
+            return null;
+
+        var hero = hand.Players.FirstOrDefault(p => p.IsHero);
+        if (hero is null)
+            return null;
+
+        var blindInfo = TryResolveBlinds(hand);
+        if (!blindInfo.HasValue)
+            return null;
+
+        var seatMap = hand.Players.ToDictionary(p => p.Name, p => p);
+        var positionsByPlayer = ResolvePositions(hand);
+        var seats = hand.Players
+            .OrderBy(p => p.Seat)
+            .Select(p => new PreflopNodeSeatDto(
+                p.Id,
+                p.Name,
+                p.Seat,
+                positionsByPlayer.TryGetValue(p.Id, out var pos) ? pos : Position.Unknown,
+                NormalizeStartingStackBb(p.StackStart, blindInfo.Value.BigBlind)))
+            .ToList();
+
+        var preflopActions = orderedActions.Where(a => a.Street == Street.Preflop).ToList();
+        var heroDecisionIndices = preflopActions
+            .Select((action, index) => (action, index))
+            .Where(x => string.Equals(x.action.Player, hero.Name, StringComparison.Ordinal) && IsVoluntaryHeroPreflopAction(x.action.Type))
+            .Select(x => x.index)
+            .ToList();
+
+        var nodes = new List<(int DecisionIndex, PreflopNodeQueryResultDto Node, PreflopDecisionSnapshotDto Snapshot)>();
+        var previousHeroDecisionIndex = -1;
+
+        for (var i = 0; i < heroDecisionIndices.Count; i++)
+        {
+            var decisionActionIndex = heroDecisionIndices[i];
+            var actionSlice = preflopActions.Take(decisionActionIndex).ToList();
+            var extractorActions = BuildExtractorActions(actionSlice, seatMap, blindInfo.Value.BigBlind);
+            var actionHistory = extractorActions.Select(a => new PreflopNodeActionDto(a.PlayerId.Value, a.Type, a.AmountBb)).ToList();
+
+            var request = new PreflopNodeQueryRequestDto(
+                Street.Preflop,
+                hero.Id,
+                hand.HeroHoleCards,
+                blindInfo.Value.SmallBlind,
+                blindInfo.Value.BigBlind,
+                seats,
+                actionHistory,
+                PopulationProfileName: populationProfileName);
+
+            var node = await QueryPreflopNodeAsync(request, ct);
+            var heroAction = preflopActions[decisionActionIndex];
+            var villainActions = BuildVillainActionsSincePreviousHero(preflopActions, previousHeroDecisionIndex, decisionActionIndex, seatMap, blindInfo.Value.BigBlind, hero.Name);
+            var snapshot = new PreflopDecisionSnapshotDto(
+                i + 1,
+                node.HistorySignature,
+                node.ActingPosition,
+                node.FacingPosition,
+                node.PotBb,
+                node.ToCallBb,
+                node.EffectiveStackBb,
+                node.RaiseDepth,
+                actionHistory,
+                villainActions,
+                node.LegalActions,
+                node.CanonicalKey,
+                node.SolverKey,
+                BuildActualHeroActionKey(heroAction, blindInfo.Value.BigBlind));
+
+            nodes.Add((i + 1, node, snapshot));
+            previousHeroDecisionIndex = decisionActionIndex;
+        }
+
+        return nodes;
     }
 
     public async Task<PreflopNodeQueryResultDto> QueryPreflopNodeAsync(PreflopNodeQueryRequestDto request, CancellationToken ct)
@@ -619,49 +711,6 @@ public sealed class PreflopHandAnalysisService : IPreflopHandAnalysisService
             target.Add(value.Value);
     }
 
-    private static PreflopNodeQueryRequestDto? BuildRequestFromHand(Hand hand, string? populationProfileName)
-    {
-        var orderedActions = GetOrderedActions(hand);
-        if (!HasValidPreflopBlindOrdering(orderedActions))
-            return null;
-
-        var hero = hand.Players.FirstOrDefault(p => p.IsHero);
-        if (hero is null)
-            return null;
-
-        var blindInfo = TryResolveBlinds(hand);
-        if (!blindInfo.HasValue)
-            return null;
-
-        var seatMap = hand.Players.ToDictionary(p => p.Name, p => p);
-        var positionsByPlayer = ResolvePositions(hand);
-        var seats = hand.Players
-            .OrderBy(p => p.Seat)
-            .Select(p => new PreflopNodeSeatDto(
-                p.Id,
-                p.Name,
-                p.Seat,
-                positionsByPlayer.TryGetValue(p.Id, out var pos) ? pos : Position.Unknown,
-                NormalizeStartingStackBb(p.StackStart, blindInfo.Value.BigBlind)))
-            .ToList();
-
-        var extractorActions = BuildExtractorActions(orderedActions, seatMap, blindInfo.Value.BigBlind, hero.Name);
-
-        var actions = extractorActions
-            .Select(a => new PreflopNodeActionDto(a.PlayerId.Value, a.Type, a.AmountBb))
-            .ToList();
-
-        return new PreflopNodeQueryRequestDto(
-            Street.Preflop,
-            hero.Id,
-            hand.HeroHoleCards,
-            blindInfo.Value.SmallBlind,
-            blindInfo.Value.BigBlind,
-            seats,
-            actions,
-            PopulationProfileName: populationProfileName);
-    }
-
     private static PreflopNodeQueryResultDto BuildUnsupported(string reason, PreflopQueryTrace? trace = null)
         => new(
             false,
@@ -726,7 +775,7 @@ public sealed class PreflopHandAnalysisService : IPreflopHandAnalysisService
             .ThenBy(a => a.Id)
             .ToList();
 
-    private static List<PreflopInputAction> BuildExtractorActions(IReadOnlyList<HandAction> orderedActions, Dictionary<string, HandPlayer> playersByName, decimal bb, string heroName)
+    private static List<PreflopInputAction> BuildExtractorActions(IReadOnlyList<HandAction> orderedActions, Dictionary<string, HandPlayer> playersByName, decimal bb)
     {
         var actions = new List<PreflopInputAction>();
         foreach (var action in orderedActions.Where(a => a.Street == Street.Preflop))
@@ -746,13 +795,6 @@ public sealed class PreflopHandAnalysisService : IPreflopHandAnalysisService
                 _ => "TYPE_4"
             };
 
-            if (string.Equals(action.Player, heroName, StringComparison.Ordinal)
-                && action.Type is not ActionType.PostSmallBlind and not ActionType.PostBigBlind)
-            {
-                break;
-            }
-
-            //var amountBb = bb > 0 ? decimal.Round((action.Amount ?? 0m) / bb, 2) : 0m;
             decimal sourceAmount = action.Type switch
             {
                 ActionType.PostSmallBlind => action.Amount ?? 0m,
@@ -768,6 +810,42 @@ public sealed class PreflopHandAnalysisService : IPreflopHandAnalysisService
         }
 
         return actions;
+    }
+
+    private static bool IsVoluntaryHeroPreflopAction(ActionType actionType)
+        => actionType is ActionType.Fold or ActionType.Call or ActionType.Raise or ActionType.Bet or ActionType.AllIn or ActionType.Check;
+
+    private static List<PreflopNodeActionDto> BuildVillainActionsSincePreviousHero(
+        IReadOnlyList<HandAction> preflopActions,
+        int previousHeroDecisionIndex,
+        int currentHeroDecisionIndex,
+        Dictionary<string, HandPlayer> playersByName,
+        decimal bb,
+        string heroName)
+    {
+        var villainActions = preflopActions
+            .Skip(previousHeroDecisionIndex + 1)
+            .Take(currentHeroDecisionIndex - previousHeroDecisionIndex - 1)
+            .Where(a => !string.Equals(a.Player, heroName, StringComparison.Ordinal))
+            .ToList();
+
+        var extractor = BuildExtractorActions(villainActions, playersByName, bb);
+        return extractor.Select(a => new PreflopNodeActionDto(a.PlayerId.Value, a.Type, a.AmountBb)).ToList();
+    }
+
+    private static string BuildActualHeroActionKey(HandAction action, decimal bb)
+    {
+        var amountBb = bb > 0 ? decimal.Round((action.ToAmount ?? action.Amount ?? 0m) / bb, 2) : 0m;
+        return action.Type switch
+        {
+            ActionType.Fold => "Fold",
+            ActionType.Check => "Check",
+            ActionType.Call => $"Call:{amountBb:0.##}",
+            ActionType.Raise => $"Raise:{amountBb:0.##}",
+            ActionType.Bet => $"Bet:{amountBb:0.##}",
+            ActionType.AllIn => $"Raise:{amountBb:0.##}",
+            _ => action.Type.ToString()
+        };
     }
 
     private static bool HasValidPreflopBlindOrdering(IReadOnlyList<HandAction> orderedActions)
