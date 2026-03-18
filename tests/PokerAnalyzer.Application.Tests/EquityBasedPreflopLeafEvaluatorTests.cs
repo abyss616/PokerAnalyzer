@@ -784,6 +784,33 @@ public sealed class EquityBasedPreflopLeafEvaluatorTests
     }
 
     [Fact]
+    public void Evaluate_Facing3Bet_ProducesDistinctUtilitiesForCallFourBetAndJam()
+    {
+        var evaluator = new EquityBasedPreflopLeafEvaluator(
+            new TableDrivenOpponentRangeProvider(),
+            new HeuristicPreflopLeafEvaluator(),
+            samplesPerMatchup: 120);
+
+        var call = evaluator.Evaluate(CreateFacing3BetProfileContext(Position.CO, Position.BTN, HoleCards.Parse("JsTs"), ActionType.Call));
+        var fourBet = evaluator.Evaluate(CreateFacing3BetProfileContext(Position.CO, Position.BTN, HoleCards.Parse("JsTs"), ActionType.Raise, new ChipAmount(2200)));
+        var jam = evaluator.Evaluate(CreateFacing3BetProfileContext(Position.CO, Position.BTN, HoleCards.Parse("JsTs"), ActionType.Raise, new ChipAmount(10000)));
+
+        Assert.NotNull(call.Details);
+        Assert.NotNull(fourBet.Details);
+        Assert.NotNull(jam.Details);
+        Assert.Equal("Facing3Bet", call.Details!.NodeFamily);
+        Assert.Equal("Facing3Bet", fourBet.Details!.NodeFamily);
+        Assert.Equal("Facing3Bet", jam.Details!.NodeFamily);
+        Assert.NotEqual(call.Details.HeroUtility, fourBet.Details.HeroUtility);
+        Assert.NotEqual(fourBet.Details.HeroUtility, jam.Details.HeroUtility);
+        Assert.NotEqual(call.Details.HeroUtility, jam.Details.HeroUtility);
+        Assert.Equal(0d, call.Details.FoldProbability);
+        Assert.True(fourBet.Details.FoldProbability > 0d);
+        Assert.True(jam.Details.FoldProbability > fourBet.Details.FoldProbability);
+        Assert.Equal("Jam", jam.Details.RootActionType);
+    }
+
+    [Fact]
     public void Evaluate_UnopenedBtn_ProfileDeltaRemainsIntact_AfterFacingRaiseTuning()
     {
         var gtoEvaluator = new EquityBasedPreflopLeafEvaluator(
@@ -1108,6 +1135,68 @@ public sealed class EquityBasedPreflopLeafEvaluatorTests
             100,
             new LegalAction(rootAction, amount),
             $"v2/VS_OPEN/{heroPosition}/eff=100/open=3");
+    }
+
+    private static PreflopLeafEvaluationContext CreateFacing3BetProfileContext(Position heroPosition, Position threeBettorPosition, HoleCards heroCards, ActionType rootAction, ChipAmount? raiseAmount = null)
+    {
+        var heroId = new PlayerId(Guid.NewGuid());
+        var threeBettorId = new PlayerId(Guid.NewGuid());
+        var sbId = new PlayerId(Guid.NewGuid());
+        var bbId = new PlayerId(Guid.NewGuid());
+
+        var config = new GameConfig(6, new ChipAmount(50), new ChipAmount(100), ChipAmount.Zero, new ChipAmount(10000));
+        var allPlayers = new[]
+        {
+            new SolverPlayerState(threeBettorId, 0, threeBettorPosition, new ChipAmount(9000), new ChipAmount(1000), new ChipAmount(1000), false, false),
+            new SolverPlayerState(heroId, 1, heroPosition, new ChipAmount(9750), new ChipAmount(250), new ChipAmount(250), false, false),
+            new SolverPlayerState(sbId, 2, Position.SB, new ChipAmount(9950), new ChipAmount(50), new ChipAmount(50), false, false),
+            new SolverPlayerState(bbId, 3, Position.BB, new ChipAmount(9900), new ChipAmount(100), new ChipAmount(100), false, false)
+        };
+
+        var players = allPlayers
+            .Where(p => p.Position != heroPosition && p.Position != threeBettorPosition
+                || p.PlayerId == threeBettorId || p.PlayerId == heroId)
+            .ToArray();
+
+        var history = new List<SolverActionEntry>();
+        var sb = players.FirstOrDefault(p => p.Position == Position.SB);
+        var bb = players.FirstOrDefault(p => p.Position == Position.BB);
+        if (sb is not null)
+            history.Add(new SolverActionEntry(sb.PlayerId, ActionType.PostSmallBlind, new ChipAmount(50)));
+        if (bb is not null)
+            history.Add(new SolverActionEntry(bb.PlayerId, ActionType.PostBigBlind, new ChipAmount(100)));
+        history.Add(new SolverActionEntry(heroId, ActionType.Raise, new ChipAmount(250)));
+        history.Add(new SolverActionEntry(threeBettorId, ActionType.Raise, new ChipAmount(1000)));
+
+        var state = new SolverHandState(
+            config,
+            Street.Preflop,
+            buttonSeatIndex: 0,
+            actingPlayerId: heroId,
+            pot: new ChipAmount(1450),
+            currentBetSize: new ChipAmount(1000),
+            lastRaiseSize: new ChipAmount(750),
+            raisesThisStreet: 2,
+            players,
+            actionHistory: history,
+            boardCards: Array.Empty<Card>(),
+            deadCards: Array.Empty<Card>(),
+            privateCardsByPlayer: new Dictionary<PlayerId, HoleCards>
+            {
+                [heroId] = heroCards,
+                [threeBettorId] = HoleCards.Parse("AhKh")
+            });
+
+        var amount = rootAction == ActionType.Raise ? raiseAmount ?? new ChipAmount(2200) : new ChipAmount(1000);
+        return new PreflopLeafEvaluationContext(
+            state,
+            state,
+            heroId,
+            heroPosition,
+            heroCards,
+            100,
+            new LegalAction(rootAction, amount),
+            $"v2/VS_3BET/{heroPosition}/eff=100/open=2.5/3bet=10");
     }
 
 

@@ -81,6 +81,12 @@ public sealed class EquityBasedPreflopLeafEvaluator : IPreflopLeafEvaluator
             return facingRaiseEvaluation;
         }
 
+        if (rootEvaluatorMode == RootEvaluatorMode.TrueHeadsUp
+            && TryEvaluateFacing3BetActionAware(context, nodeFamily, rootActiveOpponentCount, leafActiveOpponentCount, out var facing3BetEvaluation))
+        {
+            return facing3BetEvaluation;
+        }
+
         if (rootEvaluatorMode == RootEvaluatorMode.AbstractedHeadsUp
             && (TryEvaluateBtnUnopenedActionAware(context, nodeFamily, rootActiveOpponentCount, leafActiveOpponentCount, out var abstracted)
                 || TryEvaluateUnopenedActionAware(context, nodeFamily, rootActiveOpponentCount, leafActiveOpponentCount, out abstracted)
@@ -332,6 +338,115 @@ public sealed class EquityBasedPreflopLeafEvaluator : IPreflopLeafEvaluator
                 DisplaySummary = $"{baseEval.Details!.DisplaySummary} Action={actionLabel}, EV={heroUtility:0.000}, fold={allFold:0.000}, continue={continueProbability:0.000}, profile={_populationProfileProvider.ActiveProfileName}.",
                 ActivePopulationProfile = _populationProfileProvider.ActiveProfileName,
                 RationaleSummary = $"Facing-limp {context.HeroPosition} {actionLabel} uses a synthetic continuing field with size-sensitive fold/continue decomposition under {_populationProfileProvider.ActiveProfileName}."
+            }
+        };
+
+        return true;
+    }
+
+    private bool TryEvaluateFacing3BetActionAware(PreflopLeafEvaluationContext context, PreflopNodeFamily nodeFamily, int rootActiveOpponentCount, int leafActiveOpponentCount, out PreflopLeafEvaluation evaluation)
+    {
+        evaluation = default!;
+        if (nodeFamily != PreflopNodeFamily.Facing3Bet)
+            return false;
+
+        var villain = context.RootState.Players.FirstOrDefault(p => p.PlayerId != context.HeroPlayerId && p.IsActive);
+        if (villain is null)
+            return false;
+
+        var request = new OpponentRangeRequest(
+            context.HeroPosition,
+            villain.Position,
+            nodeFamily,
+            context.RootState.RaisesThisStreet,
+            IsHeadsUp: true,
+            context.SolverKey,
+            PercentileOverride: null);
+
+        if (!_rangeProvider.TryGetRange(request, out var range, out var rangeReason))
+            return false;
+
+        var baseEval = EvaluateAgainstRange(
+            context,
+            nodeFamily,
+            villain.Position.ToString(),
+            range,
+            rangeReason,
+            rootEvaluatorMode: RootEvaluatorMode.TrueHeadsUp,
+            rootActiveOpponentCount: rootActiveOpponentCount,
+            leafActiveOpponentCount: leafActiveOpponentCount,
+            evaluatorType: "TrueHeadsUpFacing3Bet",
+            abstractionSource: null,
+            abstractedOpponentCount: 1,
+            syntheticDefenderLabel: villain.Position.ToString(),
+            foldProbability: null,
+            continueProbability: null,
+            summaryPrefix: "Level-2 equity leaf");
+
+        if (!baseEval.UtilityByPlayer.TryGetValue(context.HeroPlayerId, out var continueBranchUtility))
+            continueBranchUtility = 0d;
+
+        var activeProfile = _populationProfileProvider.ActiveProfile;
+        var handClass = baseEval.Details?.HandClass ?? ClassifyHand(context.HeroCards);
+        var bigBlind = Math.Max(1d, context.RootState.Config.BigBlind.Value);
+        var potBb = context.RootState.Pot.Value / bigBlind;
+        var actionType = context.RootAction.ActionType;
+        var actionSizeBb = (context.RootAction.Amount?.Value ?? 0L) / bigBlind;
+        var heroState = context.RootState.Players.First(p => p.PlayerId == context.HeroPlayerId);
+        var callAmountBb = Math.Max(0d, (context.RootState.CurrentBetSize.Value - heroState.CurrentStreetContribution.Value) / bigBlind);
+        var jamSizeBb = (heroState.CurrentStreetContribution.Value + heroState.Stack.Value) / bigBlind;
+        var isJamAction = actionType is ActionType.AllIn || (actionType == ActionType.Raise && actionSizeBb >= jamSizeBb - 0.01d);
+        var heroHasPosition = TryResolveVillainInPositionPostflop(context.HeroPosition, villain.Position, out var villainHasPosition)
+            ? !villainHasPosition
+            : false;
+
+        var foldProbability = 0d;
+        var continueProbability = 1d;
+        var immediateComponent = 0d;
+        double continueComponent;
+        double heroUtility;
+
+        if (actionType == ActionType.Call)
+        {
+            heroUtility = continueBranchUtility - GetFacing3BetCallPenalty(context.HeroCards, handClass, heroHasPosition, callAmountBb, activeProfile);
+            continueComponent = heroUtility;
+        }
+        else if (actionType == ActionType.Raise || actionType == ActionType.AllIn)
+        {
+            foldProbability = GetFacing3BetFoldProbability(context.HeroCards, handClass, heroHasPosition, actionSizeBb, callAmountBb, isJamAction);
+            continueProbability = Math.Clamp(1d - foldProbability, 0d, 1d);
+            immediateComponent = foldProbability * potBb * GetFacing3BetImmediateWinRealization(context.HeroCards, handClass, isJamAction);
+            continueComponent = continueProbability * continueBranchUtility;
+            var riskPenalty = GetFacing3BetRiskPenalty(continueProbability, actionSizeBb, callAmountBb, handClass, isJamAction, activeProfile);
+            var leveragePenalty = isJamAction ? 0.085d : 0.030d;
+            var realizationPenalty = continueProbability * GetFacing3BetRealizationPenalty(handClass, heroHasPosition, isJamAction);
+            var aggressionAdjustment = GetFacing3BetAggressionAdjustment(context.HeroCards, handClass, isJamAction);
+            heroUtility = immediateComponent + continueComponent - riskPenalty - leveragePenalty - realizationPenalty + aggressionAdjustment;
+        }
+        else
+        {
+            return false;
+        }
+
+        var utility = baseEval.UtilityByPlayer.ToDictionary(kvp => kvp.Key, kvp => kvp.Value);
+        utility[context.HeroPlayerId] = heroUtility;
+        var actionLabel = isJamAction ? "Jam" : actionType.ToString();
+
+        evaluation = baseEval with
+        {
+            UtilityByPlayer = utility,
+            Reason = $"{baseEval.Reason}, actionAware={actionLabel}, utility={heroUtility:0.000}, family=Facing3Bet",
+            Details = baseEval.Details! with
+            {
+                HeroUtility = heroUtility,
+                RootActionType = actionLabel,
+                FoldProbability = foldProbability,
+                ContinueProbability = continueProbability,
+                ImmediateWinComponent = immediateComponent,
+                ContinueComponent = continueComponent,
+                ContinueBranchUtility = continueBranchUtility,
+                DisplaySummary = $"{baseEval.Details!.DisplaySummary} Action={actionLabel}, EV={heroUtility:0.000}, fold={foldProbability:0.000}, continue={continueProbability:0.000}, family=Facing3Bet, profile={_populationProfileProvider.ActiveProfileName}.",
+                RationaleSummary = $"Facing-3bet action-aware evaluator models {context.HeroPosition} versus {villain.Position}, IP={heroHasPosition}, eff={context.EffectiveStackBb:0.##}bb under {_populationProfileProvider.ActiveProfileName}."
             }
         };
 
@@ -1210,6 +1325,142 @@ public sealed class EquityBasedPreflopLeafEvaluator : IPreflopLeafEvaluator
         var profileScale = profile.RaiseRiskPenaltyFactor >= 0.11d ? 1.10d : 1d;
         return (basePenalty + positionalPenalty + behindPenalty) * profileScale;
     }
+
+    private static double GetFacing3BetCallPenalty(HoleCards heroCards, string handClass, bool heroHasPosition, double callAmountBb, PreflopPopulationProfile profile)
+    {
+        var basePenalty = Math.Min(0.040d, 0.003d * callAmountBb);
+        if (!heroHasPosition)
+            basePenalty += 0.012d;
+
+        if (string.Equals(handClass, "Weak offsuit ace", StringComparison.Ordinal)
+            || string.Equals(handClass, "Offsuit broadway", StringComparison.Ordinal))
+        {
+            basePenalty += 0.015d;
+        }
+        else if (string.Equals(handClass, "Suited broadway", StringComparison.Ordinal)
+            || string.Equals(handClass, "Suited connector/gapper", StringComparison.Ordinal))
+        {
+            basePenalty += 0.008d;
+        }
+        else if (string.Equals(handClass, "Pair", StringComparison.Ordinal) && IsLowPairFacingRaiseCandidate(heroCards))
+        {
+            basePenalty += 0.005d;
+        }
+
+        if (profile.RaiseRiskPenaltyFactor >= 0.11d)
+            basePenalty += 0.004d;
+
+        return basePenalty;
+    }
+
+    private static double GetFacing3BetFoldProbability(HoleCards heroCards, string handClass, bool heroHasPosition, double actionSizeBb, double callAmountBb, bool isJamAction)
+    {
+        var baseFold = isJamAction ? 0.27d : 0.18d;
+        if (heroHasPosition)
+            baseFold += 0.02d;
+        else
+            baseFold -= 0.01d;
+
+        var additionalInvestmentBb = Math.Max(0d, actionSizeBb - callAmountBb);
+        baseFold += isJamAction
+            ? 0.0015d * Math.Min(20d, additionalInvestmentBb)
+            : 0.004d * Math.Min(4d, additionalInvestmentBb);
+
+        if (HasAceOrKingBlocker(heroCards))
+            baseFold += isJamAction ? 0.05d : 0.035d;
+        else if (string.Equals(handClass, "Pair", StringComparison.Ordinal))
+            baseFold += 0.015d;
+        else if (string.Equals(handClass, "Suited broadway", StringComparison.Ordinal)
+            || string.Equals(handClass, "Suited connector/gapper", StringComparison.Ordinal))
+        {
+            baseFold -= isJamAction ? 0.05d : 0.03d;
+        }
+
+        return Math.Clamp(baseFold, 0.08d, 0.55d);
+    }
+
+    private static double GetFacing3BetImmediateWinRealization(HoleCards heroCards, string handClass, bool isJamAction)
+    {
+        var realization = 0.045d;
+        if (HasAceOrKingBlocker(heroCards))
+            realization += 0.012d;
+        else if (string.Equals(handClass, "Pair", StringComparison.Ordinal))
+            realization += 0.006d;
+        else if (string.Equals(handClass, "Suited broadway", StringComparison.Ordinal)
+            || string.Equals(handClass, "Suited connector/gapper", StringComparison.Ordinal))
+        {
+            realization -= 0.008d;
+        }
+
+        if (isJamAction)
+            realization -= 0.006d;
+
+        return Math.Clamp(realization, 0.025d, 0.075d);
+    }
+
+    private static double GetFacing3BetRiskPenalty(double continueProbability, double actionSizeBb, double callAmountBb, string handClass, bool isJamAction, PreflopPopulationProfile profile)
+    {
+        var additionalInvestmentBb = Math.Max(0d, actionSizeBb - callAmountBb);
+        var scaledRisk = Math.Min(isJamAction ? 1.40d : 0.65d, 0.03d * additionalInvestmentBb);
+        var classMultiplier = handClass switch
+        {
+            "Weak offsuit ace" => 1.20d,
+            "Offsuit broadway" => 1.12d,
+            "Suited broadway" => 1.08d,
+            "Suited connector/gapper" => 1.15d,
+            _ => 1d
+        };
+
+        return continueProbability * profile.RaiseRiskPenaltyFactor * scaledRisk * classMultiplier;
+    }
+
+    private static double GetFacing3BetRealizationPenalty(string handClass, bool heroHasPosition, bool isJamAction)
+    {
+        var penalty = handClass switch
+        {
+            "Weak offsuit ace" => 0.055d,
+            "Offsuit broadway" => 0.040d,
+            "Suited broadway" => 0.026d,
+            "Suited connector/gapper" => 0.030d,
+            _ => 0.012d
+        };
+
+        if (!heroHasPosition)
+            penalty += 0.010d;
+
+        if (isJamAction)
+            penalty += 0.020d;
+
+        return penalty;
+    }
+
+    private static double GetFacing3BetAggressionAdjustment(HoleCards heroCards, string handClass, bool isJamAction)
+    {
+        var ranks = new[] { heroCards.First.Rank, heroCards.Second.Rank }.OrderByDescending(ToRankValue).ToArray();
+        var high = ToRankValue(ranks[0]);
+        var low = ToRankValue(ranks[1]);
+        var suited = heroCards.First.Suit == heroCards.Second.Suit;
+
+        if (high == low && high >= 13)
+            return isJamAction ? 0.040d : 0.095d;
+
+        if ((high == 14 && low == 13) || (high == low && high == 12))
+            return isJamAction ? 0.028d : 0.070d;
+
+        if (HasAceOrKingBlocker(heroCards))
+            return isJamAction ? 0.010d : 0.028d;
+
+        if ((string.Equals(handClass, "Suited broadway", StringComparison.Ordinal) || string.Equals(handClass, "Suited connector/gapper", StringComparison.Ordinal))
+            && suited)
+        {
+            return isJamAction ? -0.045d : -0.025d;
+        }
+
+        return 0d;
+    }
+
+    private static bool HasAceOrKingBlocker(HoleCards heroCards)
+        => heroCards.First.Rank is Rank.Ace or Rank.King || heroCards.Second.Rank is Rank.Ace or Rank.King;
 
     private readonly record struct FacingRaiseStructuralContext(
         Position HeroPosition,
