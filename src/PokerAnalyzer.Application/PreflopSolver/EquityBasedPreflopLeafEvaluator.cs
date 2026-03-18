@@ -396,9 +396,7 @@ public sealed class EquityBasedPreflopLeafEvaluator : IPreflopLeafEvaluator
         var callAmountBb = Math.Max(0d, (context.RootState.CurrentBetSize.Value - heroState.CurrentStreetContribution.Value) / bigBlind);
         var jamSizeBb = (heroState.CurrentStreetContribution.Value + heroState.Stack.Value) / bigBlind;
         var isJamAction = actionType is ActionType.AllIn || (actionType == ActionType.Raise && actionSizeBb >= jamSizeBb - 0.01d);
-        var heroHasPosition = TryResolveVillainInPositionPostflop(context.HeroPosition, villain.Position, out var villainHasPosition)
-            ? !villainHasPosition
-            : false;
+        var heroHasPosition = HasPostflopPositionAdvantage(context.HeroPosition, villain.Position);
 
         var foldProbability = 0d;
         var continueProbability = 1d;
@@ -446,7 +444,7 @@ public sealed class EquityBasedPreflopLeafEvaluator : IPreflopLeafEvaluator
                 ContinueComponent = continueComponent,
                 ContinueBranchUtility = continueBranchUtility,
                 DisplaySummary = $"{baseEval.Details!.DisplaySummary} Action={actionLabel}, EV={heroUtility:0.000}, fold={foldProbability:0.000}, continue={continueProbability:0.000}, family=Facing3Bet, profile={_populationProfileProvider.ActiveProfileName}.",
-                RationaleSummary = $"Facing-3bet action-aware evaluator models {context.HeroPosition} versus {villain.Position}, IP={heroHasPosition}, eff={context.EffectiveStackBb:0.##}bb under {_populationProfileProvider.ActiveProfileName}."
+                RationaleSummary = $"Facing-3bet action-aware evaluator models {context.HeroPosition} versus {villain.Position}, IP={heroHasPosition}, eff={context.RootEffectiveStackBb:0.##}bb under {_populationProfileProvider.ActiveProfileName}."
             }
         };
 
@@ -1461,6 +1459,21 @@ public sealed class EquityBasedPreflopLeafEvaluator : IPreflopLeafEvaluator
 
     private static bool HasAceOrKingBlocker(HoleCards heroCards)
         => heroCards.First.Rank is Rank.Ace or Rank.King || heroCards.Second.Rank is Rank.Ace or Rank.King;
+
+    private static bool HasPostflopPositionAdvantage(Position heroPosition, Position villainPosition)
+        => GetPostflopPositionOrder(heroPosition) > GetPostflopPositionOrder(villainPosition);
+
+    private static int GetPostflopPositionOrder(Position position)
+        => position switch
+        {
+            Position.SB => 0,
+            Position.BB => 1,
+            Position.UTG => 2,
+            Position.HJ => 3,
+            Position.CO => 4,
+            Position.BTN => 5,
+            _ => 0
+        };
 
     private readonly record struct FacingRaiseStructuralContext(
         Position HeroPosition,
