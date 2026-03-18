@@ -198,6 +198,22 @@ public sealed class PreflopHandAnalysisServiceTests
 
 
     [Fact]
+    public async Task QueryPreflopNodeByHandNumberAsync_UsesIncrementalCallLabeling_ForVsThreeBetSnapshotAndLegalActions()
+    {
+        var hand = BuildHeroOpenThenFaceThreeBetHand();
+
+        var result = await BuildService(hand).QueryPreflopNodeByHandNumberAsync(1, CancellationToken.None, decisionIndex: 2);
+
+        Assert.NotNull(result);
+        Assert.True(result!.IsSupported);
+        Assert.Equal("VS_3BET", result.HistorySignature);
+        Assert.Equal(6.5m, result.ToCallBb);
+        Assert.Contains(result.LegalActions, action => action.ActionType == ActionType.Call && action.ActionKey == "Call:6.5" && action.SizeBb == 6.5m);
+        Assert.Equal("Call:6.5", result.DecisionSnapshots![1].ActualHeroAction);
+    }
+
+
+    [Fact]
     public async Task QueryPreflopNodeByHandNumberAsync_MapsLeafEvaluationDetailsIntoSolveMetadata()
     {
         var hand = BuildStandardHeroFacingOpenHand();

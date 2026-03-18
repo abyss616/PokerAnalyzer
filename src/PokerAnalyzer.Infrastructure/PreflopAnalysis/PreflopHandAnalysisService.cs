@@ -135,7 +135,7 @@ public sealed class PreflopHandAnalysisService : IPreflopHandAnalysisService
                 snapshotNode.LegalActions,
                 snapshotNode.CanonicalKey,
                 snapshotNode.SolverKey,
-                BuildActualHeroActionKey(heroAction, blindInfo.Value.BigBlind));
+                BuildActualHeroActionKey(heroAction, blindInfo.Value.BigBlind, snapshotNode.ToCallBb));
 
             snapshots.Add(new DecisionSnapshotContext(i + 1, request, snapshot));
             previousHeroDecisionIndex = decisionActionIndex;
@@ -561,9 +561,11 @@ public sealed class PreflopHandAnalysisService : IPreflopHandAnalysisService
 
     private static PreflopNodeLegalActionDto ToLegalActionDto(LegalAction action, decimal toCallBb)
     {
-        var amountBb = action.Amount is null
-    ? (decimal?)null
-    : decimal.Round(action.Amount.Value.Value / 100m, 2);
+        var amountBb = action.ActionType == ActionType.Call
+            ? toCallBb
+            : action.Amount is null
+                ? (decimal?)null
+                : decimal.Round(action.Amount.Value.Value / 100m, 2);
 
         var actionKey = action.ActionType switch
         {
@@ -910,14 +912,14 @@ public sealed class PreflopHandAnalysisService : IPreflopHandAnalysisService
         return extractor.Select(a => new PreflopNodeActionDto(a.PlayerId.Value, a.Type, a.AmountBb)).ToList();
     }
 
-    private static string BuildActualHeroActionKey(HandAction action, decimal bb)
+    private static string BuildActualHeroActionKey(HandAction action, decimal bb, decimal toCallBb)
     {
         var amountBb = bb > 0 ? decimal.Round((action.ToAmount ?? action.Amount ?? 0m) / bb, 2) : 0m;
         return action.Type switch
         {
             ActionType.Fold => "Fold",
             ActionType.Check => "Check",
-            ActionType.Call => $"Call:{amountBb:0.##}",
+            ActionType.Call => $"Call:{toCallBb:0.##}",
             ActionType.Raise => $"Raise:{amountBb:0.##}",
             ActionType.Bet => $"Bet:{amountBb:0.##}",
             ActionType.AllIn => $"Raise:{amountBb:0.##}",
