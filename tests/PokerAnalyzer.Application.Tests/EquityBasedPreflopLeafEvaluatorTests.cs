@@ -90,6 +90,42 @@ public sealed class EquityBasedPreflopLeafEvaluatorTests
         Assert.Equal("static-test", result.Details.RangeDetail);
     }
 
+    [Fact]
+    public void TableDrivenOpponentRangeProvider_Facing3Bet_UsesInPositionPercentileWhenVillainHasPosition()
+    {
+        var provider = new TableDrivenOpponentRangeProvider();
+        var request = new OpponentRangeRequest(Position.CO, Position.BTN, PreflopNodeFamily.Facing3Bet, 2, true, "v2/VS_3BET/CO/eff=100/3bet=9");
+
+        var success = provider.TryGetRange(request, out _, out var reason);
+
+        Assert.True(success);
+        Assert.Contains("table-range percentile=0.10 source=table-default", reason);
+    }
+
+    [Fact]
+    public void TableDrivenOpponentRangeProvider_Facing3Bet_UsesOutOfPositionPercentileWhenVillainLacksPosition()
+    {
+        var provider = new TableDrivenOpponentRangeProvider();
+        var request = new OpponentRangeRequest(Position.CO, Position.SB, PreflopNodeFamily.Facing3Bet, 2, true, "v2/VS_3BET/CO/eff=100/3bet=9");
+
+        var success = provider.TryGetRange(request, out _, out var reason);
+
+        Assert.True(success);
+        Assert.Contains("table-range percentile=0.12 source=table-default", reason);
+    }
+
+    [Fact]
+    public void TableDrivenOpponentRangeProvider_Facing3Bet_FallsBackToSaferInPositionPercentileWhenVillainPositionUnknown()
+    {
+        var provider = new TableDrivenOpponentRangeProvider();
+        var request = new OpponentRangeRequest(Position.CO, null, PreflopNodeFamily.Facing3Bet, 2, true, "v2/VS_3BET/CO/eff=100/3bet=9");
+
+        var success = provider.TryGetRange(request, out _, out var reason);
+
+        Assert.True(success);
+        Assert.Contains("table-range percentile=0.10 source=table-default", reason);
+    }
+
 
     [Fact]
     public void Evaluate_UnopenedBtnMultiway_UsesAbstractedHeadsUp()

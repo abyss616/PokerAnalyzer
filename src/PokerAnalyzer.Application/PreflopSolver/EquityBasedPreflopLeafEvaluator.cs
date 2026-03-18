@@ -1384,12 +1384,15 @@ public sealed class EquityBasedPreflopLeafEvaluator : IPreflopLeafEvaluator
 
 public sealed class TableDrivenOpponentRangeProvider : IOpponentRangeProvider
 {
+    private const double Facing3BetInPositionPercentile = 0.10d;
+    private const double Facing3BetOutOfPositionPercentile = 0.12d;
+    private const double Facing3BetFallbackPercentile = Facing3BetInPositionPercentile;
+
     private readonly Dictionary<PreflopNodeFamily, double> _percentByFamily = new()
     {
         [PreflopNodeFamily.Unopened] = 0.45,
         [PreflopNodeFamily.FacingLimp] = 0.35,
         [PreflopNodeFamily.FacingRaise] = 0.18,
-        [PreflopNodeFamily.Facing3Bet] = 0.08,
         [PreflopNodeFamily.Facing4Bet] = 0.03,
         [PreflopNodeFamily.Squeeze] = 0.06
     };
@@ -1409,7 +1412,9 @@ public sealed class TableDrivenOpponentRangeProvider : IOpponentRangeProvider
             return false;
         }
 
-        var percentile = request.PercentileOverride ?? (_percentByFamily.TryGetValue(request.NodeFamily, out var familyPercentile) ? familyPercentile : double.NaN);
+        var percentile = request.PercentileOverride
+            ?? GetContextualFamilyPercentile(request)
+            ?? (_percentByFamily.TryGetValue(request.NodeFamily, out var familyPercentile) ? familyPercentile : double.NaN);
 
         if (double.IsNaN(percentile))
         {
@@ -1444,6 +1449,39 @@ public sealed class TableDrivenOpponentRangeProvider : IOpponentRangeProvider
         range = rangeHit;
         return true;
     }
+
+
+    private static double? GetContextualFamilyPercentile(OpponentRangeRequest request)
+    {
+        if (request.NodeFamily != PreflopNodeFamily.Facing3Bet)
+            return null;
+
+        return TryResolveVillainInPositionPostflop(request.HeroPosition, request.VillainPosition, out var villainIsInPosition)
+            ? (villainIsInPosition ? Facing3BetInPositionPercentile : Facing3BetOutOfPositionPercentile)
+            : Facing3BetFallbackPercentile;
+    }
+
+    private static bool TryResolveVillainInPositionPostflop(Position heroPosition, Position? villainPosition, out bool villainIsInPosition)
+    {
+        villainIsInPosition = false;
+        if (!villainPosition.HasValue)
+            return false;
+
+        villainIsInPosition = GetPostflopOrder(villainPosition.Value) > GetPostflopOrder(heroPosition);
+        return true;
+    }
+
+    private static int GetPostflopOrder(Position position)
+        => position switch
+        {
+            Position.SB => 0,
+            Position.BB => 1,
+            Position.UTG => 2,
+            Position.HJ => 3,
+            Position.CO => 4,
+            Position.BTN => 5,
+            _ => 0
+        };
 
     private readonly record struct RangeDefinitionKey(
         Position HeroPosition,
