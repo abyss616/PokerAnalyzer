@@ -403,10 +403,21 @@ public sealed class EquityBasedPreflopLeafEvaluator : IPreflopLeafEvaluator
         var immediateComponent = 0d;
         double continueComponent;
         double heroUtility;
+        var detailContinueBranchUtility = continueBranchUtility;
 
         if (actionType == ActionType.Call)
         {
-            heroUtility = continueBranchUtility - GetFacing3BetCallPenalty(context.HeroCards, handClass, heroHasPosition, callAmountBb, activeProfile);
+            var heroEquity = baseEval.Details?.HeroEquity ?? 0.5d;
+            detailContinueBranchUtility = GetFacing3BetCallContinueUtility(
+                heroEquity,
+                context.HeroCards,
+                handClass,
+                heroHasPosition,
+                potBb,
+                callAmountBb,
+                context.RootEffectiveStackBb,
+                activeProfile);
+            heroUtility = detailContinueBranchUtility - GetFacing3BetCallPenalty(context.HeroCards, handClass, heroHasPosition, callAmountBb, activeProfile);
             continueComponent = heroUtility;
         }
         else if (actionType == ActionType.Raise || actionType == ActionType.AllIn)
@@ -442,7 +453,7 @@ public sealed class EquityBasedPreflopLeafEvaluator : IPreflopLeafEvaluator
                 ContinueProbability = continueProbability,
                 ImmediateWinComponent = immediateComponent,
                 ContinueComponent = continueComponent,
-                ContinueBranchUtility = continueBranchUtility,
+                ContinueBranchUtility = detailContinueBranchUtility,
                 DisplaySummary = $"{baseEval.Details!.DisplaySummary} Action={actionLabel}, EV={heroUtility:0.000}, fold={foldProbability:0.000}, continue={continueProbability:0.000}, family=Facing3Bet, profile={_populationProfileProvider.ActiveProfileName}.",
                 RationaleSummary = $"Facing-3bet action-aware evaluator models {context.HeroPosition} versus {villain.Position}, IP={heroHasPosition}, eff={context.RootEffectiveStackBb:0.##}bb under {_populationProfileProvider.ActiveProfileName}."
             }
@@ -1326,29 +1337,79 @@ public sealed class EquityBasedPreflopLeafEvaluator : IPreflopLeafEvaluator
 
     private static double GetFacing3BetCallPenalty(HoleCards heroCards, string handClass, bool heroHasPosition, double callAmountBb, PreflopPopulationProfile profile)
     {
-        var basePenalty = Math.Min(0.040d, 0.003d * callAmountBb);
+        var basePenalty = Math.Min(0.012d, 0.001d * callAmountBb);
         if (!heroHasPosition)
-            basePenalty += 0.012d;
+            basePenalty += 0.006d;
 
         if (string.Equals(handClass, "Weak offsuit ace", StringComparison.Ordinal)
             || string.Equals(handClass, "Offsuit broadway", StringComparison.Ordinal))
         {
-            basePenalty += 0.015d;
+            basePenalty += 0.010d;
         }
         else if (string.Equals(handClass, "Suited broadway", StringComparison.Ordinal)
             || string.Equals(handClass, "Suited connector/gapper", StringComparison.Ordinal))
         {
-            basePenalty += 0.008d;
+            basePenalty += 0.002d;
         }
         else if (string.Equals(handClass, "Pair", StringComparison.Ordinal) && IsLowPairFacingRaiseCandidate(heroCards))
         {
-            basePenalty += 0.005d;
+            basePenalty += 0.002d;
         }
 
         if (profile.RaiseRiskPenaltyFactor >= 0.11d)
-            basePenalty += 0.004d;
+            basePenalty += 0.002d;
 
         return basePenalty;
+    }
+
+    private static double GetFacing3BetCallContinueUtility(double heroEquity, HoleCards heroCards, string handClass, bool heroHasPosition, double potBb, double callAmountBb, double effectiveStackBb, PreflopPopulationProfile profile)
+    {
+        var continuePotBb = potBb + callAmountBb;
+        if (continuePotBb <= 0d)
+            return (heroEquity - 0.5d) * 2d;
+
+        var potOdds = callAmountBb > 0d ? callAmountBb / continuePotBb : 0d;
+        var realizationFactor = GetFacing3BetCallRealizationFactor(heroCards, handClass, heroHasPosition, effectiveStackBb, profile);
+        var realizedEquity = heroEquity * realizationFactor;
+        return realizedEquity - potOdds;
+    }
+
+    private static double GetFacing3BetCallRealizationFactor(HoleCards heroCards, string handClass, bool heroHasPosition, double effectiveStackBb, PreflopPopulationProfile profile)
+    {
+        var realizationFactor = heroHasPosition ? 0.92d : 0.86d;
+
+        realizationFactor += handClass switch
+        {
+            "Suited broadway" => 0.06d,
+            "Suited connector/gapper" => 0.05d,
+            "Pair" => 0.02d,
+            "Offsuit broadway" => -0.04d,
+            "Weak offsuit ace" => -0.07d,
+            _ => 0d
+        };
+
+        if (effectiveStackBb >= 80d
+            && (string.Equals(handClass, "Suited broadway", StringComparison.Ordinal)
+                || string.Equals(handClass, "Suited connector/gapper", StringComparison.Ordinal)
+                || string.Equals(handClass, "Pair", StringComparison.Ordinal)))
+        {
+            realizationFactor += 0.02d;
+        }
+        else if (effectiveStackBb <= 40d
+            && (string.Equals(handClass, "Suited broadway", StringComparison.Ordinal)
+                || string.Equals(handClass, "Suited connector/gapper", StringComparison.Ordinal)
+                || string.Equals(handClass, "Pair", StringComparison.Ordinal)))
+        {
+            realizationFactor -= 0.03d;
+        }
+
+        if (HasAceOrKingBlocker(heroCards))
+            realizationFactor -= 0.01d;
+
+        if (profile.RaiseRiskPenaltyFactor >= 0.11d)
+            realizationFactor -= 0.01d;
+
+        return Math.Clamp(realizationFactor, 0.68d, 1.02d);
     }
 
     private static double GetFacing3BetFoldProbability(HoleCards heroCards, string handClass, bool heroHasPosition, double actionSizeBb, double callAmountBb, bool isJamAction)
