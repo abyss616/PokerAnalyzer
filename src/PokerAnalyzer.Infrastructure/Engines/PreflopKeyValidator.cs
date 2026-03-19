@@ -33,6 +33,9 @@ public static class PreflopKeyValidator
         if (key.HistorySignature == "VS_3BET" && !key.ThreeBetSizeBucketBb.HasValue)
             return PreflopValidationResult.Invalid("Invalid key: VS_3BET requires 3bet size bucket.");
 
+        if (key.HistorySignature == "VS_SQUEEZE" && !key.SqueezeSizeBucketBb.HasValue)
+            return PreflopValidationResult.Invalid("Invalid key: VS_SQUEEZE requires squeeze size bucket.");
+
         if (key.HistorySignature == "VS_4BET" && !key.FourBetSizeBucketBb.HasValue)
             return PreflopValidationResult.Invalid("Invalid key: VS_4BET requires 4bet size bucket.");
 
@@ -49,6 +52,7 @@ public static class PreflopKeyValidator
         => signature switch
         {
             "VS_3BET" => raiseDepth >= 2,
+            "VS_SQUEEZE" => raiseDepth >= 2,
             "VS_4BET" => raiseDepth >= 3,
             "VS_5BET" => raiseDepth >= 4,
             _ => true
@@ -64,6 +68,7 @@ public static class PreflopKeyValidator
             or "UNOPENED_FOLD"
             or "VS_OPEN"
             or "VS_3BET"
+            or "VS_SQUEEZE"
             or "VS_4BET"
             or "VS_5BET";
 }
