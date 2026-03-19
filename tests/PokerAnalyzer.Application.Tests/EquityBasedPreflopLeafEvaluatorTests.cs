@@ -12,6 +12,7 @@ public sealed class EquityBasedPreflopLeafEvaluatorTests
     [InlineData("v2/LIMP_OPTION/BB/eff=100", PreflopNodeFamily.FacingLimp)]
     [InlineData("v2/VS_OPEN/BTN/eff=100", PreflopNodeFamily.FacingRaise)]
     [InlineData("v2/VS_3BET/BTN/eff=100", PreflopNodeFamily.Facing3Bet)]
+    [InlineData("v2/VS_SQUEEZE/BTN/eff=100/open=2.5/squeeze=11", PreflopNodeFamily.Squeeze)]
     public void Evaluate_UsesSameEvaluatorPathAcrossFamilies(string solverKey, PreflopNodeFamily expectedFamily)
     {
         var fallback = new HeuristicPreflopLeafEvaluator();

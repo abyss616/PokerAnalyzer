@@ -10,6 +10,8 @@ public static class SolverLegalActionGenerator
     private const long FacingLimpRaiseNineBbDenominator = 1;
     private const long FacingRaiseThreeBetNineBbNumerator = 9;
     private const long FacingRaiseThreeBetNineBbDenominator = 1;
+    private const long FacingRaiseSqueezeElevenBbNumerator = 11;
+    private const long FacingRaiseSqueezeElevenBbDenominator = 1;
     private const long FacingThreeBetFourBetTwentyTwoBbNumerator = 22;
     private const long FacingThreeBetFourBetTwentyTwoBbDenominator = 1;
 
@@ -182,9 +184,11 @@ public static class SolverLegalActionGenerator
         if (IsFacingRaisePreflopSpot(state))
         {
             var minTotalBetFacingRaise = state.CurrentBetSize + state.LastRaiseSize;
-            var threeBetToNineBb = ResolveFacingRaiseThreeBetNineBb(state.Config.BigBlind);
+            var raiseTarget = IsFacingSqueezeOpportunityPreflopSpot(state)
+                ? ResolveFacingRaiseSqueezeElevenBb(state.Config.BigBlind)
+                : ResolveFacingRaiseThreeBetNineBb(state.Config.BigBlind);
 
-            TryAddRaiseTarget(actions, threeBetToNineBb, minTotalBetFacingRaise, maxTotalBet);
+            TryAddRaiseTarget(actions, raiseTarget, minTotalBetFacingRaise, maxTotalBet);
             TryAddRaiseTarget(actions, maxTotalBet, minTotalBetFacingRaise, maxTotalBet);
 
             return actions.AsReadOnly();
@@ -331,6 +335,36 @@ public static class SolverLegalActionGenerator
             a.ActionType == ActionType.AllIn);
     }
 
+    private static bool IsFacingSqueezeOpportunityPreflopSpot(SolverHandState state)
+    {
+        if (!IsFacingRaisePreflopSpot(state))
+            return false;
+
+        var sawOpen = false;
+        var playersWithPriorVoluntaryAction = new HashSet<PlayerId>();
+        foreach (var action in state.ActionHistory)
+        {
+            if (!sawOpen)
+            {
+                if (action.ActionType is ActionType.Call or ActionType.Bet or ActionType.Raise or ActionType.AllIn)
+                    playersWithPriorVoluntaryAction.Add(action.PlayerId);
+
+                if (action.ActionType is ActionType.Bet or ActionType.Raise or ActionType.AllIn)
+                    sawOpen = true;
+
+                continue;
+            }
+
+            if (action.ActionType == ActionType.Call && !playersWithPriorVoluntaryAction.Contains(action.PlayerId))
+                return true;
+
+            if (action.ActionType is ActionType.Call or ActionType.Bet or ActionType.Raise or ActionType.AllIn)
+                playersWithPriorVoluntaryAction.Add(action.PlayerId);
+        }
+
+        return false;
+    }
+
     private static bool IsFacingThreeBetPreflopSpot(SolverHandState state)
     {
         if (state.Street != Street.Preflop || state.ToCall.Value <= 0)
@@ -379,6 +413,15 @@ public static class SolverLegalActionGenerator
             FacingRaiseThreeBetNineBbNumerator,
             FacingRaiseThreeBetNineBbDenominator,
             "9bb");
+    }
+
+    private static ChipAmount ResolveFacingRaiseSqueezeElevenBb(ChipAmount bigBlind)
+    {
+        return ResolveFixedBbTarget(
+            bigBlind,
+            FacingRaiseSqueezeElevenBbNumerator,
+            FacingRaiseSqueezeElevenBbDenominator,
+            "11bb");
     }
 
     private static ChipAmount ResolveFacingThreeBetFourBetTwentyTwoBb(ChipAmount bigBlind)

@@ -1851,8 +1851,8 @@ internal static class PreflopNodeFamilyClassifier
             "LIMP" or "LIMP_OPTION" => PreflopNodeFamily.FacingLimp,
             "VS_OPEN" => PreflopNodeFamily.FacingRaise,
             "VS_3BET" => PreflopNodeFamily.Facing3Bet,
+            "VS_SQUEEZE" => PreflopNodeFamily.Squeeze,
             "VS_4BET" => PreflopNodeFamily.Facing4Bet,
-            "SQUEEZE" => PreflopNodeFamily.Squeeze,
             _ => PreflopNodeFamily.Unknown
         };
 
