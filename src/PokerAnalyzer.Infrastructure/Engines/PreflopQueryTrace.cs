@@ -25,6 +25,11 @@ public sealed class PreflopQueryTrace
     public required IReadOnlyList<PreflopRawActionTrace> RawActionHistory { get; init; }
     public required IReadOnlyList<PreflopRawActionTrace> PriorActionsBeforeActing { get; init; }
     public required bool HadPriorCallOrCompletion { get; init; }
+    public int ActiveOpponentCount { get; init; }
+    public int CallerCount { get; init; }
+    public int PlayersBehindCount { get; init; }
+    public bool IsMultiway => ActiveOpponentCount > 1;
+    public bool HasCallers => CallerCount > 0;
     public string? ActingPlayersFirstActionType { get; init; }
 }
 

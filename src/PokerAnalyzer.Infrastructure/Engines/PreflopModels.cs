@@ -15,7 +15,14 @@ public sealed record PreflopInfoSetKey(
     decimal? SqueezeSizeBucketBb,
     decimal? FourBetSizeBucketBb,
     decimal? JamThresholdBucketBb,
-    string SolverKey);
+    string SolverKey,
+    int ActiveOpponentCount = 1,
+    int CallerCount = 0,
+    int PlayersBehindCount = 0)
+{
+    public bool IsMultiway => ActiveOpponentCount > 1;
+    public bool HasCallers => CallerCount > 0;
+}
 
 public sealed record PreflopSpotContext(
     PlayerId ActingPlayerId,
@@ -27,7 +34,14 @@ public sealed record PreflopSpotContext(
     decimal CurrentBetBb,
     decimal ActingContribBb,
     decimal PotBb,
-    decimal EffectiveStackBb);
+    decimal EffectiveStackBb,
+    int ActiveOpponentCount = 1,
+    int CallerCount = 0,
+    int PlayersBehindCount = 0)
+{
+    public bool IsMultiway => ActiveOpponentCount > 1;
+    public bool HasCallers => CallerCount > 0;
+}
 
 public sealed record PreflopExtractionResult(
     bool IsSupported,

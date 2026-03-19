@@ -34,6 +34,8 @@ public sealed class PreflopStateExtractor
         var hasOpen = false;
         var hadColdCallerAfterOpen = false;
         var playersWithPriorVoluntaryAction = new HashSet<PlayerId>();
+        var callerPlayerIds = new HashSet<PlayerId>();
+        var foldedPlayers = new HashSet<PlayerId>();
         decimal? openSizeBucketBb = null;
         decimal? threeBetSizeBucketBb = null;
         decimal? squeezeSizeBucketBb = null;
@@ -120,13 +122,17 @@ public sealed class PreflopStateExtractor
                     case "CALL":
                         ApplyDelta(act.PlayerId, amountChips);
                         hadPriorCallOrCompletion = true;
+                        callerPlayerIds.Add(act.PlayerId);
                         if (hasOpen && raiseDepth == 1 && !playersWithPriorVoluntaryAction.Contains(act.PlayerId))
                             hadColdCallerAfterOpen = true;
                         playersWithPriorVoluntaryAction.Add(act.PlayerId);
                         break;
                     case "CHECK":
-                    case "FOLD":
                     case "TYPE_4":
+                        break;
+                    case "FOLD":
+                        foldedPlayers.Add(act.PlayerId);
+                        callerPlayerIds.Remove(act.PlayerId);
                         break;
                 }
             }
@@ -136,6 +142,9 @@ public sealed class PreflopStateExtractor
             var actingContribBb = bigBlind == 0 ? 0 : decimal.Round(contrib[actingPlayerId] / bigBlind, 2);
             var toCallBb = Math.Max(0m, decimal.Round(currentBetBb - actingContribBb, 2));
             var potBb = bigBlind == 0 ? 0 : decimal.Round(pot / bigBlind, 2);
+            var activeOpponentCount = seats.Count(s => s.Id != actingPlayerId && !foldedPlayers.Contains(s.Id));
+            var callerCount = callerPlayerIds.Count(id => id != actingPlayerId && !foldedPlayers.Contains(id));
+            var playersBehindCount = CountPlayersBehind(seats, foldedPlayers, actingPlayerId);
 
             var priorActionsBeforeActing = raw.ToArray();
             var historySignature = BuildSignature(
@@ -180,7 +189,10 @@ public sealed class PreflopStateExtractor
                 squeezeSizeBucketBb,
                 fourBetSizeBucketBb,
                 jamThresholdBucketBb,
-                solverKey);
+                solverKey,
+                activeOpponentCount,
+                callerCount,
+                playersBehindCount);
 
             var ctx = new PreflopSpotContext(
                 actingPlayerId,
@@ -192,7 +204,10 @@ public sealed class PreflopStateExtractor
                 currentBetBb,
                 actingContribBb,
                 potBb,
-                effectiveStackBb);
+                effectiveStackBb,
+                activeOpponentCount,
+                callerCount,
+                playersBehindCount);
 
             var trace = new PreflopQueryTrace
             {
@@ -217,6 +232,9 @@ public sealed class PreflopStateExtractor
                 RawActionHistory = raw,
                 PriorActionsBeforeActing = priorActionsBeforeActing,
                 HadPriorCallOrCompletion = hadPriorCallOrCompletion,
+                ActiveOpponentCount = activeOpponentCount,
+                CallerCount = callerCount,
+                PlayersBehindCount = playersBehindCount,
                 ActingPlayersFirstActionType = null
             };
 
@@ -280,6 +298,9 @@ public sealed class PreflopStateExtractor
                 RawActionHistory = rawActions,
                 PriorActionsBeforeActing = rawActions,
                 HadPriorCallOrCompletion = false,
+                ActiveOpponentCount = 0,
+                CallerCount = 0,
+                PlayersBehindCount = 0,
                 ActingPlayersFirstActionType = null
             };
 
@@ -316,6 +337,22 @@ public sealed class PreflopStateExtractor
             3 => "VS_4BET",
             _ => "VS_5BET"
         };
+    }
+
+    private static int CountPlayersBehind(
+        IReadOnlyList<PlayerSeat> seats,
+        IReadOnlySet<PlayerId> foldedPlayers,
+        PlayerId actingPlayerId)
+    {
+        var actingSeat = seats.FirstOrDefault(s => s.Id == actingPlayerId);
+        if (actingSeat is null)
+            return 0;
+
+        return seats.Count(s =>
+            s.Id != actingPlayerId
+            && !foldedPlayers.Contains(s.Id)
+            && s.Position != Position.Unknown
+            && s.Position > actingSeat.Position);
     }
 
     private static void WriteDebugTrace(

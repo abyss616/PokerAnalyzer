@@ -175,6 +175,123 @@ public sealed class PreflopCompilerFixturesTests
     }
 
     [Fact]
+    public void Extraction_Multiway_Unopened_Preserves_Opponents_And_Players_Behind_Context()
+    {
+        var extractor = new PreflopStateExtractor();
+        var utgId = PlayerId.New();
+        var hjId = PlayerId.New();
+        var coId = PlayerId.New();
+        var btnId = PlayerId.New();
+        var sbId = PlayerId.New();
+        var bbId = PlayerId.New();
+        var seats = new List<PlayerSeat>
+        {
+            new(utgId, "UTG", 0, Position.UTG, new ChipAmount(100m)),
+            new(hjId, "HJ", 1, Position.HJ, new ChipAmount(100m)),
+            new(coId, "CO", 2, Position.CO, new ChipAmount(100m)),
+            new(btnId, "BTN", 3, Position.BTN, new ChipAmount(100m)),
+            new(sbId, "SB", 4, Position.SB, new ChipAmount(100m)),
+            new(bbId, "BB", 5, Position.BB, new ChipAmount(100m))
+        };
+
+        var result = extractor.TryExtract(seats, [], hjId, smallBlind: 0.5m, bigBlind: 1m);
+
+        Assert.True(result.IsSupported, result.UnsupportedReason);
+        Assert.NotNull(result.Key);
+        Assert.Equal("UNOPENED", result.Key!.HistorySignature);
+        Assert.True(result.Key.IsMultiway);
+        Assert.Equal(5, result.Key.ActiveOpponentCount);
+        Assert.Equal(4, result.Key.PlayersBehindCount);
+        Assert.Equal(0, result.Key.CallerCount);
+        Assert.False(result.Key.HasCallers);
+        Assert.True(result.Trace.IsMultiway);
+        Assert.Equal(result.Key.ActiveOpponentCount, result.Trace.ActiveOpponentCount);
+        Assert.Equal(result.Key.PlayersBehindCount, result.Trace.PlayersBehindCount);
+    }
+
+    [Fact]
+    public void Extraction_Multiway_Limp_Preserves_Caller_Context()
+    {
+        var extractor = new PreflopStateExtractor();
+        var utgId = PlayerId.New();
+        var hjId = PlayerId.New();
+        var coId = PlayerId.New();
+        var btnId = PlayerId.New();
+        var sbId = PlayerId.New();
+        var bbId = PlayerId.New();
+        var seats = new List<PlayerSeat>
+        {
+            new(utgId, "UTG", 0, Position.UTG, new ChipAmount(100m)),
+            new(hjId, "HJ", 1, Position.HJ, new ChipAmount(100m)),
+            new(coId, "CO", 2, Position.CO, new ChipAmount(100m)),
+            new(btnId, "BTN", 3, Position.BTN, new ChipAmount(100m)),
+            new(sbId, "SB", 4, Position.SB, new ChipAmount(100m)),
+            new(bbId, "BB", 5, Position.BB, new ChipAmount(100m))
+        };
+
+        var actions = new List<PreflopInputAction>
+        {
+            new(utgId, "CALL", 1m)
+        };
+
+        var result = extractor.TryExtract(seats, actions, hjId, smallBlind: 0.5m, bigBlind: 1m);
+
+        Assert.True(result.IsSupported, result.UnsupportedReason);
+        Assert.NotNull(result.Key);
+        Assert.Equal("LIMP", result.Key!.HistorySignature);
+        Assert.True(result.Key.IsMultiway);
+        Assert.True(result.Key.HasCallers);
+        Assert.Equal(1, result.Key.CallerCount);
+        Assert.Equal(5, result.Key.ActiveOpponentCount);
+        Assert.Equal(4, result.Key.PlayersBehindCount);
+        Assert.True(result.Trace.HadPriorCallOrCompletion);
+        Assert.True(result.Trace.HasCallers);
+    }
+
+    [Fact]
+    public void Extraction_Multiway_FacingOpen_Preserves_Callers_And_Players_Behind_Context()
+    {
+        var extractor = new PreflopStateExtractor();
+        var utgId = PlayerId.New();
+        var hjId = PlayerId.New();
+        var coId = PlayerId.New();
+        var btnId = PlayerId.New();
+        var sbId = PlayerId.New();
+        var bbId = PlayerId.New();
+        var seats = new List<PlayerSeat>
+        {
+            new(utgId, "UTG", 0, Position.UTG, new ChipAmount(100m)),
+            new(hjId, "HJ", 1, Position.HJ, new ChipAmount(100m)),
+            new(coId, "CO", 2, Position.CO, new ChipAmount(100m)),
+            new(btnId, "BTN", 3, Position.BTN, new ChipAmount(100m)),
+            new(sbId, "SB", 4, Position.SB, new ChipAmount(100m)),
+            new(bbId, "BB", 5, Position.BB, new ChipAmount(100m))
+        };
+
+        var actions = new List<PreflopInputAction>
+        {
+            new(utgId, "RAISE_TO", 2.5m),
+            new(hjId, "CALL", 2.5m)
+        };
+
+        var result = extractor.TryExtract(seats, actions, coId, smallBlind: 0.5m, bigBlind: 1m);
+
+        Assert.True(result.IsSupported, result.UnsupportedReason);
+        Assert.NotNull(result.Key);
+        Assert.Equal("VS_OPEN", result.Key!.HistorySignature);
+        Assert.Equal(Position.UTG, result.Key.FacingPosition);
+        Assert.True(result.Key.IsMultiway);
+        Assert.True(result.Key.HasCallers);
+        Assert.Equal(1, result.Key.CallerCount);
+        Assert.Equal(5, result.Key.ActiveOpponentCount);
+        Assert.Equal(3, result.Key.PlayersBehindCount);
+        Assert.Equal(2.5m, result.Key.OpenSizeBucketBb);
+        Assert.True(result.Key.ToCallBb > 0m);
+        Assert.True(result.Trace.HasCallers);
+        Assert.Equal(result.Key.PlayersBehindCount, result.Trace.PlayersBehindCount);
+    }
+
+    [Fact]
     public void Validation_LimpOption_With_Zero_ToCall_IsSupported()
     {
         var key = new PreflopInfoSetKey(Position.BB, Position.BB, "LIMP_OPTION", 0, 0m, 100m, null, null, null, null, null, 18m, "k");
@@ -422,6 +539,36 @@ public sealed class PreflopCompilerFixturesTests
         Assert.Equal("VS_3BET", action2.Key!.HistorySignature);
         Assert.Equal(2, action2.Key.RaiseDepth);
         Assert.True(action2.Key.ToCallBb > 0m);
+    }
+
+    [Fact]
+    public void Extraction_TrueHu_VsOpen_Keeps_Current_Key_Shape()
+    {
+        var extractor = new PreflopStateExtractor();
+        var sbId = PlayerId.New();
+        var bbId = PlayerId.New();
+        var seats = new List<PlayerSeat>
+        {
+            new(sbId, "SB", 0, Position.SB, new ChipAmount(100m)),
+            new(bbId, "BB", 1, Position.BB, new ChipAmount(100m))
+        };
+
+        var actions = new List<PreflopInputAction>
+        {
+            new(sbId, "RAISE_TO", 2.5m)
+        };
+
+        var result = extractor.TryExtract(seats, actions, bbId, smallBlind: 0.5m, bigBlind: 1m);
+
+        Assert.True(result.IsSupported, result.UnsupportedReason);
+        Assert.NotNull(result.Key);
+        Assert.Equal("VS_OPEN", result.Key!.HistorySignature);
+        Assert.False(result.Key.IsMultiway);
+        Assert.False(result.Key.HasCallers);
+        Assert.Equal(1, result.Key.ActiveOpponentCount);
+        Assert.Equal(0, result.Key.CallerCount);
+        Assert.Equal(0, result.Key.PlayersBehindCount);
+        Assert.Equal("v2/VS_OPEN/BB/eff=97.5/open=2.5/jam=18", result.Key.SolverKey);
     }
 
     [Fact]
