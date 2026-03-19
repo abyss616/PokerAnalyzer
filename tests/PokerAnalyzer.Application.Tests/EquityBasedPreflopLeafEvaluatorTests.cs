@@ -38,6 +38,38 @@ public sealed class EquityBasedPreflopLeafEvaluatorTests
         Assert.NotNull(result.Details.RationaleSummary);
     }
 
+    [Fact]
+    public void Evaluate_MultiwayFacingOpen_RootRoutingStaysDeferredWhileUsingGeneralizedApproximation()
+    {
+        var evaluator = new EquityBasedPreflopLeafEvaluator(new TableDrivenOpponentRangeProvider(), new HeuristicPreflopLeafEvaluator(), samplesPerMatchup: 120);
+        var context = CreateFacingRaiseMultiwayContext(Position.BTN, Position.CO, ActionType.Call);
+
+        var result = evaluator.Evaluate(context);
+
+        Assert.NotNull(result.Details);
+        Assert.Equal("GeneralizedFacingRaise", result.Details!.EvaluatorType);
+        Assert.Equal("DeferredMultiway", result.Details.RootEvaluatorMode);
+        Assert.Equal("FacingRaise", result.Details.NodeFamily);
+        Assert.False(result.Details.IsHeadsUp);
+        Assert.True(result.Details.UsedDirectAbstractionShortcut);
+        Assert.False(result.Details.UsedFallbackEvaluator);
+    }
+
+    [Fact]
+    public void Evaluate_MultiwayFacingLimpWithoutSolverKey_ClassifiesFromTreeState()
+    {
+        var evaluator = new EquityBasedPreflopLeafEvaluator(new TableDrivenOpponentRangeProvider(), new HeuristicPreflopLeafEvaluator(), samplesPerMatchup: 120);
+        var context = CreateBtnFacingLimpMultiwayContext(ActionType.Call) with { SolverKey = null };
+
+        var result = evaluator.Evaluate(context);
+
+        Assert.NotNull(result.Details);
+        Assert.Equal("FacingLimp", result.Details!.NodeFamily);
+        Assert.Equal("DeferredMultiway", result.Details.RootEvaluatorMode);
+        Assert.Equal("AbstractedHeadsUp", result.Details.EvaluatorType);
+        Assert.False(result.Details.IsHeadsUp);
+        Assert.False(result.Details.UsedFallbackEvaluator);
+    }
 
     [Fact]
     public void Evaluate_LimpOptionBb_UsesActionSizeSensitiveUtilityAndDiagnostics()
@@ -175,8 +207,8 @@ public sealed class EquityBasedPreflopLeafEvaluatorTests
         Assert.NotNull(leafZeroOpponents.Details);
         Assert.Equal("AbstractedHeadsUp", leafTwoOpponents.Details!.EvaluatorType);
         Assert.Equal("AbstractedHeadsUp", leafZeroOpponents.Details!.EvaluatorType);
-        Assert.Equal("AbstractedHeadsUp", leafTwoOpponents.Details.RootEvaluatorMode);
-        Assert.Equal("AbstractedHeadsUp", leafZeroOpponents.Details.RootEvaluatorMode);
+        Assert.Equal("DeferredMultiway", leafTwoOpponents.Details.RootEvaluatorMode);
+        Assert.Equal("DeferredMultiway", leafZeroOpponents.Details.RootEvaluatorMode);
         Assert.Equal(2, leafTwoOpponents.Details.RootActiveOpponentCount);
         Assert.Equal(2, leafZeroOpponents.Details.RootActiveOpponentCount);
         Assert.Equal(2, leafTwoOpponents.Details.LeafActiveOpponentCount);
@@ -319,7 +351,7 @@ public sealed class EquityBasedPreflopLeafEvaluatorTests
 
         Assert.NotNull(result.Details);
         Assert.Equal("AbstractedHeadsUp", result.Details!.EvaluatorType);
-        Assert.Equal("AbstractedHeadsUp", result.Details.RootEvaluatorMode);
+        Assert.Equal("DeferredMultiway", result.Details.RootEvaluatorMode);
         Assert.False(result.Details.UsedFallbackEvaluator);
         Assert.Equal("SyntheticFieldFacingLimp", result.Details.AbstractionSource);
         Assert.Equal("SyntheticLimpFieldDefender", result.Details.SyntheticDefenderLabel);
@@ -364,7 +396,7 @@ public sealed class EquityBasedPreflopLeafEvaluatorTests
 
         Assert.NotNull(result.Details);
         Assert.Equal("AbstractedHeadsUp", result.Details!.EvaluatorType);
-        Assert.Equal("AbstractedHeadsUp", result.Details.RootEvaluatorMode);
+        Assert.Equal("DeferredMultiway", result.Details.RootEvaluatorMode);
         Assert.False(result.Details.UsedFallbackEvaluator);
         Assert.Equal("SyntheticFieldFacingLimp", result.Details.AbstractionSource);
         Assert.Equal("SyntheticLimpFieldDefender", result.Details.SyntheticDefenderLabel);
@@ -408,7 +440,7 @@ public sealed class EquityBasedPreflopLeafEvaluatorTests
 
         Assert.NotNull(result.Details);
         Assert.Equal("AbstractedHeadsUp", result.Details!.EvaluatorType);
-        Assert.Equal("AbstractedHeadsUp", result.Details.RootEvaluatorMode);
+        Assert.Equal("DeferredMultiway", result.Details.RootEvaluatorMode);
         Assert.False(result.Details.UsedFallbackEvaluator);
         Assert.Equal("SyntheticFieldSbUnopened", result.Details.AbstractionSource);
         Assert.Equal("SyntheticSbUnopenedDefender", result.Details.SyntheticDefenderLabel);
@@ -480,7 +512,7 @@ public sealed class EquityBasedPreflopLeafEvaluatorTests
 
         Assert.NotNull(result.Details);
         Assert.Equal("AbstractedHeadsUp", result.Details!.EvaluatorType);
-        Assert.Equal("AbstractedHeadsUp", result.Details.RootEvaluatorMode);
+        Assert.Equal("DeferredMultiway", result.Details.RootEvaluatorMode);
         Assert.False(result.Details.UsedFallbackEvaluator);
         Assert.Equal("SyntheticFieldUnopened", result.Details.AbstractionSource);
         Assert.Equal("SyntheticUnopenedFieldDefender", result.Details.SyntheticDefenderLabel);
