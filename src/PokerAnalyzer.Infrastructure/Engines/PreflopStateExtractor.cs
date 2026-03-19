@@ -30,8 +30,14 @@ public sealed class PreflopStateExtractor
         var betToCall = 0m;
         var raiseDepth = 0;
         PlayerId? lastAggressor = null;
-        var raiseSizesBb = new List<decimal>();
         var hadPriorCallOrCompletion = false;
+        var hasOpen = false;
+        var hadColdCallerAfterOpen = false;
+        var playersWithPriorVoluntaryAction = new HashSet<PlayerId>();
+        decimal? openSizeBucketBb = null;
+        decimal? threeBetSizeBucketBb = null;
+        decimal? squeezeSizeBucketBb = null;
+        decimal? fourBetSizeBucketBb = null;
 
         void PostBlind(Position position, decimal amount)
         {
@@ -84,13 +90,39 @@ public sealed class PreflopStateExtractor
                             betToCall = contrib[act.PlayerId];
                             lastAggressor = act.PlayerId;
                             raiseDepth++;
-                            raiseSizesBb.Add(decimal.Round(contrib[act.PlayerId] / bigBlind, 2));
+
+                            var raiseSizeBb = decimal.Round(contrib[act.PlayerId] / bigBlind, 2);
+                            if (!hasOpen)
+                            {
+                                hasOpen = true;
+                                openSizeBucketBb = raiseSizeBb;
+                            }
+                            else if (raiseDepth == 2)
+                            {
+                                if (hadColdCallerAfterOpen)
+                                {
+                                    squeezeSizeBucketBb = raiseSizeBb;
+                                }
+                                else
+                                {
+                                    threeBetSizeBucketBb = raiseSizeBb;
+                                }
+                            }
+                            else if (raiseDepth == 3)
+                            {
+                                fourBetSizeBucketBb = raiseSizeBb;
+                            }
+
+                            playersWithPriorVoluntaryAction.Add(act.PlayerId);
                         }
                         break;
 
                     case "CALL":
                         ApplyDelta(act.PlayerId, amountChips);
                         hadPriorCallOrCompletion = true;
+                        if (hasOpen && raiseDepth == 1 && !playersWithPriorVoluntaryAction.Contains(act.PlayerId))
+                            hadColdCallerAfterOpen = true;
+                        playersWithPriorVoluntaryAction.Add(act.PlayerId);
                         break;
                     case "CHECK":
                     case "FOLD":
@@ -110,6 +142,7 @@ public sealed class PreflopStateExtractor
                 actingSeat.Position,
                 raiseDepth,
                 hadPriorCallOrCompletion,
+                hadColdCallerAfterOpen,
                 toCallBb);
 
             var bigBlindSeat = seats.FirstOrDefault(s => s.Position == Position.BB);
@@ -121,11 +154,7 @@ public sealed class PreflopStateExtractor
                 : (bigBlindSeat is not null ? stacks[bigBlindSeat.Id] : stacks.Values.Max());
             var effectiveStackBb = decimal.Round(Math.Min(stacks[actingPlayerId], facingStack) / bigBlind, 2);
 
-            decimal? openSizeBucketBb = raiseSizesBb.Count >= 1 ? raiseSizesBb[0] : null;
             decimal? isoSizeBucketBb = null;
-            decimal? threeBetSizeBucketBb = raiseSizesBb.Count >= 2 ? raiseSizesBb[1] : null;
-            decimal? squeezeSizeBucketBb = null;
-            decimal? fourBetSizeBucketBb = raiseSizesBb.Count >= 3 ? raiseSizesBb[2] : null;
             decimal? jamThresholdBucketBb = 18m;
 
             var solverKey = BuildSolverKey(
@@ -262,6 +291,7 @@ public sealed class PreflopStateExtractor
         Position acting,
         int raiseDepth,
         bool hadPriorCallOrCompletion,
+        bool hadColdCallerAfterOpen,
         decimal toCallBb)
     {
         if (raiseDepth == 0)
@@ -281,6 +311,7 @@ public sealed class PreflopStateExtractor
         return raiseDepth switch
         {
             1 => "VS_OPEN",
+            2 when hadColdCallerAfterOpen => "VS_SQUEEZE",
             2 => "VS_3BET",
             3 => "VS_4BET",
             _ => "VS_5BET"
