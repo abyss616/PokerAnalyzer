@@ -1855,7 +1855,7 @@ internal static class PreflopNodeFamilyClassifier
         => state.ActionHistory.Any(action => action.ActionType == ActionType.Call && !IsBlindPosting(action.ActionType));
 
     private static bool IsBlindPosting(ActionType actionType)
-        => actionType is ActionType.PostSmallBlind or ActionType.PostBigBlind or ActionType.PostAnte;
+        => actionType is ActionType.PostSmallBlind or ActionType.PostBigBlind;
 
     private static bool TryFromSolverKey(string? solverKey, out PreflopNodeFamily family)
     {
