@@ -77,6 +77,9 @@ public sealed class PreflopCompilerFixturesTests
             if (e.HistorySignature == "VS_3BET")
                 Assert.NotNull(e.Buckets.ThreeBetSizeBucketBb);
 
+            if (e.HistorySignature == "VS_SQUEEZE")
+                Assert.NotNull(e.Buckets.SqueezeSizeBucketBb);
+
             if (e.HistorySignature is "VS_4BET" or "VS_5BET")
                 Assert.NotNull(e.Buckets.FourBetSizeBucketBb);
         }
@@ -256,6 +259,133 @@ public sealed class PreflopCompilerFixturesTests
 
         Assert.False(result.IsValid);
         Assert.Contains("ToCall <= 0", result.Reason);
+    }
+
+    [Fact]
+    public void Extraction_FacingSqueeze_Uses_VsSqueeze_Signature_And_Squeeze_Bucket()
+    {
+        var extractor = new PreflopStateExtractor();
+        var utgId = PlayerId.New();
+        var hjId = PlayerId.New();
+        var coId = PlayerId.New();
+        var btnId = PlayerId.New();
+        var sbId = PlayerId.New();
+        var bbId = PlayerId.New();
+        var seats = new List<PlayerSeat>
+        {
+            new(utgId, "UTG", 0, Position.UTG, new ChipAmount(100m)),
+            new(hjId, "HJ", 1, Position.HJ, new ChipAmount(100m)),
+            new(coId, "CO", 2, Position.CO, new ChipAmount(100m)),
+            new(btnId, "BTN", 3, Position.BTN, new ChipAmount(100m)),
+            new(sbId, "SB", 4, Position.SB, new ChipAmount(100m)),
+            new(bbId, "BB", 5, Position.BB, new ChipAmount(100m))
+        };
+
+        var actions = new List<PreflopInputAction>
+        {
+            new(utgId, "RAISE_TO", 2.5m),
+            new(hjId, "CALL", 2.5m),
+            new(coId, "RAISE_TO", 11m)
+        };
+
+        var result = extractor.TryExtract(seats, actions, utgId, smallBlind: 0.5m, bigBlind: 1m);
+
+        Assert.True(result.IsSupported, result.UnsupportedReason);
+        Assert.NotNull(result.Key);
+        Assert.Equal("VS_SQUEEZE", result.Key!.HistorySignature);
+        Assert.Equal(2.5m, result.Key.OpenSizeBucketBb);
+        Assert.Null(result.Key.ThreeBetSizeBucketBb);
+        Assert.Equal(11m, result.Key.SqueezeSizeBucketBb);
+        Assert.Contains("/squeeze=11", result.Key.SolverKey);
+    }
+
+    [Fact]
+    public void Extraction_NormalThreeBet_Control_DoesNot_Populate_Squeeze_Bucket()
+    {
+        var extractor = new PreflopStateExtractor();
+        var utgId = PlayerId.New();
+        var coId = PlayerId.New();
+        var btnId = PlayerId.New();
+        var sbId = PlayerId.New();
+        var bbId = PlayerId.New();
+        var seats = new List<PlayerSeat>
+        {
+            new(utgId, "UTG", 0, Position.UTG, new ChipAmount(100m)),
+            new(coId, "CO", 1, Position.CO, new ChipAmount(100m)),
+            new(btnId, "BTN", 2, Position.BTN, new ChipAmount(100m)),
+            new(sbId, "SB", 3, Position.SB, new ChipAmount(100m)),
+            new(bbId, "BB", 4, Position.BB, new ChipAmount(100m))
+        };
+
+        var actions = new List<PreflopInputAction>
+        {
+            new(utgId, "RAISE_TO", 2.5m),
+            new(coId, "RAISE_TO", 8m)
+        };
+
+        var result = extractor.TryExtract(seats, actions, utgId, smallBlind: 0.5m, bigBlind: 1m);
+
+        Assert.True(result.IsSupported, result.UnsupportedReason);
+        Assert.NotNull(result.Key);
+        Assert.Equal("VS_3BET", result.Key!.HistorySignature);
+        Assert.Equal(2.5m, result.Key.OpenSizeBucketBb);
+        Assert.Equal(8m, result.Key.ThreeBetSizeBucketBb);
+        Assert.Null(result.Key.SqueezeSizeBucketBb);
+    }
+
+    [Fact]
+    public void Extraction_Squeeze_Then_FourBet_Preserves_Squeeze_And_FourBet_Buckets()
+    {
+        var extractor = new PreflopStateExtractor();
+        var utgId = PlayerId.New();
+        var hjId = PlayerId.New();
+        var coId = PlayerId.New();
+        var btnId = PlayerId.New();
+        var sbId = PlayerId.New();
+        var bbId = PlayerId.New();
+        var seats = new List<PlayerSeat>
+        {
+            new(utgId, "UTG", 0, Position.UTG, new ChipAmount(100m)),
+            new(hjId, "HJ", 1, Position.HJ, new ChipAmount(100m)),
+            new(coId, "CO", 2, Position.CO, new ChipAmount(100m)),
+            new(btnId, "BTN", 3, Position.BTN, new ChipAmount(100m)),
+            new(sbId, "SB", 4, Position.SB, new ChipAmount(100m)),
+            new(bbId, "BB", 5, Position.BB, new ChipAmount(100m))
+        };
+
+        var actions = new List<PreflopInputAction>
+        {
+            new(utgId, "RAISE_TO", 2.5m),
+            new(hjId, "CALL", 2.5m),
+            new(coId, "RAISE_TO", 11m)
+        };
+
+        var result = extractor.TryExtract(
+            seats,
+            [.. actions, new PreflopInputAction(utgId, "RAISE_TO", 25m)],
+            hjId,
+            smallBlind: 0.5m,
+            bigBlind: 1m);
+
+        Assert.True(result.IsSupported, result.UnsupportedReason);
+        Assert.NotNull(result.Key);
+        Assert.Equal("VS_4BET", result.Key!.HistorySignature);
+        Assert.Equal(2.5m, result.Key.OpenSizeBucketBb);
+        Assert.Equal(11m, result.Key.SqueezeSizeBucketBb);
+        Assert.Equal(25m, result.Key.FourBetSizeBucketBb);
+        Assert.Null(result.Key.ThreeBetSizeBucketBb);
+    }
+
+    [Fact]
+    public void Validation_VsSqueeze_Requires_Squeeze_Bucket()
+    {
+        var key = new PreflopInfoSetKey(Position.UTG, Position.CO, "VS_SQUEEZE", 2, 8.5m, 89m, 2.5m, null, null, null, null, 18m, "k");
+        var ctx = new PreflopSpotContext(PlayerId.New(), Position.UTG, PlayerId.New(), Position.CO, 2, 8.5m, 11m, 2.5m, 17m, 89m);
+
+        var result = PreflopKeyValidator.Validate(key, ctx);
+
+        Assert.False(result.IsValid);
+        Assert.Contains("VS_SQUEEZE requires squeeze size bucket", result.Reason);
     }
 
     [Fact]
