@@ -48,7 +48,8 @@ public sealed class EquityBasedPreflopLeafEvaluator : IPreflopLeafEvaluator
     {
         Unsupported = 0,
         TrueHeadsUp = 1,
-        AbstractedHeadsUp = 2
+        AbstractedHeadsUp = 2,
+        DeferredMultiway = 3
     }
 
     public EquityBasedPreflopLeafEvaluator(
@@ -75,8 +76,8 @@ public sealed class EquityBasedPreflopLeafEvaluator : IPreflopLeafEvaluator
         if (context.RootAction.ActionType == ActionType.Fold)
             return EvaluateFold(context, rootEvaluatorMode, rootActiveOpponentCount, leafActiveOpponentCount);
 
-        if ((rootEvaluatorMode == RootEvaluatorMode.AbstractedHeadsUp || rootEvaluatorMode == RootEvaluatorMode.TrueHeadsUp)
-            && TryEvaluateFacingRaiseActionAware(context, nodeFamily, rootActiveOpponentCount, leafActiveOpponentCount, out var facingRaiseEvaluation))
+        if ((rootEvaluatorMode == RootEvaluatorMode.DeferredMultiway || rootEvaluatorMode == RootEvaluatorMode.TrueHeadsUp)
+            && TryEvaluateFacingRaiseActionAware(context, nodeFamily, rootEvaluatorMode, rootActiveOpponentCount, leafActiveOpponentCount, out var facingRaiseEvaluation))
         {
             return facingRaiseEvaluation;
         }
@@ -87,10 +88,10 @@ public sealed class EquityBasedPreflopLeafEvaluator : IPreflopLeafEvaluator
             return facing3BetEvaluation;
         }
 
-        if (rootEvaluatorMode == RootEvaluatorMode.AbstractedHeadsUp
-            && (TryEvaluateBtnUnopenedActionAware(context, nodeFamily, rootActiveOpponentCount, leafActiveOpponentCount, out var abstracted)
-                || TryEvaluateUnopenedActionAware(context, nodeFamily, rootActiveOpponentCount, leafActiveOpponentCount, out abstracted)
-                || TryEvaluateFacingLimpActionAware(context, nodeFamily, rootActiveOpponentCount, leafActiveOpponentCount, out abstracted)))
+        if (rootEvaluatorMode == RootEvaluatorMode.DeferredMultiway
+            && (TryEvaluateBtnUnopenedActionAware(context, nodeFamily, rootEvaluatorMode, rootActiveOpponentCount, leafActiveOpponentCount, out var abstracted)
+                || TryEvaluateUnopenedActionAware(context, nodeFamily, rootEvaluatorMode, rootActiveOpponentCount, leafActiveOpponentCount, out abstracted)
+                || TryEvaluateFacingLimpActionAware(context, nodeFamily, rootEvaluatorMode, rootActiveOpponentCount, leafActiveOpponentCount, out abstracted)))
         {
             return abstracted;
         }
@@ -107,7 +108,7 @@ public sealed class EquityBasedPreflopLeafEvaluator : IPreflopLeafEvaluator
         return Fallback(context, rootEvaluatorMode, rootActiveOpponentCount, leafActiveOpponentCount, $"unsupported root evaluator mode for family={nodeFamily}, rootActiveOpponents={rootActiveOpponentCount}");
     }
 
-    private bool TryEvaluateFacingRaiseActionAware(PreflopLeafEvaluationContext context, PreflopNodeFamily nodeFamily, int rootActiveOpponentCount, int leafActiveOpponentCount, out PreflopLeafEvaluation evaluation)
+    private bool TryEvaluateFacingRaiseActionAware(PreflopLeafEvaluationContext context, PreflopNodeFamily nodeFamily, RootEvaluatorMode rootEvaluatorMode, int rootActiveOpponentCount, int leafActiveOpponentCount, out PreflopLeafEvaluation evaluation)
     {
         evaluation = default!;
         if (nodeFamily != PreflopNodeFamily.FacingRaise)
@@ -145,7 +146,7 @@ public sealed class EquityBasedPreflopLeafEvaluator : IPreflopLeafEvaluator
             villainPosition: null,
             combined,
             detail,
-            rootEvaluatorMode: rootActiveOpponentCount == 1 ? RootEvaluatorMode.TrueHeadsUp : RootEvaluatorMode.AbstractedHeadsUp,
+            rootEvaluatorMode: rootEvaluatorMode,
             rootActiveOpponentCount: rootActiveOpponentCount,
             leafActiveOpponentCount: leafActiveOpponentCount,
             evaluatorType: "GeneralizedFacingRaise",
@@ -234,7 +235,7 @@ public sealed class EquityBasedPreflopLeafEvaluator : IPreflopLeafEvaluator
         return true;
     }
 
-    private bool TryEvaluateFacingLimpActionAware(PreflopLeafEvaluationContext context, PreflopNodeFamily nodeFamily, int rootActiveOpponentCount, int leafActiveOpponentCount, out PreflopLeafEvaluation evaluation)
+    private bool TryEvaluateFacingLimpActionAware(PreflopLeafEvaluationContext context, PreflopNodeFamily nodeFamily, RootEvaluatorMode rootEvaluatorMode, int rootActiveOpponentCount, int leafActiveOpponentCount, out PreflopLeafEvaluation evaluation)
     {
         evaluation = default!;
         if (nodeFamily != PreflopNodeFamily.FacingLimp)
@@ -268,7 +269,7 @@ public sealed class EquityBasedPreflopLeafEvaluator : IPreflopLeafEvaluator
             villainPosition: null,
             combined,
             detail,
-            rootEvaluatorMode: RootEvaluatorMode.AbstractedHeadsUp,
+            rootEvaluatorMode: rootEvaluatorMode,
             rootActiveOpponentCount: rootActiveOpponentCount,
             leafActiveOpponentCount: leafActiveOpponentCount,
             evaluatorType: "AbstractedHeadsUp",
@@ -462,7 +463,7 @@ public sealed class EquityBasedPreflopLeafEvaluator : IPreflopLeafEvaluator
         return true;
     }
 
-    private bool TryEvaluateBtnUnopenedActionAware(PreflopLeafEvaluationContext context, PreflopNodeFamily nodeFamily, int rootActiveOpponentCount, int leafActiveOpponentCount, out PreflopLeafEvaluation evaluation)
+    private bool TryEvaluateBtnUnopenedActionAware(PreflopLeafEvaluationContext context, PreflopNodeFamily nodeFamily, RootEvaluatorMode rootEvaluatorMode, int rootActiveOpponentCount, int leafActiveOpponentCount, out PreflopLeafEvaluation evaluation)
     {
         evaluation = default!;
         if (context.HeroPosition != Position.BTN || nodeFamily != PreflopNodeFamily.Unopened)
@@ -502,7 +503,7 @@ public sealed class EquityBasedPreflopLeafEvaluator : IPreflopLeafEvaluator
             villainPosition: null,
             combined,
             detail,
-            rootEvaluatorMode: RootEvaluatorMode.AbstractedHeadsUp,
+            rootEvaluatorMode: rootEvaluatorMode,
             rootActiveOpponentCount: rootActiveOpponentCount,
             leafActiveOpponentCount: leafActiveOpponentCount,
             evaluatorType: "AbstractedHeadsUp",
@@ -570,7 +571,7 @@ public sealed class EquityBasedPreflopLeafEvaluator : IPreflopLeafEvaluator
         return true;
     }
 
-    private bool TryEvaluateUnopenedActionAware(PreflopLeafEvaluationContext context, PreflopNodeFamily nodeFamily, int rootActiveOpponentCount, int leafActiveOpponentCount, out PreflopLeafEvaluation evaluation)
+    private bool TryEvaluateUnopenedActionAware(PreflopLeafEvaluationContext context, PreflopNodeFamily nodeFamily, RootEvaluatorMode rootEvaluatorMode, int rootActiveOpponentCount, int leafActiveOpponentCount, out PreflopLeafEvaluation evaluation)
     {
         evaluation = default!;
         if (context.HeroPosition == Position.BTN || nodeFamily != PreflopNodeFamily.Unopened)
@@ -606,7 +607,7 @@ public sealed class EquityBasedPreflopLeafEvaluator : IPreflopLeafEvaluator
             villainPosition: null,
             combined,
             detail,
-            rootEvaluatorMode: RootEvaluatorMode.AbstractedHeadsUp,
+            rootEvaluatorMode: rootEvaluatorMode,
             rootActiveOpponentCount: rootActiveOpponentCount,
             leafActiveOpponentCount: leafActiveOpponentCount,
             evaluatorType: "AbstractedHeadsUp",
@@ -824,7 +825,7 @@ public sealed class EquityBasedPreflopLeafEvaluator : IPreflopLeafEvaluator
                 NodeFamily: nodeFamily.ToString(),
                 HeroPosition: context.HeroPosition.ToString(),
                 VillainPosition: villainPosition,
-                IsHeadsUp: rootEvaluatorMode == RootEvaluatorMode.TrueHeadsUp || abstractedOpponentCount == 1,
+                IsHeadsUp: rootEvaluatorMode == RootEvaluatorMode.TrueHeadsUp,
                 RangeDescription: range.Description,
                 RangeDetail: rangeReason,
                 FoldProbability: foldProbability ?? facingLimpFoldProbability ?? derivedFoldProbability,
@@ -845,7 +846,7 @@ public sealed class EquityBasedPreflopLeafEvaluator : IPreflopLeafEvaluator
                 RootEvaluatorMode: rootEvaluatorMode.ToString(),
                 RootActiveOpponentCount: rootActiveOpponentCount,
                 LeafActiveOpponentCount: leafActiveOpponentCount,
-                UsedDirectAbstractionShortcut: rootEvaluatorMode == RootEvaluatorMode.AbstractedHeadsUp,
+                UsedDirectAbstractionShortcut: UsesAbstractedHeadsUpApproximation(rootEvaluatorMode),
                 ActivePopulationProfile: _populationProfileProvider.ActiveProfileName));
     }
 
@@ -905,7 +906,7 @@ public sealed class EquityBasedPreflopLeafEvaluator : IPreflopLeafEvaluator
                 RootEvaluatorMode: rootEvaluatorMode.ToString(),
                 RootActiveOpponentCount: rootActiveOpponentCount,
                 LeafActiveOpponentCount: leafActiveOpponentCount,
-                UsedDirectAbstractionShortcut: rootEvaluatorMode == RootEvaluatorMode.AbstractedHeadsUp,
+                UsedDirectAbstractionShortcut: UsesAbstractedHeadsUpApproximation(rootEvaluatorMode),
                 ActivePopulationProfile: _populationProfileProvider.ActiveProfileName));
     }
 
@@ -930,7 +931,7 @@ public sealed class EquityBasedPreflopLeafEvaluator : IPreflopLeafEvaluator
                 NodeFamily: PreflopNodeFamilyClassifier.Classify(context).ToString(),
                 HeroPosition: context.HeroPosition.ToString(),
                 VillainPosition: context.LeafState.Players.FirstOrDefault(p => p.PlayerId != context.HeroPlayerId && p.IsActive)?.Position.ToString(),
-                IsHeadsUp: rootEvaluatorMode == RootEvaluatorMode.TrueHeadsUp || existingDetails?.AbstractedOpponentCount == 1,
+                IsHeadsUp: rootEvaluatorMode == RootEvaluatorMode.TrueHeadsUp,
                 RangeDescription: existingDetails?.RangeDescription,
                 RangeDetail: existingDetails?.RangeDetail,
                 FoldProbability: existingDetails?.FoldProbability,
@@ -951,7 +952,7 @@ public sealed class EquityBasedPreflopLeafEvaluator : IPreflopLeafEvaluator
                 RootEvaluatorMode: rootEvaluatorMode.ToString(),
                 RootActiveOpponentCount: rootActiveOpponentCount,
                 LeafActiveOpponentCount: leafActiveOpponentCount,
-                UsedDirectAbstractionShortcut: rootEvaluatorMode == RootEvaluatorMode.AbstractedHeadsUp,
+                UsedDirectAbstractionShortcut: UsesAbstractedHeadsUpApproximation(rootEvaluatorMode),
                 ActivePopulationProfile: existingDetails?.ActivePopulationProfile ?? _populationProfileProvider.ActiveProfileName)
         };
     }
@@ -965,11 +966,14 @@ public sealed class EquityBasedPreflopLeafEvaluator : IPreflopLeafEvaluator
         if ((nodeFamily == PreflopNodeFamily.Unopened || nodeFamily == PreflopNodeFamily.FacingLimp || nodeFamily == PreflopNodeFamily.FacingRaise)
             && rootActiveOpponentCount >= 2)
         {
-            return RootEvaluatorMode.AbstractedHeadsUp;
+            return RootEvaluatorMode.DeferredMultiway;
         }
 
         return RootEvaluatorMode.Unsupported;
     }
+
+    private static bool UsesAbstractedHeadsUpApproximation(RootEvaluatorMode rootEvaluatorMode)
+        => rootEvaluatorMode is RootEvaluatorMode.AbstractedHeadsUp or RootEvaluatorMode.DeferredMultiway;
 
     private static string ToHandLabel(HoleCards cards)
     {
@@ -1822,18 +1826,36 @@ internal static class PreflopNodeFamilyClassifier
 {
     public static PreflopNodeFamily Classify(PreflopLeafEvaluationContext context)
     {
-        if (TryFromSolverKey(context.SolverKey, out var fromKey))
-            return fromKey;
-
-        return context.RootState.RaisesThisStreet switch
+        var fromState = ClassifyFromState(context.RootState);
+        if (TryFromSolverKey(context.SolverKey, out var fromKey)
+            && IsCompatibleWithState(fromKey, fromState))
         {
+            return fromKey;
+        }
+
+        return fromState;
+    }
+
+    private static PreflopNodeFamily ClassifyFromState(SolverHandState state)
+        => state.RaisesThisStreet switch
+        {
+            0 when HasVoluntaryLimp(state) => PreflopNodeFamily.FacingLimp,
             0 => PreflopNodeFamily.Unopened,
             1 => PreflopNodeFamily.FacingRaise,
             2 => PreflopNodeFamily.Facing3Bet,
             3 => PreflopNodeFamily.Facing4Bet,
             _ => PreflopNodeFamily.Unknown
         };
-    }
+
+    private static bool IsCompatibleWithState(PreflopNodeFamily solverKeyFamily, PreflopNodeFamily stateFamily)
+        => solverKeyFamily == stateFamily
+            || stateFamily == PreflopNodeFamily.Unknown;
+
+    private static bool HasVoluntaryLimp(SolverHandState state)
+        => state.ActionHistory.Any(action => action.ActionType == ActionType.Call && !IsBlindPosting(action.ActionType));
+
+    private static bool IsBlindPosting(ActionType actionType)
+        => actionType is ActionType.PostSmallBlind or ActionType.PostBigBlind;
 
     private static bool TryFromSolverKey(string? solverKey, out PreflopNodeFamily family)
     {
