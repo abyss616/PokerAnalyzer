@@ -396,14 +396,29 @@ public sealed class PreflopInfoSetMapper : IPreflopInfoSetMapper
             ? ToCanonicalPreflopHand(holeCards)
             : "unknown";
 
-        return string.Join('|',
+        var keyParts = new List<string>
+        {
             $"street={state.Street}",
             $"position={acting.Position}",
             $"hero={privateCards}",
             $"history={state.ActionHistorySignature}",
             $"pot={state.Pot.Value}",
             $"bet={state.CurrentBetSize.Value}",
-            $"toCall={state.ToCall.Value}");
+            $"toCall={state.ToCall.Value}"
+        };
+
+        var continuingPlayers = state.Players
+            .Where(player => player.IsActive && !player.IsAllIn && player.Stack.Value > 0)
+            .OrderBy(player => player.SeatIndex)
+            .ToArray();
+
+        if (continuingPlayers.Length > 2)
+        {
+            keyParts.Add($"continuing={continuingPlayers.Length}");
+            keyParts.Add($"continuingPositions={string.Join(',', continuingPlayers.Select(player => player.Position))}");
+        }
+
+        return string.Join('|', keyParts);
     }
 
     private static string ToCanonicalPreflopHand(Domain.Cards.HoleCards holeCards)
