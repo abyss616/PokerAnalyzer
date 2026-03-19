@@ -10,8 +10,6 @@ public static class SolverLegalActionGenerator
     private const long FacingLimpRaiseNineBbDenominator = 1;
     private const long FacingRaiseThreeBetNineBbNumerator = 9;
     private const long FacingRaiseThreeBetNineBbDenominator = 1;
-    private const long FacingRaiseSqueezeElevenBbNumerator = 11;
-    private const long FacingRaiseSqueezeElevenBbDenominator = 1;
     private const long FacingThreeBetFourBetTwentyTwoBbNumerator = 22;
     private const long FacingThreeBetFourBetTwentyTwoBbDenominator = 1;
 
@@ -57,7 +55,9 @@ public static class SolverLegalActionGenerator
 
         var actions = new List<LegalAction>(8);
 
-        if (IsBigBlindOptionVsLimpPreflopSpot(state, acting))
+        var preflopSnapshot = PreflopSpotSnapshot.Create(state, acting);
+
+        if (preflopSnapshot.IsBigBlindOptionVsLimp)
         {
             actions.Add(new LegalAction(ActionType.Check));
 
@@ -143,7 +143,7 @@ public static class SolverLegalActionGenerator
             //    $"<= currentContribution ({acting.CurrentStreetContribution.Value}).");
         }
 
-        if (IsUnopenedPreflopSpot(state))
+        if (preflopSnapshot.IsUnopened)
         {
             var unopenedOpenSize = ResolveUnopenedPreflopOpenSize(state.Config.BigBlind);
             var minTotalBetInUnopened = state.CurrentBetSize + state.LastRaiseSize;
@@ -169,7 +169,7 @@ public static class SolverLegalActionGenerator
             return actions.AsReadOnly();
         }
 
-        if (IsFacingLimpPreflopSpot(state))
+        if (preflopSnapshot.IsFacingLimp)
         {
             var minTotalBetFacingLimp = state.CurrentBetSize + state.LastRaiseSize;
             var raiseToFivePointFiveBb = ResolveFacingLimpRaiseFivePointFiveBb(state.Config.BigBlind);
@@ -181,12 +181,10 @@ public static class SolverLegalActionGenerator
             return actions.AsReadOnly();
         }
 
-        if (IsFacingRaisePreflopSpot(state))
+        if (preflopSnapshot.IsFacingRaise)
         {
             var minTotalBetFacingRaise = state.CurrentBetSize + state.LastRaiseSize;
-            var raiseTarget = IsFacingSqueezeOpportunityPreflopSpot(state)
-                ? ResolveFacingRaiseSqueezeElevenBb(state.Config.BigBlind)
-                : ResolveFacingRaiseThreeBetNineBb(state.Config.BigBlind);
+            var raiseTarget = ResolveFacingRaiseThreeBetNineBb(state.Config.BigBlind);
 
             TryAddRaiseTarget(actions, raiseTarget, minTotalBetFacingRaise, maxTotalBet);
             TryAddRaiseTarget(actions, maxTotalBet, minTotalBetFacingRaise, maxTotalBet);
@@ -194,7 +192,7 @@ public static class SolverLegalActionGenerator
             return actions.AsReadOnly();
         }
 
-        if (IsFacingThreeBetPreflopSpot(state))
+        if (preflopSnapshot.IsFacingThreeBet)
         {
             var minTotalBetFacingThreeBet = state.CurrentBetSize + state.LastRaiseSize;
             var fourBetToTwentyTwoBb = ResolveFacingThreeBetFourBetTwentyTwoBb(state.Config.BigBlind);
@@ -259,125 +257,74 @@ public static class SolverLegalActionGenerator
         return actions.AsReadOnly();
     }
 
-    private static bool IsUnopenedPreflopSpot(SolverHandState state)
+    private readonly record struct PreflopSpotSnapshot(
+        bool IsUnopened,
+        bool IsFacingLimp,
+        bool IsBigBlindOptionVsLimp,
+        bool IsFacingRaise,
+        bool IsFacingThreeBet)
     {
-    //    Console.WriteLine(
-    //$"IsUnopenedPreflopSpot: street={state.Street}, raisesThisStreet={state.RaisesThisStreet}, " +
-    //$"currentBet={state.CurrentBetSize.Value}, lastRaise={state.LastRaiseSize.Value}, " +
-    //$"actionHistory=[{string.Join(", ", state.ActionHistory.Select(a => $"{a.ActionType}:{a.Amount.Value}"))}]");
-        if (state.Street != Street.Preflop)
-            return false;
-
-        // Unopened preflop means no voluntary aggressive action has occurred yet.
-        // Blind posts do not count as opening the pot.
-        var isAggressive = state.ActionHistory.Any(a =>
-            a.ActionType == ActionType.Bet ||
-            a.ActionType == ActionType.Raise ||
-            a.ActionType == ActionType.AllIn);
-        var hasVoluntaryPreflopCall = state.ActionHistory.Any(a => a.ActionType == ActionType.Call);
-
-        return !isAggressive && !hasVoluntaryPreflopCall;
-    }
-
-    private static bool IsFacingLimpPreflopSpot(SolverHandState state)
-    {
-        if (state.Street != Street.Preflop || state.ToCall.Value <= 0)
-            return false;
-
-        var hasAggressivePreflopAction = state.ActionHistory.Any(a =>
-            a.ActionType == ActionType.Bet ||
-            a.ActionType == ActionType.Raise ||
-            a.ActionType == ActionType.AllIn);
-
-        if (hasAggressivePreflopAction)
-            return false;
-
-        var hasLimpAction = state.ActionHistory.Any(a => a.ActionType == ActionType.Call);
-        return hasLimpAction;
-    }
-
-    private static bool IsBigBlindOptionVsLimpPreflopSpot(SolverHandState state, SolverPlayerState acting)
-    {
-        if (state.Street != Street.Preflop)
-            return false;
-
-        if (acting.Position != Position.BB)
-            return false;
-
-        if (state.ToCall.Value != 0)
-            return false;
-
-        if (acting.CurrentStreetContribution != state.CurrentBetSize)
-            return false;
-
-        var hasPriorAggressiveAction = state.ActionHistory.Any(a =>
-            a.ActionType == ActionType.Bet ||
-            a.ActionType == ActionType.Raise ||
-            a.ActionType == ActionType.AllIn);
-
-        if (hasPriorAggressiveAction)
-            return false;
-
-        return state.ActionHistory.Any(a => a.ActionType == ActionType.Call);
-    }
-
-    private static bool IsFacingRaisePreflopSpot(SolverHandState state)
-    {
-        if (state.Street != Street.Preflop || state.ToCall.Value <= 0)
-            return false;
-
-        if (state.RaisesThisStreet != 1)
-            return false;
-
-        return state.ActionHistory.Any(a =>
-            a.ActionType == ActionType.Bet ||
-            a.ActionType == ActionType.Raise ||
-            a.ActionType == ActionType.AllIn);
-    }
-
-    private static bool IsFacingSqueezeOpportunityPreflopSpot(SolverHandState state)
-    {
-        if (!IsFacingRaisePreflopSpot(state))
-            return false;
-
-        var sawOpen = false;
-        var playersWithPriorVoluntaryAction = new HashSet<PlayerId>();
-        foreach (var action in state.ActionHistory)
+        public static PreflopSpotSnapshot Create(SolverHandState state, SolverPlayerState acting)
         {
-            if (!sawOpen)
-            {
-                if (action.ActionType is ActionType.Call or ActionType.Bet or ActionType.Raise or ActionType.AllIn)
-                    playersWithPriorVoluntaryAction.Add(action.PlayerId);
+            if (state.Street != Street.Preflop)
+                return default;
 
-                if (action.ActionType is ActionType.Bet or ActionType.Raise or ActionType.AllIn)
-                    sawOpen = true;
+            var livePlayers = state.Players.Where(p => p.IsActive).ToArray();
+            var playersYetToAct = CountPlayersYetToAct(state, acting, livePlayers);
 
+            var aggressiveActionCount = state.ActionHistory.Count(IsAggressivePreflopAction);
+            var hasVoluntaryPreflopCall = state.ActionHistory.Any(a => a.ActionType == ActionType.Call);
+            var unopened = aggressiveActionCount == 0 && !hasVoluntaryPreflopCall;
+            var facingLimp = state.ToCall.Value > 0 && aggressiveActionCount == 0 && hasVoluntaryPreflopCall;
+            var bigBlindOptionVsLimp = acting.Position == Position.BB
+                && state.ToCall.Value == 0
+                && acting.CurrentStreetContribution == state.CurrentBetSize
+                && aggressiveActionCount == 0
+                && hasVoluntaryPreflopCall
+                && playersYetToAct == 0;
+            var facingRaise = state.ToCall.Value > 0 && aggressiveActionCount == 1;
+            var facingThreeBet = state.ToCall.Value > 0 && aggressiveActionCount == 2;
+
+            return new PreflopSpotSnapshot(
+                IsUnopened: unopened && livePlayers.Length > 1,
+                IsFacingLimp: facingLimp,
+                IsBigBlindOptionVsLimp: bigBlindOptionVsLimp,
+                IsFacingRaise: facingRaise,
+                IsFacingThreeBet: facingThreeBet);
+        }
+    }
+
+    private static int CountPlayersYetToAct(SolverHandState state, SolverPlayerState acting, IReadOnlyList<SolverPlayerState> livePlayers)
+    {
+        if (livePlayers.Count <= 1)
+            return 0;
+
+        var actingVoluntaryActionCount = CountVoluntaryPreflopActions(state, acting.PlayerId);
+        var yetToAct = 0;
+
+        for (var offset = 1; offset < state.Players.Count; offset++)
+        {
+            var seatIndex = (acting.SeatIndex + offset) % state.Players.Count;
+            var candidate = state.Players[seatIndex];
+            if (!candidate.IsActive || candidate.IsAllIn || candidate.Stack.Value <= 0)
                 continue;
-            }
 
-            if (action.ActionType == ActionType.Call && !playersWithPriorVoluntaryAction.Contains(action.PlayerId))
-                return true;
-
-            if (action.ActionType is ActionType.Call or ActionType.Bet or ActionType.Raise or ActionType.AllIn)
-                playersWithPriorVoluntaryAction.Add(action.PlayerId);
+            if (CountVoluntaryPreflopActions(state, candidate.PlayerId) < actingVoluntaryActionCount)
+                yetToAct++;
         }
 
-        return false;
+        return yetToAct;
     }
 
-    private static bool IsFacingThreeBetPreflopSpot(SolverHandState state)
+    private static int CountVoluntaryPreflopActions(SolverHandState state, PlayerId playerId)
     {
-        if (state.Street != Street.Preflop || state.ToCall.Value <= 0)
-            return false;
-
-        if (state.RaisesThisStreet != 2)
-            return false;
-
-        return state.ActionHistory.Any(a =>
-            a.ActionType == ActionType.Bet ||
-            a.ActionType == ActionType.Raise ||
-            a.ActionType == ActionType.AllIn);
+        return state.ActionHistory.Count(a =>
+            a.PlayerId == playerId &&
+            a.ActionType is ActionType.Call or ActionType.Bet or ActionType.Raise or ActionType.AllIn);
     }
+
+    private static bool IsAggressivePreflopAction(SolverActionEntry action)
+        => action.ActionType is ActionType.Bet or ActionType.Raise or ActionType.AllIn;
 
     private static ChipAmount ResolveUnopenedPreflopOpenSize(ChipAmount bigBlind)
     {
@@ -413,15 +360,6 @@ public static class SolverLegalActionGenerator
             FacingRaiseThreeBetNineBbNumerator,
             FacingRaiseThreeBetNineBbDenominator,
             "9bb");
-    }
-
-    private static ChipAmount ResolveFacingRaiseSqueezeElevenBb(ChipAmount bigBlind)
-    {
-        return ResolveFixedBbTarget(
-            bigBlind,
-            FacingRaiseSqueezeElevenBbNumerator,
-            FacingRaiseSqueezeElevenBbDenominator,
-            "11bb");
     }
 
     private static ChipAmount ResolveFacingThreeBetFourBetTwentyTwoBb(ChipAmount bigBlind)

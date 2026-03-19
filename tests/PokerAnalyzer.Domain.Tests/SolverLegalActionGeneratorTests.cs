@@ -82,6 +82,40 @@ public class SolverLegalActionGeneratorTests
     }
 
     [Fact]
+    public void GenerateLegalActions_MultiwayUnopenedPreflop_UsesSameOpenMenuWithoutHeadsUpAssumptions()
+    {
+        var utg = new SolverPlayerState(PlayerId.New(), 0, Position.UTG, new ChipAmount(100), ChipAmount.Zero, ChipAmount.Zero, false, false);
+        var heroCo = new SolverPlayerState(PlayerId.New(), 1, Position.CO, new ChipAmount(100), ChipAmount.Zero, ChipAmount.Zero, false, false);
+        var btn = new SolverPlayerState(PlayerId.New(), 2, Position.BTN, new ChipAmount(100), ChipAmount.Zero, ChipAmount.Zero, false, false);
+        var sb = new SolverPlayerState(PlayerId.New(), 3, Position.SB, new ChipAmount(95), new ChipAmount(5), new ChipAmount(5), false, false);
+        var bb = new SolverPlayerState(PlayerId.New(), 4, Position.BB, new ChipAmount(90), new ChipAmount(10), new ChipAmount(10), false, false);
+
+        var state = CreateState(
+            actingPlayerId: heroCo.PlayerId,
+            players: [utg with { IsFolded = true }, heroCo, btn, sb, bb],
+            pot: 15,
+            currentBetSize: 10,
+            lastRaiseSize: 10,
+            raisesThisStreet: 0,
+            actionHistory:
+            [
+                new SolverActionEntry(sb.PlayerId, ActionType.PostSmallBlind, new ChipAmount(5)),
+                new SolverActionEntry(bb.PlayerId, ActionType.PostBigBlind, new ChipAmount(10)),
+                new SolverActionEntry(utg.PlayerId, ActionType.Fold, ChipAmount.Zero)
+            ]);
+
+        var actions = state.GenerateLegalActions();
+
+        Assert.Equal(
+            [
+                new LegalAction(ActionType.Fold),
+                new LegalAction(ActionType.Call, new ChipAmount(10)),
+                new LegalAction(ActionType.Raise, new ChipAmount(25))
+            ],
+            actions);
+    }
+
+    [Fact]
     public void GenerateLegalActions_FacingLimpPreflop_ContainsFoldCallRaiseFivePointFiveBbAndRaiseNineBb()
     {
         var sb = Player(seat: 0, stack: 98, streetContribution: 2, totalContribution: 2);
@@ -109,6 +143,41 @@ public class SolverLegalActionGeneratorTests
                 new LegalAction(ActionType.Call, new ChipAmount(2)),
                 new LegalAction(ActionType.Raise, new ChipAmount(11)),
                 new LegalAction(ActionType.Raise, new ChipAmount(18))
+            ],
+            actions);
+    }
+
+    [Fact]
+    public void GenerateLegalActions_MultiwayFacingLimpPreflop_UsesLimpIsoMenu()
+    {
+        var utg = new SolverPlayerState(PlayerId.New(), 0, Position.UTG, new ChipAmount(98), new ChipAmount(10), new ChipAmount(10), false, false);
+        var heroCo = new SolverPlayerState(PlayerId.New(), 1, Position.CO, new ChipAmount(100), ChipAmount.Zero, ChipAmount.Zero, false, false);
+        var btn = new SolverPlayerState(PlayerId.New(), 2, Position.BTN, new ChipAmount(100), ChipAmount.Zero, ChipAmount.Zero, false, false);
+        var sb = new SolverPlayerState(PlayerId.New(), 3, Position.SB, new ChipAmount(95), new ChipAmount(5), new ChipAmount(5), false, false);
+        var bb = new SolverPlayerState(PlayerId.New(), 4, Position.BB, new ChipAmount(90), new ChipAmount(10), new ChipAmount(10), false, false);
+
+        var state = CreateState(
+            actingPlayerId: heroCo.PlayerId,
+            players: [utg, heroCo, btn, sb, bb],
+            pot: 25,
+            currentBetSize: 10,
+            lastRaiseSize: 10,
+            raisesThisStreet: 0,
+            actionHistory:
+            [
+                new SolverActionEntry(sb.PlayerId, ActionType.PostSmallBlind, new ChipAmount(5)),
+                new SolverActionEntry(bb.PlayerId, ActionType.PostBigBlind, new ChipAmount(10)),
+                new SolverActionEntry(utg.PlayerId, ActionType.Call, new ChipAmount(10))
+            ]);
+
+        var actions = state.GenerateLegalActions();
+
+        Assert.Equal(
+            [
+                new LegalAction(ActionType.Fold),
+                new LegalAction(ActionType.Call, new ChipAmount(10)),
+                new LegalAction(ActionType.Raise, new ChipAmount(55)),
+                new LegalAction(ActionType.Raise, new ChipAmount(90))
             ],
             actions);
     }
@@ -146,6 +215,7 @@ public class SolverLegalActionGeneratorTests
         Assert.DoesNotContain(actions, action => action.ActionType == ActionType.Fold);
         Assert.DoesNotContain(actions, action => action.ActionType == ActionType.Call);
     }
+
     [Fact]
     public void GenerateLegalActions_FacingBetWithFullRaise_ReturnsFoldCallRaiseCategory()
     {
@@ -230,13 +300,13 @@ public class SolverLegalActionGeneratorTests
 
         var actions = state.GenerateLegalActions(provider);
         var bets = actions.Where(a => a.ActionType == ActionType.Bet).ToArray();
+        LegalAction[] expected =
+        [
+            new LegalAction(ActionType.Bet, new ChipAmount(150)),
+            new LegalAction(ActionType.Bet, new ChipAmount(200))
+        ];
 
-        Assert.Equal(
-            [
-                new LegalAction(ActionType.Bet, new ChipAmount(150)),
-                new LegalAction(ActionType.Bet, new ChipAmount(200))
-            ],
-            bets);
+        Assert.Equal(expected, bets);
         Assert.All(bets, bet => Assert.True(bet.Amount > acting.CurrentStreetContribution));
     }
 
@@ -252,13 +322,13 @@ public class SolverLegalActionGeneratorTests
 
         var actions = state.GenerateLegalActions(provider);
         var raises = actions.Where(a => a.ActionType == ActionType.Raise).ToArray();
+        LegalAction[] expected =
+        [
+            new LegalAction(ActionType.Raise, new ChipAmount(160)),
+            new LegalAction(ActionType.Raise, new ChipAmount(200))
+        ];
 
-        Assert.Equal(
-            [
-                new LegalAction(ActionType.Raise, new ChipAmount(160)),
-                new LegalAction(ActionType.Raise, new ChipAmount(200))
-            ],
-            raises);
+        Assert.Equal(expected, raises);
         Assert.All(raises, raise => Assert.True(raise.Amount > acting.CurrentStreetContribution));
     }
 
@@ -324,7 +394,7 @@ public class SolverLegalActionGeneratorTests
     }
 
     [Fact]
-    public void GenerateLegalActions_FacingOpenWithColdCaller_UsesSqueezeSizing_Not_NormalThreeBetSizing()
+    public void GenerateLegalActions_FacingOpenWithColdCaller_UsesStandardFacingRaiseMenu()
     {
         var utg = new SolverPlayerState(PlayerId.New(), 0, Position.UTG, new ChipAmount(9750), new ChipAmount(250), new ChipAmount(250), false, false);
         var hj = new SolverPlayerState(PlayerId.New(), 1, Position.HJ, new ChipAmount(9750), new ChipAmount(250), new ChipAmount(250), false, false);
@@ -360,11 +430,10 @@ public class SolverLegalActionGeneratorTests
             [
                 new LegalAction(ActionType.Fold),
                 new LegalAction(ActionType.Call, new ChipAmount(250)),
-                new LegalAction(ActionType.Raise, new ChipAmount(1100)),
+                new LegalAction(ActionType.Raise, new ChipAmount(900)),
                 new LegalAction(ActionType.Raise, new ChipAmount(10000))
             ],
             actions);
-        Assert.DoesNotContain(actions, action => action.ActionType == ActionType.Raise && action.Amount == new ChipAmount(900));
     }
 
     [Fact]
