@@ -209,7 +209,7 @@ public sealed class PreflopRegretTrainerTests
             root,
             traversalPlayer,
             opponent,
-            new RegretMatchingPolicyProvider(regrets),
+            new TrainingRegretMatchingPolicyProvider(regrets),
             fold,
             call);
 
@@ -244,7 +244,7 @@ public sealed class PreflopRegretTrainerTests
             root,
             traversalPlayer,
             opponent,
-            new RegretMatchingPolicyProvider(regrets),
+            new TrainingRegretMatchingPolicyProvider(regrets),
             fold,
             call);
 
@@ -267,7 +267,7 @@ public sealed class PreflopRegretTrainerTests
     }
 
     [Fact]
-    public void RunIteration_WhenAllLegalRegretsNonPositive_UsesActionValueBasedTraversalPolicy()
+    public void RunIteration_WhenAllLegalRegretsNonPositive_UsesUniformTraversalPolicy()
     {
         var root = CreateHeadsUpPreflopState();
         var traversalPlayer = root.Players[0].PlayerId;
@@ -286,7 +286,7 @@ public sealed class PreflopRegretTrainerTests
             root,
             traversalPlayer,
             opponent,
-            new RegretMatchingPolicyProvider(regrets, actionValues),
+            new TrainingRegretMatchingPolicyProvider(regrets),
             fold,
             call);
 
@@ -300,8 +300,8 @@ public sealed class PreflopRegretTrainerTests
 
         trainer.RunIteration(new Random(19));
 
-        Assert.True(traverser.InitialTraversalPolicy[fold] > traverser.InitialTraversalPolicy[call]);
-        Assert.NotEqual(0.5d, traverser.InitialTraversalPolicy[fold], 10);
+        Assert.Equal(0.5d, traverser.InitialTraversalPolicy[fold], 10);
+        Assert.Equal(0.5d, traverser.InitialTraversalPolicy[call], 10);
     }
 
     [Fact]
@@ -318,7 +318,7 @@ public sealed class PreflopRegretTrainerTests
             root,
             traversalPlayer,
             opponent,
-            new RegretMatchingPolicyProvider(regrets),
+            new TrainingRegretMatchingPolicyProvider(regrets),
             fold,
             call);
 
@@ -354,7 +354,7 @@ public sealed class PreflopRegretTrainerTests
             root,
             traversalPlayer,
             opponent,
-            new RegretMatchingPolicyProvider(regrets),
+            new TrainingRegretMatchingPolicyProvider(regrets),
             fold,
             call);
 
@@ -524,7 +524,7 @@ public sealed class PreflopRegretTrainerTests
             root,
             traversalPlayer,
             opponent,
-            new RegretMatchingPolicyProvider(regrets),
+            new TrainingRegretMatchingPolicyProvider(regrets),
             fold,
             call);
 

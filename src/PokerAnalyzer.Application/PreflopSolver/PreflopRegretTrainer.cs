@@ -165,7 +165,51 @@ public sealed class InMemoryActionValueStore : IActionValueStore
     }
 }
 
-public sealed class RegretMatchingPolicyProvider : IPreflopPolicyProvider
+public sealed class TrainingRegretMatchingPolicyProvider : IPreflopPolicyProvider
+{
+    private readonly IRegretStore _regretStore;
+
+    public TrainingRegretMatchingPolicyProvider(IRegretStore regretStore)
+    {
+        _regretStore = regretStore ?? throw new ArgumentNullException(nameof(regretStore));
+    }
+
+    public bool TryGetPolicy(string infoSetKey, IReadOnlyList<LegalAction> legalActions, out IReadOnlyDictionary<LegalAction, double> policy)
+    {
+        ArgumentNullException.ThrowIfNull(infoSetKey);
+        ArgumentNullException.ThrowIfNull(legalActions);
+
+        if (legalActions.Count == 0)
+        {
+            policy = new Dictionary<LegalAction, double>();
+            return false;
+        }
+
+        var positiveRegrets = new Dictionary<LegalAction, double>(legalActions.Count);
+        var totalPositiveRegret = 0d;
+
+        foreach (var legalAction in legalActions)
+        {
+            var regret = _regretStore.Get(infoSetKey, legalAction);
+            if (regret <= 0d)
+                continue;
+
+            positiveRegrets[legalAction] = regret;
+            totalPositiveRegret += regret;
+        }
+
+        if (totalPositiveRegret > 0d)
+        {
+            policy = positiveRegrets.ToDictionary(kvp => kvp.Key, kvp => kvp.Value / totalPositiveRegret);
+            return true;
+        }
+
+        policy = UniformPolicyBuilder.Build(legalActions);
+        return true;
+    }
+}
+
+public sealed class RecommendationRegretMatchingPolicyProvider : IPreflopPolicyProvider
 {
     private const double FallbackSoftmaxTemperature = 0.5d;
     private const double MaxScaledDisadvantage = 12d;
@@ -173,7 +217,7 @@ public sealed class RegretMatchingPolicyProvider : IPreflopPolicyProvider
     private readonly IRegretStore _regretStore;
     private readonly IActionValueStore? _actionValueStore;
 
-    public RegretMatchingPolicyProvider(IRegretStore regretStore, IActionValueStore? actionValueStore = null)
+    public RecommendationRegretMatchingPolicyProvider(IRegretStore regretStore, IActionValueStore? actionValueStore = null)
     {
         _regretStore = regretStore ?? throw new ArgumentNullException(nameof(regretStore));
         _actionValueStore = actionValueStore;
@@ -250,14 +294,14 @@ public sealed class RegretMatchingPolicyProvider : IPreflopPolicyProvider
     }
 }
 
-public sealed class CanonicalKeyRegretMatchingPolicyProvider : IPreflopPolicyProvider
+public sealed class CanonicalKeyTrainingRegretMatchingPolicyProvider : IPreflopPolicyProvider
 {
-    private readonly RegretMatchingPolicyProvider _innerProvider;
+    private readonly TrainingRegretMatchingPolicyProvider _innerProvider;
     private readonly string _canonicalStorageKey;
 
-    public CanonicalKeyRegretMatchingPolicyProvider(IRegretStore regretStore, string canonicalStorageKey, IActionValueStore? actionValueStore = null)
+    public CanonicalKeyTrainingRegretMatchingPolicyProvider(IRegretStore regretStore, string canonicalStorageKey)
     {
-        _innerProvider = new RegretMatchingPolicyProvider(regretStore ?? throw new ArgumentNullException(nameof(regretStore)), actionValueStore);
+        _innerProvider = new TrainingRegretMatchingPolicyProvider(regretStore ?? throw new ArgumentNullException(nameof(regretStore)));
         _canonicalStorageKey = string.IsNullOrWhiteSpace(canonicalStorageKey)
             ? throw new ArgumentException("Canonical storage key cannot be null or whitespace.", nameof(canonicalStorageKey))
             : canonicalStorageKey;
@@ -437,7 +481,7 @@ public sealed class PreflopRegretTrainer
     private readonly IActionValueStore _actionValueStore;
     private readonly IPreflopTrainingProgressStore _trainingProgressStore;
     private readonly string? _canonicalStorageKey;
-    private readonly RegretMatchingPolicyProvider _policyProvider;
+    private readonly TrainingRegretMatchingPolicyProvider _policyProvider;
     private readonly bool _useLegacyTrajectoryTrainingCore;
     private PreflopLeafEvaluationDetails? _latestLeafEvaluationDetails;
     private readonly object _traversalSelectorLock = new();
@@ -469,14 +513,14 @@ public sealed class PreflopRegretTrainer
         _actionValueStore = actionValueStore ?? new InMemoryActionValueStore();
         _trainingProgressStore = trainingProgressStore ?? NullPreflopTrainingProgressStore.Instance;
         _canonicalStorageKey = string.IsNullOrWhiteSpace(canonicalStorageKey) ? null : canonicalStorageKey;
-        _policyProvider = new RegretMatchingPolicyProvider(_regretStore, _actionValueStore);
+        _policyProvider = new TrainingRegretMatchingPolicyProvider(_regretStore);
         _trajectoryTraverser = new PreflopTrajectoryTraverser(
             rootStateProvider,
             chanceSampler,
             infoSetMapper,
             string.IsNullOrWhiteSpace(canonicalStorageKey)
-                ? new RegretMatchingPolicyProvider(regretStore, actionValueStore)
-                : new CanonicalKeyRegretMatchingPolicyProvider(regretStore, canonicalStorageKey, actionValueStore),
+                ? new TrainingRegretMatchingPolicyProvider(regretStore)
+                : new CanonicalKeyTrainingRegretMatchingPolicyProvider(regretStore, canonicalStorageKey),
             actionSampler,
             leafEvaluator,
             leafDetector);
@@ -501,7 +545,7 @@ public sealed class PreflopRegretTrainer
         _actionValueStore = actionValueStore ?? new InMemoryActionValueStore();
         _trainingProgressStore = trainingProgressStore ?? NullPreflopTrainingProgressStore.Instance;
         _canonicalStorageKey = string.IsNullOrWhiteSpace(canonicalStorageKey) ? null : canonicalStorageKey;
-        _policyProvider = new RegretMatchingPolicyProvider(_regretStore, _actionValueStore);
+        _policyProvider = new TrainingRegretMatchingPolicyProvider(_regretStore);
         // Compatibility-only path for tests or callers that still inject a custom trajectory traverser.
         // The solver-facing constructor above uses the recursive external-sampling MCCFR traversal.
         _useLegacyTrajectoryTrainingCore = true;

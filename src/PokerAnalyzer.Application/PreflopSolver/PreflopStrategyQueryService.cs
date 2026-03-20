@@ -42,7 +42,7 @@ public sealed class PreflopStrategyQueryService : IPreflopStrategyQueryService
             averageStrategy[ToActionKey(action)] = (decimal)probability;
         }
 
-        _ = new RegretMatchingPolicyProvider(_regretStore, _actionValueStore).TryGetPolicy(infoSetKey, legalActions, out var currentPolicy);
+        _ = new RecommendationRegretMatchingPolicyProvider(_regretStore, _actionValueStore).TryGetPolicy(infoSetKey, legalActions, out var currentPolicy);
         currentPolicy ??= UniformPolicyBuilder.Build(legalActions);
 
         var regretMagnitude = 0d;
@@ -82,7 +82,7 @@ public sealed class PreflopStrategyQueryService : IPreflopStrategyQueryService
             null,
             null,
             diagnostics,
-            "Average frequencies come from cumulative average strategy; current-policy frequencies come from regret matching on positive cumulative regret and action-value-based stochastic fallback when all regrets are non-positive; regrets are cumulative counterfactual regrets with CFR+ clipping at zero after merged deltas are applied.",
+            "Average frequencies come from cumulative average strategy; current recommendation-policy frequencies come from regret matching on positive cumulative regret plus an action-value-based stochastic fallback when all regrets are non-positive; solver-training regret updates remain CFR+ with positive-regret matching and uniform fallback in that case. Regrets are cumulative counterfactual regrets with CFR+ clipping at zero after merged deltas are applied.",
             bestMargin,
             separation);
     }

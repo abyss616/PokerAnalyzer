@@ -4,13 +4,101 @@ using Xunit;
 
 namespace PokerAnalyzer.Application.Tests;
 
-public sealed class RegretMatchingPolicyProviderTests
+public sealed class TrainingRegretMatchingPolicyProviderTests
+{
+    [Fact]
+    public void TryGetPolicy_AllZeroRegrets_ReturnsUniform()
+    {
+        var regrets = new InMemoryRegretStore();
+        var provider = new TrainingRegretMatchingPolicyProvider(regrets);
+        var fold = new LegalAction(ActionType.Fold);
+        var call = new LegalAction(ActionType.Call, new ChipAmount(1));
+
+        regrets.Add("infoset", fold, 0d);
+        regrets.Add("infoset", call, 0d);
+
+        var found = provider.TryGetPolicy("infoset", new[] { fold, call }, out var policy);
+
+        Assert.True(found);
+        Assert.Equal(0.5d, policy[fold], 10);
+        Assert.Equal(0.5d, policy[call], 10);
+        Assert.Equal(1d, policy.Values.Sum(), 10);
+    }
+
+    [Fact]
+    public void TryGetPolicy_MixedRegrets_NormalizesPositiveRegretsOnly()
+    {
+        var regrets = new InMemoryRegretStore();
+        var provider = new TrainingRegretMatchingPolicyProvider(regrets);
+        var fold = new LegalAction(ActionType.Fold);
+        var call = new LegalAction(ActionType.Call, new ChipAmount(1));
+        var raise = new LegalAction(ActionType.Raise, new ChipAmount(6));
+
+        regrets.Add("infoset", fold, 3d);
+        regrets.Add("infoset", call, -2d);
+        regrets.Add("infoset", raise, 1d);
+
+        var found = provider.TryGetPolicy("infoset", new[] { fold, call, raise }, out var policy);
+
+        Assert.True(found);
+        Assert.Equal(0.75d, policy[fold], 10);
+        Assert.Equal(0.25d, policy[raise], 10);
+        Assert.False(policy.ContainsKey(call));
+        Assert.Equal(1d, policy.Values.Sum(), 10);
+    }
+
+    [Fact]
+    public void TryGetPolicy_AllNonPositiveRegrets_IgnoresActionValueFallback()
+    {
+        var regrets = new InMemoryRegretStore();
+        var actionValues = new InMemoryActionValueStore();
+        var provider = new TrainingRegretMatchingPolicyProvider(regrets);
+        var fold = new LegalAction(ActionType.Fold);
+        var call = new LegalAction(ActionType.Call, new ChipAmount(1));
+
+        regrets.Add("infoset", fold, -3d);
+        regrets.Add("infoset", call, 0d);
+        actionValues.AddSamples("infoset", fold, 10d, 1);
+        actionValues.AddSamples("infoset", call, 4d, 1);
+
+        var found = provider.TryGetPolicy("infoset", new[] { fold, call }, out var policy);
+
+        Assert.True(found);
+        Assert.Equal(0.5d, policy[fold], 10);
+        Assert.Equal(0.5d, policy[call], 10);
+        Assert.Equal(1d, policy.Values.Sum(), 10);
+    }
+
+    [Fact]
+    public void TryGetPolicy_ConsidersOnlyLegalActions_WhenNormalizing()
+    {
+        var regrets = new InMemoryRegretStore();
+        var provider = new TrainingRegretMatchingPolicyProvider(regrets);
+        var fold = new LegalAction(ActionType.Fold);
+        var call = new LegalAction(ActionType.Call, new ChipAmount(1));
+        var raise = new LegalAction(ActionType.Raise, new ChipAmount(6));
+
+        regrets.Add("infoset", fold, 2d);
+        regrets.Add("infoset", call, 3d);
+        regrets.Add("infoset", raise, 100d);
+
+        var found = provider.TryGetPolicy("infoset", new[] { fold, call }, out var policy);
+
+        Assert.True(found);
+        Assert.Equal(2d / 5d, policy[fold], 10);
+        Assert.Equal(3d / 5d, policy[call], 10);
+        Assert.False(policy.ContainsKey(raise));
+        Assert.Equal(1d, policy.Values.Sum(), 10);
+    }
+}
+
+public sealed class RecommendationRegretMatchingPolicyProviderTests
 {
     [Fact]
     public void TryGetPolicy_MissingInfoset_ReturnsUniformOverLegalActions_WhenNoActionValues()
     {
         var regrets = new InMemoryRegretStore();
-        var provider = new RegretMatchingPolicyProvider(regrets);
+        var provider = new RecommendationRegretMatchingPolicyProvider(regrets);
         var fold = new LegalAction(ActionType.Fold);
         var call = new LegalAction(ActionType.Call, new ChipAmount(1));
 
@@ -27,7 +115,7 @@ public sealed class RegretMatchingPolicyProviderTests
     {
         var regrets = new InMemoryRegretStore();
         var actionValues = new InMemoryActionValueStore();
-        var provider = new RegretMatchingPolicyProvider(regrets, actionValues);
+        var provider = new RecommendationRegretMatchingPolicyProvider(regrets, actionValues);
         var fold = new LegalAction(ActionType.Fold);
         var call = new LegalAction(ActionType.Call, new ChipAmount(1));
         var raise = new LegalAction(ActionType.Raise, new ChipAmount(6));
@@ -50,7 +138,7 @@ public sealed class RegretMatchingPolicyProviderTests
     {
         var regrets = new InMemoryRegretStore();
         var actionValues = new InMemoryActionValueStore();
-        var provider = new RegretMatchingPolicyProvider(regrets, actionValues);
+        var provider = new RecommendationRegretMatchingPolicyProvider(regrets, actionValues);
         var fold = new LegalAction(ActionType.Fold);
         var call = new LegalAction(ActionType.Call, new ChipAmount(1));
 
@@ -72,7 +160,7 @@ public sealed class RegretMatchingPolicyProviderTests
     {
         var regrets = new InMemoryRegretStore();
         var actionValues = new InMemoryActionValueStore();
-        var provider = new RegretMatchingPolicyProvider(regrets, actionValues);
+        var provider = new RecommendationRegretMatchingPolicyProvider(regrets, actionValues);
         var fold = new LegalAction(ActionType.Fold);
         var call = new LegalAction(ActionType.Call, new ChipAmount(1));
 
@@ -94,7 +182,7 @@ public sealed class RegretMatchingPolicyProviderTests
     {
         var regrets = new InMemoryRegretStore();
         var actionValues = new InMemoryActionValueStore();
-        var provider = new RegretMatchingPolicyProvider(regrets, actionValues);
+        var provider = new RecommendationRegretMatchingPolicyProvider(regrets, actionValues);
         var fold = new LegalAction(ActionType.Fold);
         var call = new LegalAction(ActionType.Call, new ChipAmount(1));
         var raise = new LegalAction(ActionType.Raise, new ChipAmount(9));
@@ -125,7 +213,7 @@ public sealed class RegretMatchingPolicyProviderTests
     {
         var regrets = new InMemoryRegretStore();
         var actionValues = new InMemoryActionValueStore();
-        var provider = new RegretMatchingPolicyProvider(regrets, actionValues);
+        var provider = new RecommendationRegretMatchingPolicyProvider(regrets, actionValues);
         var fold = new LegalAction(ActionType.Fold);
         var call = new LegalAction(ActionType.Call, new ChipAmount(1));
         var raise = new LegalAction(ActionType.Raise, new ChipAmount(6));
@@ -153,7 +241,7 @@ public sealed class RegretMatchingPolicyProviderTests
     {
         var regrets = new InMemoryRegretStore();
         var actionValues = new InMemoryActionValueStore();
-        var provider = new RegretMatchingPolicyProvider(regrets, actionValues);
+        var provider = new RecommendationRegretMatchingPolicyProvider(regrets, actionValues);
         var fold = new LegalAction(ActionType.Fold);
         var call = new LegalAction(ActionType.Call, new ChipAmount(1));
         var jam = new LegalAction(ActionType.Raise, new ChipAmount(20));
@@ -172,28 +260,6 @@ public sealed class RegretMatchingPolicyProviderTests
         Assert.True(policy[fold] > 0.79d);
         Assert.True(policy[call] < 0.21d);
         Assert.True(policy[jam] < 1e-5d);
-        Assert.Equal(1d, policy.Values.Sum(), 10);
-    }
-
-    [Fact]
-    public void TryGetPolicy_ConsidersOnlyLegalActions_WhenNormalizing()
-    {
-        var regrets = new InMemoryRegretStore();
-        var provider = new RegretMatchingPolicyProvider(regrets);
-        var fold = new LegalAction(ActionType.Fold);
-        var call = new LegalAction(ActionType.Call, new ChipAmount(1));
-        var raise = new LegalAction(ActionType.Raise, new ChipAmount(6));
-
-        regrets.Add("infoset", fold, 2d);
-        regrets.Add("infoset", call, 3d);
-        regrets.Add("infoset", raise, 100d);
-
-        var found = provider.TryGetPolicy("infoset", new[] { fold, call }, out var policy);
-
-        Assert.True(found);
-        Assert.Equal(2d / 5d, policy[fold], 10);
-        Assert.Equal(3d / 5d, policy[call], 10);
-        Assert.False(policy.ContainsKey(raise));
         Assert.Equal(1d, policy.Values.Sum(), 10);
     }
 }
