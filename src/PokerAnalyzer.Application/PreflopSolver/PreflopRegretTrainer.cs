@@ -667,9 +667,11 @@ public sealed class PreflopRegretTrainer
                 accumulator.AddRegret(storageKey, action, regretDelta);
             }
 
-            var averageStrategyWeight = ScaleBySampleReach(context.TraverserPolicyReach, samplingReach);
             foreach (var action in legalActions)
-                accumulator.AddAverageStrategy(storageKey, action, averageStrategyWeight * GetPolicyProbability(policy, action));
+                accumulator.AddAverageStrategy(
+                    storageKey,
+                    action,
+                    context.TraverserPolicyReach * GetPolicyProbability(policy, action));
 
             return nodeValue;
         }

@@ -9,7 +9,7 @@ Training now runs a recursive External Sampling MCCFR traversal from the current
 3. **Opponent node**: sample one action from the opponent policy and multiply both opponent reach and sampling reach by the sampled action probability.
 4. **Traverser node**: enumerate every legal action, recurse on each child, compute the node value under the traverser policy, then:
    - update cumulative regret with `(opponentReach / samplingReach) * (actionValue - nodeValue)`
-   - update cumulative average strategy with `(traverserReach / samplingReach) * policy(action)`
+   - update cumulative average strategy with `traverserReach * policy(action)`
 
 The trainer now threads an explicit immutable `MccfrTraversalContext` through recursion. Its fields are intentionally named by what they accumulate:
 
