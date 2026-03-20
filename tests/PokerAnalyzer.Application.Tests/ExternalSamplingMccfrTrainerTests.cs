@@ -8,6 +8,60 @@ namespace PokerAnalyzer.Application.Tests;
 public sealed class ExternalSamplingMccfrTrainerTests
 {
     [Fact]
+    public void TraversalContext_AdvanceTraverser_OnlyUpdatesTraverserReach()
+    {
+        var traverser = new PlayerId(Guid.Parse("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"));
+        var context = new MccfrTraversalContext(
+            traverser,
+            traverserPolicyReach: 0.5d,
+            opponentPolicyReach: 0.25d,
+            externalSamplingReach: 0.125d);
+
+        var advanced = context.AdvanceTraverser(0.4d);
+
+        Assert.Equal(traverser, advanced.TraverserPlayerId);
+        Assert.Equal(0.2d, advanced.TraverserPolicyReach, 10);
+        Assert.Equal(0.25d, advanced.OpponentPolicyReach, 10);
+        Assert.Equal(0.125d, advanced.ExternalSamplingReach, 10);
+    }
+
+    [Fact]
+    public void TraversalContext_AdvanceOpponent_UpdatesOpponentAndSamplingReach()
+    {
+        var traverser = new PlayerId(Guid.Parse("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb"));
+        var context = new MccfrTraversalContext(
+            traverser,
+            traverserPolicyReach: 0.5d,
+            opponentPolicyReach: 0.25d,
+            externalSamplingReach: 0.125d);
+
+        var advanced = context.AdvanceOpponent(0.4d);
+
+        Assert.Equal(traverser, advanced.TraverserPlayerId);
+        Assert.Equal(0.5d, advanced.TraverserPolicyReach, 10);
+        Assert.Equal(0.1d, advanced.OpponentPolicyReach, 10);
+        Assert.Equal(0.05d, advanced.ExternalSamplingReach, 10);
+    }
+
+    [Fact]
+    public void TraversalContext_AdvanceChance_OnlyUpdatesSamplingReach()
+    {
+        var traverser = new PlayerId(Guid.Parse("cccccccc-cccc-cccc-cccc-cccccccccccc"));
+        var context = new MccfrTraversalContext(
+            traverser,
+            traverserPolicyReach: 0.5d,
+            opponentPolicyReach: 0.25d,
+            externalSamplingReach: 0.125d);
+
+        var advanced = context.AdvanceChance(0.4d);
+
+        Assert.Equal(traverser, advanced.TraverserPlayerId);
+        Assert.Equal(0.5d, advanced.TraverserPolicyReach, 10);
+        Assert.Equal(0.25d, advanced.OpponentPolicyReach, 10);
+        Assert.Equal(0.05d, advanced.ExternalSamplingReach, 10);
+    }
+
+    [Fact]
     public void RunIteration_EnumeratesTraverserActions_AndUpdatesRegretFromNodeValue()
     {
         var root = CreateHeadsUpPreflopState();

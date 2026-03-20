@@ -510,11 +510,7 @@ public sealed class PreflopRegretTrainer
 
         var rootState = _rootStateProvider.CreateRootState();
         var traversalPlayerId = SelectTraversalPlayer(rootState, deterministicIterationIndex);
-        var rootContext = new ExternalSamplingTraversalContext(
-            traversalPlayerId,
-            traverserReach: 1d,
-            opponentReach: 1d,
-            samplingReach: 1d);
+        var rootContext = MccfrTraversalContext.CreateRoot(traversalPlayerId);
 
         _ = TraverseExternalSampling(rootState, rootContext, leafSeed: null, rng, accumulator, depth: 0);
         accumulator.IterationsCompleted++;
@@ -570,7 +566,7 @@ public sealed class PreflopRegretTrainer
 
     private double TraverseExternalSampling(
         SolverHandState state,
-        ExternalSamplingTraversalContext context,
+        MccfrTraversalContext context,
         LeafEvaluationSeed? leafSeed,
         Random rng,
         WorkerAccumulator accumulator,
@@ -584,15 +580,15 @@ public sealed class PreflopRegretTrainer
             throw new InvalidOperationException($"Preflop MCCFR traversal exceeded max depth of {MaxTraversalDepth}. This usually indicates a non-progress loop.");
 
         if (SolverTraversalGuards.IsTerminalLikeState(state) || (_leafDetector?.IsLeaf(state) ?? false))
-            return EvaluateLeafUtility(state, context.TraversalPlayerId, leafSeed, accumulator);
+            return EvaluateLeafUtility(state, context.TraverserPlayerId, leafSeed, accumulator);
 
         if (_chanceSampler?.IsChanceNode(state) == true)
         {
+            // Chance sampling only changes the realized sampling prefix probability.
             var chanceSample = _chanceSampler.SampleWithProbability(state, rng);
-            var samplingReach = context.SamplingReach * Math.Max(chanceSample.SamplingProbability, 0d);
             return TraverseExternalSampling(
                 chanceSample.NextState,
-                context with { SamplingReach = samplingReach },
+                context.AdvanceChance(Math.Max(chanceSample.SamplingProbability, 0d)),
                 leafSeed,
                 rng,
                 accumulator,
@@ -601,15 +597,16 @@ public sealed class PreflopRegretTrainer
 
         var legalActions = state.GenerateLegalActions();
         if (legalActions.Count == 0)
-            return EvaluateLeafUtility(state, context.TraversalPlayerId, leafSeed, accumulator);
+            return EvaluateLeafUtility(state, context.TraverserPlayerId, leafSeed, accumulator);
 
         var actingPlayerId = state.ActingPlayerId;
         var infoSetKey = _infoSetMapper!.MapInfoSetKey(state, actingPlayerId);
         var storageKey = _canonicalStorageKey ?? infoSetKey;
         var policy = ResolvePolicy(storageKey, legalActions, UniformPolicyBuilder.Build(legalActions));
 
-        if (actingPlayerId == context.TraversalPlayerId)
+        if (actingPlayerId == context.TraverserPlayerId)
         {
+            // Traverser branching updates only traverser policy reach on child contexts.
             var actionValues = new Dictionary<LegalAction, double>(legalActions.Count);
             var nodeValue = 0d;
 
@@ -619,7 +616,7 @@ public sealed class PreflopRegretTrainer
                 var nextState = SolverStateStepper.Step(state, action, legalActions);
                 var childValue = TraverseExternalSampling(
                     nextState,
-                    context with { TraverserReach = context.TraverserReach * actionProbability },
+                    context.AdvanceTraverser(actionProbability),
                     new LeafEvaluationSeed(state, action, storageKey),
                     rng,
                     accumulator,
@@ -630,17 +627,18 @@ public sealed class PreflopRegretTrainer
                 accumulator.AddActionValue(storageKey, action, childValue);
             }
 
-            var regretWeight = ScaleBySampleReach(context.OpponentReach, context.SamplingReach);
+            var regretWeight = ScaleBySampleReach(context.OpponentPolicyReach, context.ExternalSamplingReach);
             foreach (var action in legalActions)
                 accumulator.AddRegret(storageKey, action, regretWeight * (actionValues[action] - nodeValue));
 
-            var averageStrategyWeight = ScaleBySampleReach(context.TraverserReach, context.SamplingReach);
+            var averageStrategyWeight = ScaleBySampleReach(context.TraverserPolicyReach, context.ExternalSamplingReach);
             foreach (var action in legalActions)
                 accumulator.AddAverageStrategy(storageKey, action, averageStrategyWeight * GetPolicyProbability(policy, action));
 
             return nodeValue;
         }
 
+        // Opponent sampling contributes both to opponent policy reach and to the sampled prefix probability.
         var sampledAction = _actionSampler!.Sample(legalActions, policy, rng);
         var sampledProbability = GetPolicyProbability(policy, sampledAction);
         if (sampledProbability <= 0d)
@@ -649,11 +647,7 @@ public sealed class PreflopRegretTrainer
         var sampledState = SolverStateStepper.Step(state, sampledAction, legalActions);
         return TraverseExternalSampling(
             sampledState,
-            context with
-            {
-                OpponentReach = context.OpponentReach * sampledProbability,
-                SamplingReach = context.SamplingReach * sampledProbability
-            },
+            context.AdvanceOpponent(sampledProbability),
             leafSeed,
             rng,
             accumulator,
@@ -1116,12 +1110,6 @@ public sealed class PreflopRegretTrainer
 
         return value / samplingReach;
     }
-
-    private readonly record struct ExternalSamplingTraversalContext(
-        PlayerId TraversalPlayerId,
-        double TraverserReach,
-        double OpponentReach,
-        double SamplingReach);
 
     private readonly record struct LeafEvaluationSeed(
         SolverHandState RootState,
