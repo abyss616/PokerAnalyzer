@@ -487,7 +487,7 @@ public sealed class PreflopRegretTrainer
     private readonly IPreflopTrainingProgressStore _trainingProgressStore;
     private readonly string? _canonicalStorageKey;
     private readonly TrainingRegretMatchingPolicyProvider _policyProvider;
-    private readonly bool _useLegacyTrajectoryTrainingCore;
+    private readonly bool _useTrajectoryCompatibilityMode;
     private PreflopLeafEvaluationDetails? _latestLeafEvaluationDetails;
     private readonly object _traversalSelectorLock = new();
 
@@ -529,7 +529,7 @@ public sealed class PreflopRegretTrainer
             actionSampler,
             leafEvaluator,
             leafDetector);
-        _useLegacyTrajectoryTrainingCore = false;
+        _useTrajectoryCompatibilityMode = false;
     }
 
     public PreflopRegretTrainer(
@@ -551,9 +551,9 @@ public sealed class PreflopRegretTrainer
         _trainingProgressStore = trainingProgressStore ?? NullPreflopTrainingProgressStore.Instance;
         _canonicalStorageKey = string.IsNullOrWhiteSpace(canonicalStorageKey) ? null : canonicalStorageKey;
         _policyProvider = new TrainingRegretMatchingPolicyProvider(_regretStore);
-        // Compatibility-only path for tests or callers that still inject a custom trajectory traverser.
+        // Compatibility path for tests or callers that still inject a custom trajectory traverser.
         // The solver-facing constructor above uses the recursive external-sampling MCCFR traversal.
-        _useLegacyTrajectoryTrainingCore = true;
+        _useTrajectoryCompatibilityMode = true;
     }
 
     public void RunIteration(Random rng)
@@ -573,9 +573,9 @@ public sealed class PreflopRegretTrainer
         ArgumentNullException.ThrowIfNull(rng);
         ArgumentNullException.ThrowIfNull(accumulator);
 
-        if (_useLegacyTrajectoryTrainingCore)
+        if (_useTrajectoryCompatibilityMode)
         {
-            RunLegacyTrajectoryIteration(rng, accumulator, deterministicIterationIndex);
+            RunTrajectoryCompatibilityIteration(rng, accumulator, deterministicIterationIndex);
             return;
         }
 
@@ -587,7 +587,7 @@ public sealed class PreflopRegretTrainer
         accumulator.IterationsCompleted++;
     }
 
-    private void RunLegacyTrajectoryIteration(Random rng, WorkerAccumulator accumulator, int? deterministicIterationIndex)
+    private void RunTrajectoryCompatibilityIteration(Random rng, WorkerAccumulator accumulator, int? deterministicIterationIndex)
     {
         var rootState = _rootStateProvider.CreateRootState();
         var traversalPlayerId = SelectTraversalPlayer(rootState, deterministicIterationIndex);
@@ -605,7 +605,7 @@ public sealed class PreflopRegretTrainer
                 continue;
 
             var storageKey = _canonicalStorageKey ?? node.InfoSetKey;
-            var (actionValues, leafDetails) = EvaluateActionValuesLegacy(node.StateBeforeAction, traversalPlayerId, node.LegalActions, rng, storageKey);
+            var (actionValues, leafDetails) = EvaluateTrajectoryActionValues(node.StateBeforeAction, traversalPlayerId, node.LegalActions, rng, storageKey);
             accumulator.LastLeafEvaluationDetails = leafDetails ?? accumulator.LastLeafEvaluationDetails;
             foreach (var action in node.LegalActions)
                 accumulator.AddActionValue(storageKey, action, actionValues[action]);
@@ -1074,7 +1074,7 @@ public sealed class PreflopRegretTrainer
         }
     }
 
-    private (Dictionary<LegalAction, double> Values, PreflopLeafEvaluationDetails? LeafDetails) EvaluateActionValuesLegacy(
+    private (Dictionary<LegalAction, double> Values, PreflopLeafEvaluationDetails? LeafDetails) EvaluateTrajectoryActionValues(
         SolverHandState stateBeforeAction,
         PlayerId traversalPlayerId,
         IReadOnlyList<LegalAction> legalActions,
