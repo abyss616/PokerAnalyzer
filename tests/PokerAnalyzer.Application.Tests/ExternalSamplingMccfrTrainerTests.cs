@@ -66,8 +66,9 @@ public sealed class ExternalSamplingMccfrTrainerTests
     {
         var root = CreateHeadsUpPreflopState();
         var traverser = root.ActingPlayerId;
-        var fold = new LegalAction(ActionType.Fold);
-        var call = new LegalAction(ActionType.Call, new ChipAmount(1));
+        var rootActions = root.GenerateLegalActions();
+        var fold = FindAction(rootActions, ActionType.Fold);
+        var call = FindAction(rootActions, ActionType.Call);
 
         var regrets = new InMemoryRegretStore();
         regrets.Add("traversal_infoset", fold, 3d);
@@ -105,8 +106,9 @@ public sealed class ExternalSamplingMccfrTrainerTests
     {
         var root = CreateHeadsUpPreflopState();
         var traverser = root.Players[1].PlayerId;
-        var fold = new LegalAction(ActionType.Fold);
-        var call = new LegalAction(ActionType.Call, new ChipAmount(1));
+        var rootActions = root.GenerateLegalActions();
+        var fold = FindAction(rootActions, ActionType.Fold);
+        var call = FindAction(rootActions, ActionType.Call);
 
         var regrets = new InMemoryRegretStore();
         regrets.Add("opponent_infoset", fold, 1d);
@@ -137,12 +139,13 @@ public sealed class ExternalSamplingMccfrTrainerTests
     }
 
     [Fact]
-    public void RunIteration_WeightsAverageStrategyByOpponentSamplingReach_OnSampledOpponentPrefix()
+    public void RunIteration_DoesNotScaleAverageStrategyByOpponentSamplingReach_OnSampledOpponentPrefix()
     {
         var root = CreateHeadsUpPreflopState();
         var traverser = root.Players[1].PlayerId;
-        var fold = new LegalAction(ActionType.Fold);
-        var call = new LegalAction(ActionType.Call, new ChipAmount(1));
+        var rootActions = root.GenerateLegalActions();
+        var fold = FindAction(rootActions, ActionType.Fold);
+        var call = FindAction(rootActions, ActionType.Call);
 
         var regrets = new InMemoryRegretStore();
         regrets.Add("opponent_infoset", fold, 1d);
@@ -167,17 +170,18 @@ public sealed class ExternalSamplingMccfrTrainerTests
 
         trainer.RunIteration(new Random(11));
 
-        Assert.Equal(1d, averages.Get("traversal_infoset", fold), 10);
-        Assert.Equal(1d / 3d, averages.Get("traversal_infoset", call), 10);
+        Assert.Equal(0.75d, averages.Get("traversal_infoset", fold), 10);
+        Assert.Equal(0.25d, averages.Get("traversal_infoset", call), 10);
     }
 
     [Fact]
-    public void RunIteration_WeightsUpdatesByChanceSamplingReach_OnSampledChancePrefix()
+    public void RunIteration_DoesNotScaleAverageStrategyByChanceSamplingReach_OnSampledChancePrefix()
     {
         var root = CreateHeadsUpPreflopState();
         var traverser = root.ActingPlayerId;
-        var fold = new LegalAction(ActionType.Fold);
-        var call = new LegalAction(ActionType.Call, new ChipAmount(1));
+        var rootActions = root.GenerateLegalActions();
+        var fold = FindAction(rootActions, ActionType.Fold);
+        var call = FindAction(rootActions, ActionType.Call);
 
         var regrets = new InMemoryRegretStore();
         regrets.Add("traversal_infoset", fold, 3d);
@@ -201,10 +205,61 @@ public sealed class ExternalSamplingMccfrTrainerTests
 
         trainer.RunIteration(new Random(13));
 
-        Assert.Equal(3.75d, averages.Get("traversal_infoset", fold), 10);
-        Assert.Equal(1.25d, averages.Get("traversal_infoset", call), 10);
+        Assert.Equal(0.75d, averages.Get("traversal_infoset", fold), 10);
+        Assert.Equal(0.25d, averages.Get("traversal_infoset", call), 10);
         Assert.Equal(10.5d, regrets.Get("traversal_infoset", fold), 10);
         Assert.Equal(0d, regrets.Get("traversal_infoset", call), 10);
+    }
+
+    [Fact]
+    public void RunIteration_WeightsAverageStrategyByTraverserReach_OnLaterTraverserNode()
+    {
+        var root = CreateHeadsUpPreflopState();
+        var traverser = root.ActingPlayerId;
+        var rootActions = root.GenerateLegalActions();
+        var rootFold = FindAction(rootActions, ActionType.Fold);
+        var rootCall = FindAction(rootActions, ActionType.Call);
+        var rootRaise = FindOptionalAction(rootActions, ActionType.Raise);
+
+        var afterLimp = SolverStateStepper.Step(root, rootCall, rootActions);
+        var opponentActions = afterLimp.GenerateLegalActions();
+        var opponentRaise = FindHighestAggressiveAction(opponentActions, ActionType.Raise);
+        var afterOpponentRaise = SolverStateStepper.Step(afterLimp, opponentRaise, opponentActions);
+        var secondTraverserActions = afterOpponentRaise.GenerateLegalActions();
+        var secondFold = FindAction(secondTraverserActions, ActionType.Fold);
+        var secondCall = FindAction(secondTraverserActions, ActionType.Call);
+        var secondRaise = FindOptionalAction(secondTraverserActions, ActionType.Raise);
+
+        var regrets = new InMemoryRegretStore();
+        regrets.Add("traversal_root", rootFold, 1d);
+        regrets.Add("traversal_root", rootCall, 3d);
+        if (rootRaise is not null)
+            regrets.Add("traversal_root", rootRaise, 0d);
+
+        regrets.Add("opponent_after_limp", opponentRaise, 1d);
+        regrets.Add("traversal_second", secondFold, 3d);
+        regrets.Add("traversal_second", secondCall, 1d);
+        if (secondRaise is not null)
+            regrets.Add("traversal_second", secondRaise, 0d);
+
+        var averages = new InMemoryAverageStrategyStore();
+        var trainer = new PreflopRegretTrainer(
+            new FixedRootStateProvider(root),
+            new NeverChanceSampler(),
+            new ActionHistoryAwareInfoSetMapper(traverser),
+            new HighestProbabilityActionSampler(),
+            new ConstantUtilityLeafEvaluator(traverser),
+            new DepthLeafDetector(root.ActionHistory.Count + 3),
+            new FixedTraversalPlayerSelector(traverser),
+            regrets,
+            averages);
+
+        trainer.RunIteration(new Random(23));
+
+        Assert.Equal(0.25d, averages.Get("traversal_root", rootFold), 10);
+        Assert.Equal(0.75d, averages.Get("traversal_root", rootCall), 10);
+        Assert.Equal(0.75d * 0.75d, averages.Get("traversal_second", secondFold), 10);
+        Assert.Equal(0.75d * 0.25d, averages.Get("traversal_second", secondCall), 10);
     }
 
 
@@ -213,8 +268,9 @@ public sealed class ExternalSamplingMccfrTrainerTests
     {
         var root = CreateHeadsUpPreflopState();
         var traverser = root.Players[1].PlayerId;
-        var fold = new LegalAction(ActionType.Fold);
-        var call = new LegalAction(ActionType.Call, new ChipAmount(1));
+        var rootActions = root.GenerateLegalActions();
+        var fold = FindAction(rootActions, ActionType.Fold);
+        var call = FindAction(rootActions, ActionType.Call);
 
         var regrets = new InMemoryRegretStore();
         regrets.Add("opponent_infoset", fold, 1d);
@@ -339,6 +395,26 @@ public sealed class ExternalSamplingMccfrTrainerTests
             => actingPlayerId == _traverserId ? "traversal_infoset" : "opponent_infoset";
     }
 
+    private sealed class ActionHistoryAwareInfoSetMapper : IPreflopInfoSetMapper
+    {
+        private readonly PlayerId _traverserId;
+
+        public ActionHistoryAwareInfoSetMapper(PlayerId traverserId)
+        {
+            _traverserId = traverserId;
+        }
+
+        public string MapInfoSetKey(SolverHandState state, PlayerId actingPlayerId)
+            => (actingPlayerId == _traverserId, state.ActionHistory.Count) switch
+            {
+                (true, 2) => "traversal_root",
+                (false, 3) => "opponent_after_limp",
+                (true, 4) => "traversal_second",
+                (true, _) => "traversal_other",
+                _ => "opponent_other"
+            };
+    }
+
     private sealed class HighestProbabilityActionSampler : IActionSampler
     {
         public LegalAction Sample(IReadOnlyList<LegalAction> legalActions, IReadOnlyDictionary<LegalAction, double> policy, Random rng)
@@ -389,6 +465,21 @@ public sealed class ExternalSamplingMccfrTrainerTests
         }
     }
 
+    private sealed class ConstantUtilityLeafEvaluator : IPreflopLeafEvaluator
+    {
+        private readonly PlayerId _traverserId;
+
+        public ConstantUtilityLeafEvaluator(PlayerId traverserId)
+        {
+            _traverserId = traverserId;
+        }
+
+        public PreflopLeafEvaluation Evaluate(PreflopLeafEvaluationContext context)
+            => new(
+                new Dictionary<PlayerId, double> { [_traverserId] = 0d },
+                "utility:0");
+    }
+
     private sealed class DepthLeafDetector : IPreflopLeafDetector
     {
         private readonly int _leafActionHistoryCount;
@@ -431,4 +522,16 @@ public sealed class ExternalSamplingMccfrTrainerTests
         public ChanceSampleResult SampleWithProbability(SolverHandState state, Random rng)
             => new(state.With(pot: _toPot), _samplingProbability);
     }
+
+    private static LegalAction FindAction(IReadOnlyList<LegalAction> legalActions, ActionType actionType)
+        => legalActions.First(action => action.ActionType == actionType);
+
+    private static LegalAction? FindOptionalAction(IReadOnlyList<LegalAction> legalActions, ActionType actionType)
+        => legalActions.FirstOrDefault(action => action.ActionType == actionType);
+
+    private static LegalAction FindHighestAggressiveAction(IReadOnlyList<LegalAction> legalActions, ActionType actionType)
+        => legalActions
+            .Where(action => action.ActionType == actionType)
+            .OrderByDescending(action => action.Amount?.Value ?? long.MinValue)
+            .First();
 }
