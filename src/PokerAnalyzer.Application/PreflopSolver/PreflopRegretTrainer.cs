@@ -512,9 +512,9 @@ public sealed class PreflopRegretTrainer
         var traversalPlayerId = SelectTraversalPlayer(rootState, deterministicIterationIndex);
         var rootContext = new ExternalSamplingTraversalContext(
             traversalPlayerId,
-            traverserReach: 1d,
-            opponentReach: 1d,
-            samplingReach: 1d);
+            TraverserReach: 1d,
+            OpponentReach: 1d,
+            SamplingReach: 1d);
 
         _ = TraverseExternalSampling(rootState, rootContext, leafSeed: null, rng, accumulator, depth: 0);
         accumulator.IterationsCompleted++;
