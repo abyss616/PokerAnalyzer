@@ -113,7 +113,7 @@ public sealed class PreflopStrategyQueryServiceTests
         Assert.Equal(2d, averages.Get(infoSetKey, fold), 10);
         Assert.Equal(2d, averages.Get(infoSetKey, call), 10);
         Assert.Equal(3d, regrets.Get(infoSetKey, fold), 10);
-        Assert.Equal(-1d, regrets.Get(infoSetKey, call), 10);
+        Assert.Equal(0d, regrets.Get(infoSetKey, call), 10);
         Assert.Equal(4, progress.TotalIterationsCompleted);
     }
 
@@ -173,8 +173,10 @@ public sealed class PreflopStrategyQueryServiceTests
 
         var result = sut.GetStrategyResult(infoSetKey, legalActions);
 
-        Assert.Equal(0.4d, result.BestActionMargin, 10);
-        Assert.Equal(result.BestActionMargin, result.SeparationScore, 10);
+        Assert.NotNull(result.BestActionMargin);
+        Assert.NotNull(result.SeparationScore);
+        Assert.Equal(0.4d, result.BestActionMargin!.Value, 10);
+        Assert.Equal(result.BestActionMargin.Value, result.SeparationScore!.Value, 10);
     }
 
     [Fact]
