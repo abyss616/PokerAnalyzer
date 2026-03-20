@@ -606,9 +606,11 @@ public sealed class PreflopRegretTrainer
 
         if (actingPlayerId == context.TraverserPlayerId)
         {
-            // Traverser branching updates only traverser policy reach on child contexts.
+            // External Sampling MCCFR only performs regret updates at traverser nodes.
+            // We still recurse over *every* legal action here because the estimator needs
+            // a sampled counterfactual value for each sibling action before we can compare
+            // it against the node value under the current traverser strategy.
             var actionValues = new Dictionary<LegalAction, double>(legalActions.Count);
-            var nodeValue = 0d;
 
             foreach (var action in legalActions)
             {
@@ -623,22 +625,36 @@ public sealed class PreflopRegretTrainer
                     depth + 1);
 
                 actionValues[action] = childValue;
-                nodeValue += actionProbability * childValue;
                 accumulator.AddActionValue(storageKey, action, childValue);
             }
 
-            var regretWeight = ScaleBySampleReach(context.OpponentPolicyReach, context.ExternalSamplingReach);
-            foreach (var action in legalActions)
-                accumulator.AddRegret(storageKey, action, regretWeight * (actionValues[action] - nodeValue));
+            var nodeValue = ComputeNodeValue(legalActions, policy, actionValues);
 
-            var averageStrategyWeight = ScaleBySampleReach(context.TraverserPolicyReach, context.ExternalSamplingReach);
+            // Counterfactual regret in external sampling is weighted by
+            //   opponentReach / samplingReach.
+            // `opponentReach` is the product of opponents' policy probabilities on the
+            // realized prefix, while `samplingReach` is the probability that the external
+            // sampler actually produced that same prefix. Without this importance-sampling
+            // correction, `actionValue - nodeValue` would be a biased raw utility delta.
+            var opponentReach = context.OpponentPolicyReach;
+            var samplingReach = context.ExternalSamplingReach;
+            var regretWeight = ScaleBySampleReach(opponentReach, samplingReach);
+            foreach (var action in legalActions)
+            {
+                var regretDelta = regretWeight * (actionValues[action] - nodeValue);
+                accumulator.AddRegret(storageKey, action, regretDelta);
+            }
+
+            var averageStrategyWeight = ScaleBySampleReach(context.TraverserPolicyReach, samplingReach);
             foreach (var action in legalActions)
                 accumulator.AddAverageStrategy(storageKey, action, averageStrategyWeight * GetPolicyProbability(policy, action));
 
             return nodeValue;
         }
 
-        // Opponent sampling contributes both to opponent policy reach and to the sampled prefix probability.
+        // External Sampling samples exactly one action at opponent / non-traverser nodes.
+        // Those nodes contribute to opponent reach and sampling reach, but they do not add
+        // traverser regrets because the traverser is not choosing among sibling actions here.
         var sampledAction = _actionSampler!.Sample(legalActions, policy, rng);
         var sampledProbability = GetPolicyProbability(policy, sampledAction);
         if (sampledProbability <= 0d)
