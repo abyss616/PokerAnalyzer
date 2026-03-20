@@ -1,30 +1,78 @@
-# External Sampling MCCFR preflop trainer
+# External-sampling MCCFR preflop trainer
+
+This note describes the **solver-facing** training path in `PreflopRegretTrainer`. The older sampled-trajectory path still exists only as a compatibility/test path.
+
+## Old behavior at a high level
+
+The old path sampled one full trajectory, replayed the traverser's visited decisions, evaluated each sibling action from those replay points, then:
+
+- used raw `actionValue - nodeValue` regret deltas, and
+- added raw policy probability into the average-strategy store.
+
+It did **not** keep explicit MCCFR reach terms, so those updates were not importance-weighted by the sampled prefix.
 
 ## New traversal flow
 
-Training now runs a recursive External Sampling MCCFR traversal from the current root state:
+Each iteration:
 
-1. **Terminal / leaf node**: evaluate the traverser's utility and return it.
-2. **Chance node**: sample one outcome and multiply the sampling reach by that outcome probability.
-3. **Opponent node**: sample one action from the opponent policy and multiply both opponent reach and sampling reach by the sampled action probability.
-4. **Traverser node**: enumerate every legal action, recurse on each child, compute the node value under the traverser policy, then:
-   - update cumulative regret with `(opponentReach / samplingReach) * (actionValue - nodeValue)`
-   - update cumulative average strategy with `traverserReach * policy(action)`
+1. Create the root state and choose one traverser player.
+2. Recurse with `MccfrTraversalContext`.
+3. At a **chance** node, sample one outcome and multiply `samplingReach` by that outcome probability.
+4. At an **opponent / non-traverser** node, sample one action from the current policy and multiply both `opponentReach` and `samplingReach` by that action probability.
+5. At a **traverser** node, enumerate **every** legal action, recurse on each child, compute the node value under the current traverser policy, then write regret and average-strategy deltas.
+6. At a leaf, evaluate the traverser's utility.
 
-The trainer now threads an explicit immutable `MccfrTraversalContext` through recursion. Its fields are intentionally named by what they accumulate:
+Only opponent/chance branches are sampled. Traverser branches are fully enumerated.
 
-- `TraverserPlayerId`: the player whose counterfactual value is being updated
-- `TraverserPolicyReach`: product of the traverser's own policy probabilities on the current path
-- `OpponentPolicyReach`: product of the opponents' sampled policy probabilities on the current path
-- `ExternalSamplingReach`: probability of the realized sampled chance/opponent prefix
+## Reach bookkeeping
 
-## Old training path that is no longer used by the solver
+The traversal tracks three prefix probabilities:
 
-The solver's main training constructor no longer updates regret by:
+- `traverserReach`: product of the traverser's own policy probabilities on the current prefix.
+- `opponentReach`: product of the opponents' policy probabilities on the realized prefix.
+- `samplingReach`: probability that external sampling produced the realized prefix.
 
-- sampling one complete trajectory first,
-- replaying every visited traverser node afterward,
-- evaluating all actions only for those replayed nodes,
-- adding unweighted average-strategy mass directly from raw policy probabilities.
+In the current implementation:
 
-That trajectory replay remains only as a compatibility path for callers that still construct the trainer with a custom `IPreflopTrajectoryTraverser`, and it is no longer the solver's default regret-update flow.
+- traverser nodes update `traverserReach`,
+- opponent nodes update both `opponentReach` and `samplingReach`,
+- chance nodes update `samplingReach` only.
+
+## Regret update location and weighting
+
+Regret is updated **only at traverser infosets**.
+
+For policy `sigma`, child values `v(a)`, and node value
+
+`v_sigma = sum_a sigma(a) * v(a)`
+
+the raw regret delta stored for action `a` is
+
+`delta_r(a) = (opponentReach / samplingReach) * (v(a) - v_sigma)`
+
+The factor `opponentReach / samplingReach` is the external-sampling importance weight.
+
+## CFR+ clipping semantics
+
+The cumulative stored regret uses CFR+ clipping:
+
+`R_plus(a) = max(0, R_plus(a) + delta_r(a))`
+
+Clipping happens **after** all raw deltas targeting the same infoset/action entry have been summed. In parallel mode, worker deltas are merged first, then the shared regret store applies the single floor-at-zero update.
+
+## Average-strategy weighting
+
+Average strategy is accumulated only at traverser infosets with reach-weighted contribution
+
+`delta_s(a) = traverserReach * sigma(a)`
+
+The displayed average policy is the normalized version of those cumulative weights.
+
+## Why training policy must stay separate from UI/display heuristics
+
+Training uses strict regret-matching+ semantics:
+
+- derive policy from **positive cumulative regrets only**;
+- if all cumulative regrets are non-positive, fall back to **uniform**.
+
+That keeps the training loop aligned with CFR+/MCCFR. UI or recommendation layers may use different display heuristics when all regrets are non-positive, such as action-value-based smoothing, but feeding those heuristics back into training would change the reach terms and regret targets the trainer is optimizing.

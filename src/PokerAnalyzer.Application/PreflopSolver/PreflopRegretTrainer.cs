@@ -464,6 +464,11 @@ public sealed class NullPreflopTrainingProgressStore : IPreflopTrainingProgressS
     }
 }
 
+/// <summary>
+/// Main solver-training implementation for preflop uses external-sampling MCCFR with
+/// CFR+ regret storage. See ExternalSamplingMccfr.md for the design note
+/// that explains the reach bookkeeping and why training policy stays separate from UI heuristics.
+/// </summary>
 public sealed class PreflopRegretTrainer
 {
     private const int MaxTraversalDepth = 256;
@@ -673,6 +678,7 @@ public sealed class PreflopRegretTrainer
         if (actingPlayerId == context.TraverserPlayerId)
         {
             // External Sampling MCCFR only performs regret updates at traverser nodes.
+            // Design note: see ExternalSamplingMccfr.md for the weighting details.
             // We still recurse over *every* legal action here because the estimator needs
             // a sampled counterfactual value for each sibling action before we can compare
             // it against the node value under the current traverser strategy.
