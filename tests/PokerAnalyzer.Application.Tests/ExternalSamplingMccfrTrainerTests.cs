@@ -345,6 +345,107 @@ public sealed class ExternalSamplingMccfrTrainerTests
         Assert.Equal(new[] { ActionType.Fold, ActionType.Call }, leafEvaluator.CapturedRootActions);
     }
 
+    [Fact]
+    public void RunIteration_WithInjectedRandom_SamplesStableOpponentBranch()
+    {
+        var root = CreateHeadsUpPreflopState();
+        var traverser = root.Players[1].PlayerId;
+        var rootActions = root.GenerateLegalActions();
+        var fold = FindAction(rootActions, ActionType.Fold);
+        var call = FindAction(rootActions, ActionType.Call);
+
+        var regrets = new InMemoryRegretStore();
+        regrets.Add("opponent_infoset", fold, 1d);
+        regrets.Add("opponent_infoset", call, 3d);
+
+        var leafEvaluator = new ActionHistoryCapturingLeafEvaluator(traverser);
+        var trainer = CreateTrainer(
+            root,
+            traverser,
+            regrets,
+            new InMemoryAverageStrategyStore(),
+            leafEvaluator,
+            new DepthLeafDetector(root.ActionHistory.Count + 2),
+            actionSampler: new WeightedRandomActionSampler());
+
+        trainer.RunIteration(new ScriptedRandom(nextDoubles: [0.60d]));
+
+        Assert.NotEmpty(leafEvaluator.CapturedActionHistories);
+        Assert.All(
+            leafEvaluator.CapturedActionHistories,
+            history =>
+            {
+                Assert.Equal(4, history.Count);
+                Assert.Equal(ActionType.Call, history[2]);
+            });
+    }
+
+    [Fact]
+    public void SampleTrajectory_WithInjectedRandom_SamplesStableChanceBranch()
+    {
+        var root = CreateCompletedPreflopChanceState();
+        var traverser = root.Players[0].PlayerId;
+        var leafEvaluator = new BoardCapturingLeafEvaluator(traverser);
+        var traverserUnderTest = new PreflopTrajectoryTraverser(
+            new FixedRootStateProvider(root),
+            new SolverChanceSampler(),
+            new FixedInfoSetMapper(traverser),
+            new TrainingRegretMatchingPolicyProvider(new InMemoryRegretStore()),
+            new WeightedRandomActionSampler(),
+            leafEvaluator,
+            new BoardCountLeafDetector(expectedBoardCount: 3));
+
+        var sample = traverserUnderTest.SampleTrajectory(root, new ScriptedRandom(nextInts: [0, 0, 0]));
+
+        Assert.Equal(Street.Flop, sample.FinalState.Street);
+        Assert.Collection(
+            sample.FinalState.BoardCards,
+            card => Assert.Equal(Card.Parse("2c"), card),
+            card => Assert.Equal(Card.Parse("2d"), card),
+            card => Assert.Equal(Card.Parse("2h"), card));
+        Assert.Equal(2, sample.Path.Count);
+        Assert.Equal(TraversalNodeKind.Chance, sample.Path[0].NodeKind);
+        Assert.Equal(new[] { "2c", "2d", "2h" }, leafEvaluator.CapturedBoards.Single());
+    }
+
+    [Fact]
+    public void RunIteration_WithInjectedRandom_ProducesStableRegretAndAverageStrategyAcrossIterations()
+    {
+        var root = CreateHeadsUpPreflopState();
+        var traverser = root.ActingPlayerId;
+        var rootActions = root.GenerateLegalActions();
+        var fold = FindAction(rootActions, ActionType.Fold);
+        var call = FindAction(rootActions, ActionType.Call);
+
+        var regrets = new InMemoryRegretStore();
+        regrets.Add("traversal_infoset", fold, 3d);
+        regrets.Add("traversal_infoset", call, 1d);
+
+        var averages = new InMemoryAverageStrategyStore();
+        var trainer = CreateTrainer(
+            root,
+            traverser,
+            regrets,
+            averages,
+            new RootActionUtilityLeafEvaluator(
+                traverser,
+                new Dictionary<ActionType, double>
+                {
+                    [ActionType.Fold] = 10d,
+                    [ActionType.Call] = 4d
+                }),
+            new DepthLeafDetector(root.ActionHistory.Count + 1),
+            actionSampler: new WeightedRandomActionSampler());
+
+        for (var iteration = 0; iteration < 3; iteration++)
+            trainer.RunIteration(new ScriptedRandom());
+
+        Assert.Equal(7.5d, regrets.Get("traversal_infoset", fold), 10);
+        Assert.Equal(0d, regrets.Get("traversal_infoset", call), 10);
+        Assert.Equal(2.25d, averages.Get("traversal_infoset", fold), 10);
+        Assert.Equal(0.75d, averages.Get("traversal_infoset", call), 10);
+    }
+
     private static PreflopRegretTrainer CreateTrainer(
         SolverHandState root,
         PlayerId traverser,
@@ -594,6 +695,93 @@ public sealed class ExternalSamplingMccfrTrainerTests
         }
     }
 
+    private sealed class ScriptedRandom : Random
+    {
+        private readonly Queue<int> _nextInts;
+        private readonly Queue<double> _nextDoubles;
+
+        public ScriptedRandom(IEnumerable<int>? nextInts = null, IEnumerable<double>? nextDoubles = null)
+        {
+            _nextInts = new Queue<int>(nextInts ?? Array.Empty<int>());
+            _nextDoubles = new Queue<double>(nextDoubles ?? Array.Empty<double>());
+        }
+
+        public override int Next(int maxValue)
+        {
+            if (maxValue <= 0)
+                return 0;
+
+            if (_nextInts.Count == 0)
+                return 0;
+
+            var value = _nextInts.Dequeue();
+            Assert.InRange(value, 0, maxValue - 1);
+            return value;
+        }
+
+        public override double NextDouble()
+        {
+            if (_nextDoubles.Count == 0)
+                return 0d;
+
+            var value = _nextDoubles.Dequeue();
+            Assert.InRange(value, 0d, 1d);
+            return value;
+        }
+    }
+
+    private sealed class ActionHistoryCapturingLeafEvaluator : IPreflopLeafEvaluator
+    {
+        private readonly PlayerId _traverserId;
+
+        public ActionHistoryCapturingLeafEvaluator(PlayerId traverserId)
+        {
+            _traverserId = traverserId;
+        }
+
+        public List<IReadOnlyList<ActionType>> CapturedActionHistories { get; } = new();
+
+        public PreflopLeafEvaluation Evaluate(PreflopLeafEvaluationContext context)
+        {
+            CapturedActionHistories.Add(context.LeafState.ActionHistory.Select(entry => entry.ActionType).ToArray());
+            return new PreflopLeafEvaluation(
+                new Dictionary<PlayerId, double> { [_traverserId] = 0d },
+                "captured-history");
+        }
+    }
+
+    private sealed class BoardCapturingLeafEvaluator : IPreflopLeafEvaluator
+    {
+        private readonly PlayerId _traverserId;
+
+        public BoardCapturingLeafEvaluator(PlayerId traverserId)
+        {
+            _traverserId = traverserId;
+        }
+
+        public List<IReadOnlyList<string>> CapturedBoards { get; } = new();
+
+        public PreflopLeafEvaluation Evaluate(PreflopLeafEvaluationContext context)
+        {
+            CapturedBoards.Add(context.LeafState.BoardCards.Select(card => card.ToString()).ToArray());
+            return new PreflopLeafEvaluation(
+                new Dictionary<PlayerId, double> { [_traverserId] = 0d },
+                "captured-board");
+        }
+    }
+
+    private sealed class BoardCountLeafDetector : IPreflopLeafDetector
+    {
+        private readonly int _expectedBoardCount;
+
+        public BoardCountLeafDetector(int expectedBoardCount)
+        {
+            _expectedBoardCount = expectedBoardCount;
+        }
+
+        public bool IsLeaf(SolverHandState state) => state.BoardCards.Count >= _expectedBoardCount;
+    }
+
     private static LegalAction FindAction(IReadOnlyList<LegalAction> legalActions, ActionType actionType)
         => legalActions.First(action => action.ActionType == actionType);
 
@@ -605,4 +793,15 @@ public sealed class ExternalSamplingMccfrTrainerTests
             .Where(action => action.ActionType == actionType)
             .OrderByDescending(action => action.Amount?.Value ?? long.MinValue)
             .First();
+
+    private static SolverHandState CreateCompletedPreflopChanceState()
+    {
+        var root = CreateHeadsUpPreflopState();
+        var rootActions = root.GenerateLegalActions();
+        var limp = FindAction(rootActions, ActionType.Call);
+        var afterLimp = SolverStateStepper.Step(root, limp, rootActions);
+        var responseActions = afterLimp.GenerateLegalActions();
+        var check = FindAction(responseActions, ActionType.Check);
+        return SolverStateStepper.Step(afterLimp, check, responseActions);
+    }
 }
