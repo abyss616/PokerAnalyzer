@@ -62,7 +62,7 @@ public sealed class ExternalSamplingMccfrTrainerTests
     }
 
     [Fact]
-    public void RunIteration_EnumeratesTraverserActions_AndUpdatesRegretFromNodeValue()
+    public void RunIteration_EnumeratesTraverserActions_AndUsesTraverserReachWeightedAverageStrategyAtRoot()
     {
         var root = CreateHeadsUpPreflopState();
         var traverser = root.ActingPlayerId;
@@ -264,7 +264,7 @@ public sealed class ExternalSamplingMccfrTrainerTests
 
 
     [Fact]
-    public void RunIteration_TraverserNodesEnumerateAllActions_WhileSampledNodesSampleOneAction()
+    public void RunIteration_RegretWeightUsesOpponentReachDividedBySamplingReach()
     {
         var root = CreateHeadsUpPreflopState();
         var traverser = root.Players[1].PlayerId;
@@ -278,7 +278,47 @@ public sealed class ExternalSamplingMccfrTrainerTests
         regrets.Add("traversal_infoset", fold, 3d);
         regrets.Add("traversal_infoset", call, 1d);
 
-        var sampler = new RecordingActionSampler();
+        var chanceSampler = new RecordingChanceSampler(new ChipAmount(4), new ChipAmount(5), 0.2d);
+        var trainer = CreateTrainer(
+            root,
+            traverser,
+            regrets,
+            new InMemoryAverageStrategyStore(),
+            new RootActionUtilityLeafEvaluator(
+                traverser,
+                new Dictionary<ActionType, double>
+                {
+                    [ActionType.Fold] = 10d,
+                    [ActionType.Call] = 4d
+                }),
+            new DepthLeafDetector(root.ActionHistory.Count + 2),
+            chanceSampler,
+            new HighestProbabilityActionSampler());
+
+        trainer.RunIteration(new Random(29));
+
+        Assert.Equal(1, chanceSampler.SampleCalls);
+        Assert.Equal(10.5d, regrets.Get("traversal_infoset", fold), 10);
+        Assert.Equal(0d, regrets.Get("traversal_infoset", call), 10);
+    }
+
+    [Fact]
+    public void RunIteration_TraverserNodesEnumerateAllActions_WhileOpponentAndChanceSampleSingleBranch()
+    {
+        var root = CreateHeadsUpPreflopState();
+        var traverser = root.Players[1].PlayerId;
+        var rootActions = root.GenerateLegalActions();
+        var fold = FindAction(rootActions, ActionType.Fold);
+        var call = FindAction(rootActions, ActionType.Call);
+
+        var regrets = new InMemoryRegretStore();
+        regrets.Add("opponent_infoset", fold, 1d);
+        regrets.Add("opponent_infoset", call, 3d);
+        regrets.Add("traversal_infoset", fold, 3d);
+        regrets.Add("traversal_infoset", call, 1d);
+
+        var actionSampler = new RecordingActionSampler();
+        var chanceSampler = new RecordingChanceSampler(new ChipAmount(4), new ChipAmount(5), 0.2d);
         var leafEvaluator = new RootActionUtilityLeafEvaluator(
             traverser,
             new Dictionary<ActionType, double>
@@ -294,13 +334,14 @@ public sealed class ExternalSamplingMccfrTrainerTests
             new InMemoryAverageStrategyStore(),
             leafEvaluator,
             new DepthLeafDetector(root.ActionHistory.Count + 2),
-            chanceSampler: null,
-            actionSampler: sampler);
+            chanceSampler,
+            actionSampler);
 
         trainer.RunIteration(new Random(19));
 
-        Assert.Single(sampler.SampledActions);
-        Assert.Equal(ActionType.Call, sampler.SampledActions[0].ActionType);
+        Assert.Single(actionSampler.SampledActions);
+        Assert.Equal(ActionType.Call, actionSampler.SampledActions[0].ActionType);
+        Assert.Equal(1, chanceSampler.SampleCalls);
         Assert.Equal(new[] { ActionType.Fold, ActionType.Call }, leafEvaluator.CapturedRootActions);
     }
 
@@ -521,6 +562,36 @@ public sealed class ExternalSamplingMccfrTrainerTests
 
         public ChanceSampleResult SampleWithProbability(SolverHandState state, Random rng)
             => new(state.With(pot: _toPot), _samplingProbability);
+    }
+
+    private sealed class RecordingChanceSampler : IChanceSampler
+    {
+        private readonly ChipAmount _fromPot;
+        private readonly ChipAmount _toPot;
+        private readonly double _samplingProbability;
+
+        public RecordingChanceSampler(ChipAmount fromPot, ChipAmount toPot, double samplingProbability)
+        {
+            _fromPot = fromPot;
+            _toPot = toPot;
+            _samplingProbability = samplingProbability;
+        }
+
+        public int SampleCalls { get; private set; }
+
+        public bool IsChanceNode(SolverHandState state) => state.Pot == _fromPot;
+
+        public SolverHandState Sample(SolverHandState state, Random rng)
+        {
+            SampleCalls++;
+            return state.With(pot: _toPot);
+        }
+
+        public ChanceSampleResult SampleWithProbability(SolverHandState state, Random rng)
+        {
+            SampleCalls++;
+            return new ChanceSampleResult(state.With(pot: _toPot), _samplingProbability);
+        }
     }
 
     private static LegalAction FindAction(IReadOnlyList<LegalAction> legalActions, ActionType actionType)
