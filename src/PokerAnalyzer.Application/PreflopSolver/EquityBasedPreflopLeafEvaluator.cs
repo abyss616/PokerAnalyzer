@@ -48,8 +48,7 @@ public sealed class EquityBasedPreflopLeafEvaluator : IPreflopLeafEvaluator
     {
         Unsupported = 0,
         TrueHeadsUp = 1,
-        AbstractedHeadsUp = 2,
-        DeferredMultiway = 3
+        Multiway = 2
     }
 
     public EquityBasedPreflopLeafEvaluator(
@@ -71,12 +70,12 @@ public sealed class EquityBasedPreflopLeafEvaluator : IPreflopLeafEvaluator
         var rootActiveOpponentCount = context.RootState.Players.Count(p => p.PlayerId != context.HeroPlayerId && p.IsActive);
         var leafActiveOpponentCount = context.LeafState.Players.Count(p => p.PlayerId != context.HeroPlayerId && p.IsActive);
         var nodeFamily = PreflopNodeFamilyClassifier.Classify(context);
-        var rootEvaluatorMode = DetermineRootEvaluatorMode(context, nodeFamily, rootActiveOpponentCount);
+        var rootEvaluatorMode = DetermineRootEvaluatorMode(rootActiveOpponentCount);
 
         if (context.RootAction.ActionType == ActionType.Fold)
             return EvaluateFold(context, rootEvaluatorMode, rootActiveOpponentCount, leafActiveOpponentCount);
 
-        if ((rootEvaluatorMode == RootEvaluatorMode.DeferredMultiway || rootEvaluatorMode == RootEvaluatorMode.TrueHeadsUp)
+        if ((rootEvaluatorMode == RootEvaluatorMode.Multiway || rootEvaluatorMode == RootEvaluatorMode.TrueHeadsUp)
             && TryEvaluateFacingRaiseActionAware(context, nodeFamily, rootEvaluatorMode, rootActiveOpponentCount, leafActiveOpponentCount, out var facingRaiseEvaluation))
         {
             return facingRaiseEvaluation;
@@ -88,7 +87,7 @@ public sealed class EquityBasedPreflopLeafEvaluator : IPreflopLeafEvaluator
             return facing3BetEvaluation;
         }
 
-        if (rootEvaluatorMode == RootEvaluatorMode.DeferredMultiway
+        if (rootEvaluatorMode == RootEvaluatorMode.Multiway
             && (TryEvaluateBtnUnopenedActionAware(context, nodeFamily, rootEvaluatorMode, rootActiveOpponentCount, leafActiveOpponentCount, out var abstracted)
                 || TryEvaluateUnopenedActionAware(context, nodeFamily, rootEvaluatorMode, rootActiveOpponentCount, leafActiveOpponentCount, out abstracted)
                 || TryEvaluateFacingLimpActionAware(context, nodeFamily, rootEvaluatorMode, rootActiveOpponentCount, leafActiveOpponentCount, out abstracted)))
@@ -105,7 +104,14 @@ public sealed class EquityBasedPreflopLeafEvaluator : IPreflopLeafEvaluator
             return Fallback(context, rootEvaluatorMode, rootActiveOpponentCount, leafActiveOpponentCount, "expected heads-up root but no active opponent found");
         }
 
-        return Fallback(context, rootEvaluatorMode, rootActiveOpponentCount, leafActiveOpponentCount, $"unsupported root evaluator mode for family={nodeFamily}, rootActiveOpponents={rootActiveOpponentCount}");
+        return Fallback(
+            context,
+            rootEvaluatorMode,
+            rootActiveOpponentCount,
+            leafActiveOpponentCount,
+            rootEvaluatorMode == RootEvaluatorMode.Multiway
+                ? $"multiway root is structurally supported, but no value abstraction is implemented for family={nodeFamily}"
+                : $"unsupported root evaluator mode for family={nodeFamily}, rootActiveOpponents={rootActiveOpponentCount}");
     }
 
     private bool TryEvaluateFacingRaiseActionAware(PreflopLeafEvaluationContext context, PreflopNodeFamily nodeFamily, RootEvaluatorMode rootEvaluatorMode, int rootActiveOpponentCount, int leafActiveOpponentCount, out PreflopLeafEvaluation evaluation)
@@ -846,7 +852,7 @@ public sealed class EquityBasedPreflopLeafEvaluator : IPreflopLeafEvaluator
                 RootEvaluatorMode: rootEvaluatorMode.ToString(),
                 RootActiveOpponentCount: rootActiveOpponentCount,
                 LeafActiveOpponentCount: leafActiveOpponentCount,
-                UsedDirectAbstractionShortcut: UsesAbstractedHeadsUpApproximation(rootEvaluatorMode),
+                UsedDirectAbstractionShortcut: UsesMultiwayApproximationShortcut(rootEvaluatorMode),
                 ActivePopulationProfile: _populationProfileProvider.ActiveProfileName));
     }
 
@@ -906,7 +912,7 @@ public sealed class EquityBasedPreflopLeafEvaluator : IPreflopLeafEvaluator
                 RootEvaluatorMode: rootEvaluatorMode.ToString(),
                 RootActiveOpponentCount: rootActiveOpponentCount,
                 LeafActiveOpponentCount: leafActiveOpponentCount,
-                UsedDirectAbstractionShortcut: UsesAbstractedHeadsUpApproximation(rootEvaluatorMode),
+                UsedDirectAbstractionShortcut: UsesMultiwayApproximationShortcut(rootEvaluatorMode),
                 ActivePopulationProfile: _populationProfileProvider.ActiveProfileName));
     }
 
@@ -952,28 +958,25 @@ public sealed class EquityBasedPreflopLeafEvaluator : IPreflopLeafEvaluator
                 RootEvaluatorMode: rootEvaluatorMode.ToString(),
                 RootActiveOpponentCount: rootActiveOpponentCount,
                 LeafActiveOpponentCount: leafActiveOpponentCount,
-                UsedDirectAbstractionShortcut: UsesAbstractedHeadsUpApproximation(rootEvaluatorMode),
+                UsedDirectAbstractionShortcut: UsesMultiwayApproximationShortcut(rootEvaluatorMode),
                 ActivePopulationProfile: existingDetails?.ActivePopulationProfile ?? _populationProfileProvider.ActiveProfileName)
         };
     }
 
 
-    private static RootEvaluatorMode DetermineRootEvaluatorMode(PreflopLeafEvaluationContext context, PreflopNodeFamily nodeFamily, int rootActiveOpponentCount)
+    private static RootEvaluatorMode DetermineRootEvaluatorMode(int rootActiveOpponentCount)
     {
         if (rootActiveOpponentCount == 1)
             return RootEvaluatorMode.TrueHeadsUp;
 
-        if ((nodeFamily == PreflopNodeFamily.Unopened || nodeFamily == PreflopNodeFamily.FacingLimp || nodeFamily == PreflopNodeFamily.FacingRaise)
-            && rootActiveOpponentCount >= 2)
-        {
-            return RootEvaluatorMode.DeferredMultiway;
-        }
+        if (rootActiveOpponentCount >= 2)
+            return RootEvaluatorMode.Multiway;
 
         return RootEvaluatorMode.Unsupported;
     }
 
-    private static bool UsesAbstractedHeadsUpApproximation(RootEvaluatorMode rootEvaluatorMode)
-        => rootEvaluatorMode is RootEvaluatorMode.AbstractedHeadsUp or RootEvaluatorMode.DeferredMultiway;
+    private static bool UsesMultiwayApproximationShortcut(RootEvaluatorMode rootEvaluatorMode)
+        => rootEvaluatorMode == RootEvaluatorMode.Multiway;
 
     private static string ToHandLabel(HoleCards cards)
     {

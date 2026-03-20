@@ -48,7 +48,7 @@ public sealed class EquityBasedPreflopLeafEvaluatorTests
 
         Assert.NotNull(result.Details);
         Assert.Equal("GeneralizedFacingRaise", result.Details!.EvaluatorType);
-        Assert.Equal("DeferredMultiway", result.Details.RootEvaluatorMode);
+        Assert.Equal("Multiway", result.Details.RootEvaluatorMode);
         Assert.Equal("FacingRaise", result.Details.NodeFamily);
         Assert.False(result.Details.IsHeadsUp);
         Assert.True(result.Details.UsedDirectAbstractionShortcut);
@@ -65,7 +65,7 @@ public sealed class EquityBasedPreflopLeafEvaluatorTests
 
         Assert.NotNull(result.Details);
         Assert.Equal("FacingLimp", result.Details!.NodeFamily);
-        Assert.Equal("DeferredMultiway", result.Details.RootEvaluatorMode);
+        Assert.Equal("Multiway", result.Details.RootEvaluatorMode);
         Assert.Equal("AbstractedHeadsUp", result.Details.EvaluatorType);
         Assert.False(result.Details.IsHeadsUp);
         Assert.False(result.Details.UsedFallbackEvaluator);
@@ -207,8 +207,8 @@ public sealed class EquityBasedPreflopLeafEvaluatorTests
         Assert.NotNull(leafZeroOpponents.Details);
         Assert.Equal("AbstractedHeadsUp", leafTwoOpponents.Details!.EvaluatorType);
         Assert.Equal("AbstractedHeadsUp", leafZeroOpponents.Details!.EvaluatorType);
-        Assert.Equal("DeferredMultiway", leafTwoOpponents.Details.RootEvaluatorMode);
-        Assert.Equal("DeferredMultiway", leafZeroOpponents.Details.RootEvaluatorMode);
+        Assert.Equal("Multiway", leafTwoOpponents.Details.RootEvaluatorMode);
+        Assert.Equal("Multiway", leafZeroOpponents.Details.RootEvaluatorMode);
         Assert.Equal(2, leafTwoOpponents.Details.RootActiveOpponentCount);
         Assert.Equal(2, leafZeroOpponents.Details.RootActiveOpponentCount);
         Assert.Equal(2, leafTwoOpponents.Details.LeafActiveOpponentCount);
@@ -351,7 +351,7 @@ public sealed class EquityBasedPreflopLeafEvaluatorTests
 
         Assert.NotNull(result.Details);
         Assert.Equal("AbstractedHeadsUp", result.Details!.EvaluatorType);
-        Assert.Equal("DeferredMultiway", result.Details.RootEvaluatorMode);
+        Assert.Equal("Multiway", result.Details.RootEvaluatorMode);
         Assert.False(result.Details.UsedFallbackEvaluator);
         Assert.Equal("SyntheticFieldFacingLimp", result.Details.AbstractionSource);
         Assert.Equal("SyntheticLimpFieldDefender", result.Details.SyntheticDefenderLabel);
@@ -396,7 +396,7 @@ public sealed class EquityBasedPreflopLeafEvaluatorTests
 
         Assert.NotNull(result.Details);
         Assert.Equal("AbstractedHeadsUp", result.Details!.EvaluatorType);
-        Assert.Equal("DeferredMultiway", result.Details.RootEvaluatorMode);
+        Assert.Equal("Multiway", result.Details.RootEvaluatorMode);
         Assert.False(result.Details.UsedFallbackEvaluator);
         Assert.Equal("SyntheticFieldFacingLimp", result.Details.AbstractionSource);
         Assert.Equal("SyntheticLimpFieldDefender", result.Details.SyntheticDefenderLabel);
@@ -440,7 +440,7 @@ public sealed class EquityBasedPreflopLeafEvaluatorTests
 
         Assert.NotNull(result.Details);
         Assert.Equal("AbstractedHeadsUp", result.Details!.EvaluatorType);
-        Assert.Equal("DeferredMultiway", result.Details.RootEvaluatorMode);
+        Assert.Equal("Multiway", result.Details.RootEvaluatorMode);
         Assert.False(result.Details.UsedFallbackEvaluator);
         Assert.Equal("SyntheticFieldSbUnopened", result.Details.AbstractionSource);
         Assert.Equal("SyntheticSbUnopenedDefender", result.Details.SyntheticDefenderLabel);
@@ -512,7 +512,7 @@ public sealed class EquityBasedPreflopLeafEvaluatorTests
 
         Assert.NotNull(result.Details);
         Assert.Equal("AbstractedHeadsUp", result.Details!.EvaluatorType);
-        Assert.Equal("DeferredMultiway", result.Details.RootEvaluatorMode);
+        Assert.Equal("Multiway", result.Details.RootEvaluatorMode);
         Assert.False(result.Details.UsedFallbackEvaluator);
         Assert.Equal("SyntheticFieldUnopened", result.Details.AbstractionSource);
         Assert.Equal("SyntheticUnopenedFieldDefender", result.Details.SyntheticDefenderLabel);
@@ -863,6 +863,24 @@ public sealed class EquityBasedPreflopLeafEvaluatorTests
     }
 
     [Fact]
+    public void Evaluate_MultiwayFacing3Bet_KeepsMultiwayRootModeEvenWhenApproximationFallsBack()
+    {
+        var evaluator = new EquityBasedPreflopLeafEvaluator(
+            new TableDrivenOpponentRangeProvider(),
+            new HeuristicPreflopLeafEvaluator(),
+            samplesPerMatchup: 120);
+
+        var result = evaluator.Evaluate(CreateFacing3BetMultiwayContext(ActionType.Call));
+
+        Assert.NotNull(result.Details);
+        Assert.Equal("Multiway", result.Details!.RootEvaluatorMode);
+        Assert.True(result.Details.UsedFallbackEvaluator);
+        Assert.False(result.Details.IsHeadsUp);
+        Assert.Contains("no value abstraction is implemented for family=Facing3Bet", result.Details.FallbackReason);
+        Assert.DoesNotContain("unsupported root evaluator mode", result.Reason);
+    }
+
+    [Fact]
     public void Evaluate_UnopenedBtn_ProfileDeltaRemainsIntact_AfterFacingRaiseTuning()
     {
         var gtoEvaluator = new EquityBasedPreflopLeafEvaluator(
@@ -1132,7 +1150,6 @@ public sealed class EquityBasedPreflopLeafEvaluatorTests
     {
         var heroId = new PlayerId(Guid.NewGuid());
         var openerId = new PlayerId(Guid.NewGuid());
-        var sbId = new PlayerId(Guid.NewGuid());
         var bbId = new PlayerId(Guid.NewGuid());
 
         var config = new GameConfig(6, new ChipAmount(50), new ChipAmount(100), ChipAmount.Zero, new ChipAmount(10000));
@@ -1193,7 +1210,6 @@ public sealed class EquityBasedPreflopLeafEvaluatorTests
     {
         var heroId = new PlayerId(Guid.NewGuid());
         var threeBettorId = new PlayerId(Guid.NewGuid());
-        var sbId = new PlayerId(Guid.NewGuid());
         var bbId = new PlayerId(Guid.NewGuid());
 
         var config = new GameConfig(6, new ChipAmount(50), new ChipAmount(100), ChipAmount.Zero, new ChipAmount(10000));
@@ -1255,7 +1271,6 @@ public sealed class EquityBasedPreflopLeafEvaluatorTests
     {
         var heroId = new PlayerId(Guid.NewGuid());
         var threeBettorId = new PlayerId(Guid.NewGuid());
-        var sbId = new PlayerId(Guid.NewGuid());
         var bbId = new PlayerId(Guid.NewGuid());
 
         var config = new GameConfig(6, new ChipAmount(50), new ChipAmount(100), ChipAmount.Zero, new ChipAmount(10000));
@@ -1304,6 +1319,60 @@ public sealed class EquityBasedPreflopLeafEvaluatorTests
             92.5,
             new LegalAction(rootAction, amount),
             $"v2/VS_3BET/{heroPosition}/eff=92.5/open=3.5/3bet=6/jam=18");
+    }
+
+    private static PreflopLeafEvaluationContext CreateFacing3BetMultiwayContext(ActionType rootAction, ChipAmount? raiseAmount = null)
+    {
+        var heroId = new PlayerId(Guid.NewGuid());
+        var threeBettorId = new PlayerId(Guid.NewGuid());
+        var callerId = new PlayerId(Guid.NewGuid());
+        var bbId = new PlayerId(Guid.NewGuid());
+
+        var config = new GameConfig(5, new ChipAmount(50), new ChipAmount(100), ChipAmount.Zero, new ChipAmount(10000));
+        var players = new[]
+        {
+            new SolverPlayerState(callerId, 0, Position.CO, new ChipAmount(9750), new ChipAmount(250), new ChipAmount(250), false, false),
+            new SolverPlayerState(threeBettorId, 1, Position.BTN, new ChipAmount(9000), new ChipAmount(1000), new ChipAmount(1000), false, false),
+            new SolverPlayerState(heroId, 2, Position.SB, new ChipAmount(9950), new ChipAmount(50), new ChipAmount(50), false, false),
+            new SolverPlayerState(bbId, 3, Position.BB, new ChipAmount(9900), new ChipAmount(100), new ChipAmount(100), false, false)
+        };
+
+        var state = new SolverHandState(
+            config,
+            Street.Preflop,
+            buttonSeatIndex: 1,
+            actingPlayerId: heroId,
+            pot: new ChipAmount(1400),
+            currentBetSize: new ChipAmount(1000),
+            lastRaiseSize: new ChipAmount(750),
+            raisesThisStreet: 2,
+            players,
+            actionHistory: new[]
+            {
+                new SolverActionEntry(heroId, ActionType.PostSmallBlind, new ChipAmount(50)),
+                new SolverActionEntry(bbId, ActionType.PostBigBlind, new ChipAmount(100)),
+                new SolverActionEntry(callerId, ActionType.Raise, new ChipAmount(250)),
+                new SolverActionEntry(threeBettorId, ActionType.Raise, new ChipAmount(1000))
+            },
+            boardCards: Array.Empty<Card>(),
+            deadCards: Array.Empty<Card>(),
+            privateCardsByPlayer: new Dictionary<PlayerId, HoleCards>
+            {
+                [heroId] = HoleCards.Parse("AsKh"),
+                [callerId] = HoleCards.Parse("QdJd"),
+                [threeBettorId] = HoleCards.Parse("9c9d")
+            });
+
+        var amount = rootAction == ActionType.Raise ? raiseAmount ?? new ChipAmount(2200) : new ChipAmount(950);
+        return new PreflopLeafEvaluationContext(
+            state,
+            state,
+            heroId,
+            Position.SB,
+            HoleCards.Parse("AsKh"),
+            100,
+            new LegalAction(rootAction, amount),
+            "v2/VS_3BET/SB/eff=100/open=2.5/3bet=10");
     }
 
 
