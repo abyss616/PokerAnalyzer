@@ -400,8 +400,15 @@ public sealed class NullPreflopTrainingProgressStore : IPreflopTrainingProgressS
 
 public sealed class PreflopRegretTrainer
 {
+    private const int MaxTraversalDepth = 256;
+
     private readonly IPreflopRootStateProvider _rootStateProvider;
     private readonly IPreflopTrajectoryTraverser _trajectoryTraverser;
+    private readonly IChanceSampler? _chanceSampler;
+    private readonly IPreflopInfoSetMapper? _infoSetMapper;
+    private readonly IActionSampler? _actionSampler;
+    private readonly IPreflopLeafEvaluator? _leafEvaluator;
+    private readonly IPreflopLeafDetector? _leafDetector;
     private readonly ITraversalPlayerSelector _traversalPlayerSelector;
     private readonly IRegretStore _regretStore;
     private readonly IAverageStrategyStore _averageStrategyStore;
@@ -409,6 +416,7 @@ public sealed class PreflopRegretTrainer
     private readonly IPreflopTrainingProgressStore _trainingProgressStore;
     private readonly string? _canonicalStorageKey;
     private readonly RegretMatchingPolicyProvider _policyProvider;
+    private readonly bool _useLegacyTrajectoryTrainingCore;
     private PreflopLeafEvaluationDetails? _latestLeafEvaluationDetails;
     private readonly object _traversalSelectorLock = new();
 
@@ -426,25 +434,31 @@ public sealed class PreflopRegretTrainer
         IPreflopTrainingProgressStore? trainingProgressStore = null,
         string? canonicalStorageKey = null,
         IActionValueStore? actionValueStore = null)
-        : this(
-            rootStateProvider,
-            new PreflopTrajectoryTraverser(
-                rootStateProvider,
-                chanceSampler,
-                infoSetMapper,
-                string.IsNullOrWhiteSpace(canonicalStorageKey)
-                    ? new RegretMatchingPolicyProvider(regretStore, actionValueStore)
-                    : new CanonicalKeyRegretMatchingPolicyProvider(regretStore, canonicalStorageKey, actionValueStore),
-                actionSampler,
-                leafEvaluator,
-                leafDetector),
-            traversalPlayerSelector,
-            regretStore,
-            averageStrategyStore,
-            trainingProgressStore,
-            canonicalStorageKey,
-            actionValueStore)
     {
+        _rootStateProvider = rootStateProvider ?? throw new ArgumentNullException(nameof(rootStateProvider));
+        _chanceSampler = chanceSampler ?? throw new ArgumentNullException(nameof(chanceSampler));
+        _infoSetMapper = infoSetMapper ?? throw new ArgumentNullException(nameof(infoSetMapper));
+        _actionSampler = actionSampler ?? throw new ArgumentNullException(nameof(actionSampler));
+        _leafEvaluator = leafEvaluator ?? throw new ArgumentNullException(nameof(leafEvaluator));
+        _leafDetector = leafDetector ?? throw new ArgumentNullException(nameof(leafDetector));
+        _traversalPlayerSelector = traversalPlayerSelector ?? throw new ArgumentNullException(nameof(traversalPlayerSelector));
+        _regretStore = regretStore ?? throw new ArgumentNullException(nameof(regretStore));
+        _averageStrategyStore = averageStrategyStore ?? throw new ArgumentNullException(nameof(averageStrategyStore));
+        _actionValueStore = actionValueStore ?? new InMemoryActionValueStore();
+        _trainingProgressStore = trainingProgressStore ?? NullPreflopTrainingProgressStore.Instance;
+        _canonicalStorageKey = string.IsNullOrWhiteSpace(canonicalStorageKey) ? null : canonicalStorageKey;
+        _policyProvider = new RegretMatchingPolicyProvider(_regretStore, _actionValueStore);
+        _trajectoryTraverser = new PreflopTrajectoryTraverser(
+            rootStateProvider,
+            chanceSampler,
+            infoSetMapper,
+            string.IsNullOrWhiteSpace(canonicalStorageKey)
+                ? new RegretMatchingPolicyProvider(regretStore, actionValueStore)
+                : new CanonicalKeyRegretMatchingPolicyProvider(regretStore, canonicalStorageKey, actionValueStore),
+            actionSampler,
+            leafEvaluator,
+            leafDetector);
+        _useLegacyTrajectoryTrainingCore = false;
     }
 
     public PreflopRegretTrainer(
@@ -466,6 +480,9 @@ public sealed class PreflopRegretTrainer
         _trainingProgressStore = trainingProgressStore ?? NullPreflopTrainingProgressStore.Instance;
         _canonicalStorageKey = string.IsNullOrWhiteSpace(canonicalStorageKey) ? null : canonicalStorageKey;
         _policyProvider = new RegretMatchingPolicyProvider(_regretStore, _actionValueStore);
+        // Compatibility-only path for tests or callers that still inject a custom trajectory traverser.
+        // The solver-facing constructor above uses the recursive external-sampling MCCFR traversal.
+        _useLegacyTrajectoryTrainingCore = true;
     }
 
     public void RunIteration(Random rng)
@@ -485,6 +502,26 @@ public sealed class PreflopRegretTrainer
         ArgumentNullException.ThrowIfNull(rng);
         ArgumentNullException.ThrowIfNull(accumulator);
 
+        if (_useLegacyTrajectoryTrainingCore)
+        {
+            RunLegacyTrajectoryIteration(rng, accumulator, deterministicIterationIndex);
+            return;
+        }
+
+        var rootState = _rootStateProvider.CreateRootState();
+        var traversalPlayerId = SelectTraversalPlayer(rootState, deterministicIterationIndex);
+        var rootContext = new ExternalSamplingTraversalContext(
+            traversalPlayerId,
+            traverserReach: 1d,
+            opponentReach: 1d,
+            samplingReach: 1d);
+
+        _ = TraverseExternalSampling(rootState, rootContext, leafSeed: null, rng, accumulator, depth: 0);
+        accumulator.IterationsCompleted++;
+    }
+
+    private void RunLegacyTrajectoryIteration(Random rng, WorkerAccumulator accumulator, int? deterministicIterationIndex)
+    {
         var rootState = _rootStateProvider.CreateRootState();
         var traversalPlayerId = SelectTraversalPlayer(rootState, deterministicIterationIndex);
         var sample = _trajectoryTraverser.SampleTrajectory(rootState, rng);
@@ -501,49 +538,22 @@ public sealed class PreflopRegretTrainer
                 continue;
 
             var storageKey = _canonicalStorageKey ?? node.InfoSetKey;
-            var (actionValues, leafDetails) = EvaluateActionValues(node.StateBeforeAction, traversalPlayerId, node.LegalActions, rng, storageKey);
+            var (actionValues, leafDetails) = EvaluateActionValuesLegacy(node.StateBeforeAction, traversalPlayerId, node.LegalActions, rng, storageKey);
             accumulator.LastLeafEvaluationDetails = leafDetails ?? accumulator.LastLeafEvaluationDetails;
             foreach (var action in node.LegalActions)
                 accumulator.AddActionValue(storageKey, action, actionValues[action]);
 
-            var nodeValue = 0d;
-
             var policy = ResolvePolicy(storageKey, node.LegalActions, node.Policy);
-           // Trace.WriteLine($"preflop-trainer infoset={storageKey}, legalActions=[{string.Join(", ", node.LegalActions)}], chosenAction={node.SampledAction}");
+            var nodeValue = ComputeNodeValue(node.LegalActions, policy, actionValues);
 
             foreach (var action in node.LegalActions)
-            {
-                var policyProbability = policy.TryGetValue(action, out var probability)
-                    ? probability
-                    : 0d;
-
-                nodeValue += policyProbability * actionValues[action];
-            }
-
-            //Trace.WriteLine($"preflop-trainer actionUtilities infoset={storageKey}: {string.Join(", ", actionValues.Select(kvp => $"{kvp.Key}={kvp.Value:0.0000}"))}, nodeValue={nodeValue:0.0000}");
+                accumulator.AddRegret(storageKey, action, actionValues[action] - nodeValue);
 
             foreach (var action in node.LegalActions)
-            {
-                var regretDelta = actionValues[action] - nodeValue;
-                accumulator.AddRegret(storageKey, action, regretDelta);
-                var cumulativeRegret = _regretStore.Get(storageKey, action) + regretDelta;
-                //Trace.WriteLine($"preflop-trainer regretUpdate infoset={storageKey}, action={action}, delta={regretDelta:0.0000}, cumulative={cumulativeRegret:0.0000}");
-            }
-
-            foreach (var action in node.LegalActions)
-            {
-                var probability = policy.TryGetValue(action, out var policyProbability)
-                    ? policyProbability
-                    : 0d;
-
-                accumulator.AddAverageStrategy(storageKey, action, probability);
-            }
-
-            // Future hook: MCCFR-style weighting can adjust regretDelta before Add.
+                accumulator.AddAverageStrategy(storageKey, action, GetPolicyProbability(policy, action));
         }
 
         accumulator.IterationsCompleted++;
-
     }
 
     private IReadOnlyDictionary<LegalAction, double> ResolvePolicy(
@@ -551,12 +561,103 @@ public sealed class PreflopRegretTrainer
         IReadOnlyList<LegalAction> legalActions,
         IReadOnlyDictionary<LegalAction, double> fallbackPolicy)
     {
-        if (_canonicalStorageKey is null)
-            return fallbackPolicy;
+        var policyKey = _canonicalStorageKey ?? infoSetKey;
 
-        return _policyProvider.TryGetPolicy(infoSetKey, legalActions, out var policy)
+        return _policyProvider.TryGetPolicy(policyKey, legalActions, out var policy)
             ? policy
             : fallbackPolicy;
+    }
+
+    private double TraverseExternalSampling(
+        SolverHandState state,
+        ExternalSamplingTraversalContext context,
+        LeafEvaluationSeed? leafSeed,
+        Random rng,
+        WorkerAccumulator accumulator,
+        int depth)
+    {
+        ArgumentNullException.ThrowIfNull(state);
+        ArgumentNullException.ThrowIfNull(rng);
+        ArgumentNullException.ThrowIfNull(accumulator);
+
+        if (depth >= MaxTraversalDepth)
+            throw new InvalidOperationException($"Preflop MCCFR traversal exceeded max depth of {MaxTraversalDepth}. This usually indicates a non-progress loop.");
+
+        if (SolverTraversalGuards.IsTerminalLikeState(state) || (_leafDetector?.IsLeaf(state) ?? false))
+            return EvaluateLeafUtility(state, context.TraversalPlayerId, leafSeed, accumulator);
+
+        if (_chanceSampler?.IsChanceNode(state) == true)
+        {
+            var chanceSample = _chanceSampler.SampleWithProbability(state, rng);
+            var samplingReach = context.SamplingReach * Math.Max(chanceSample.SamplingProbability, 0d);
+            return TraverseExternalSampling(
+                chanceSample.NextState,
+                context with { SamplingReach = samplingReach },
+                leafSeed,
+                rng,
+                accumulator,
+                depth + 1);
+        }
+
+        var legalActions = state.GenerateLegalActions();
+        if (legalActions.Count == 0)
+            return EvaluateLeafUtility(state, context.TraversalPlayerId, leafSeed, accumulator);
+
+        var actingPlayerId = state.ActingPlayerId;
+        var infoSetKey = _infoSetMapper!.MapInfoSetKey(state, actingPlayerId);
+        var storageKey = _canonicalStorageKey ?? infoSetKey;
+        var policy = ResolvePolicy(storageKey, legalActions, UniformPolicyBuilder.Build(legalActions));
+
+        if (actingPlayerId == context.TraversalPlayerId)
+        {
+            var actionValues = new Dictionary<LegalAction, double>(legalActions.Count);
+            var nodeValue = 0d;
+
+            foreach (var action in legalActions)
+            {
+                var actionProbability = GetPolicyProbability(policy, action);
+                var nextState = SolverStateStepper.Step(state, action, legalActions);
+                var childValue = TraverseExternalSampling(
+                    nextState,
+                    context with { TraverserReach = context.TraverserReach * actionProbability },
+                    new LeafEvaluationSeed(state, action, storageKey),
+                    rng,
+                    accumulator,
+                    depth + 1);
+
+                actionValues[action] = childValue;
+                nodeValue += actionProbability * childValue;
+                accumulator.AddActionValue(storageKey, action, childValue);
+            }
+
+            var regretWeight = ScaleBySampleReach(context.OpponentReach, context.SamplingReach);
+            foreach (var action in legalActions)
+                accumulator.AddRegret(storageKey, action, regretWeight * (actionValues[action] - nodeValue));
+
+            var averageStrategyWeight = ScaleBySampleReach(context.TraverserReach, context.SamplingReach);
+            foreach (var action in legalActions)
+                accumulator.AddAverageStrategy(storageKey, action, averageStrategyWeight * GetPolicyProbability(policy, action));
+
+            return nodeValue;
+        }
+
+        var sampledAction = _actionSampler!.Sample(legalActions, policy, rng);
+        var sampledProbability = GetPolicyProbability(policy, sampledAction);
+        if (sampledProbability <= 0d)
+            sampledProbability = 1d / legalActions.Count;
+
+        var sampledState = SolverStateStepper.Step(state, sampledAction, legalActions);
+        return TraverseExternalSampling(
+            sampledState,
+            context with
+            {
+                OpponentReach = context.OpponentReach * sampledProbability,
+                SamplingReach = context.SamplingReach * sampledProbability
+            },
+            leafSeed,
+            rng,
+            accumulator,
+            depth + 1);
     }
 
 
@@ -871,7 +972,7 @@ public sealed class PreflopRegretTrainer
         }
     }
 
-    private (Dictionary<LegalAction, double> Values, PreflopLeafEvaluationDetails? LeafDetails) EvaluateActionValues(
+    private (Dictionary<LegalAction, double> Values, PreflopLeafEvaluationDetails? LeafDetails) EvaluateActionValuesLegacy(
         SolverHandState stateBeforeAction,
         PlayerId traversalPlayerId,
         IReadOnlyList<LegalAction> legalActions,
@@ -914,6 +1015,118 @@ public sealed class PreflopRegretTrainer
 
         return (actionValues, latestDetails);
     }
+
+    private double EvaluateLeafUtility(
+        SolverHandState leafState,
+        PlayerId traversalPlayerId,
+        LeafEvaluationSeed? leafSeed,
+        WorkerAccumulator accumulator)
+    {
+        if (leafSeed is null)
+            return EvaluateDirectTerminalUtility(leafState, traversalPlayerId);
+
+        var evaluation = EvaluateLeafState(leafSeed.Value.RootState, leafState, traversalPlayerId, leafSeed.Value.RootAction, leafSeed.Value.SolverKey);
+        accumulator.LastLeafEvaluationDetails = evaluation.Details ?? accumulator.LastLeafEvaluationDetails;
+        return evaluation.UtilityByPlayer.TryGetValue(traversalPlayerId, out var value)
+            ? value
+            : 0d;
+    }
+
+    private PreflopLeafEvaluation EvaluateLeafState(
+        SolverHandState rootState,
+        SolverHandState leafState,
+        PlayerId traversalPlayerId,
+        LegalAction rootAction,
+        string? solverKey)
+    {
+        if (_leafEvaluator is null)
+            throw new InvalidOperationException("External-sampling MCCFR requires a leaf evaluator. Use the constructor overload that accepts the traversal components.");
+
+        if (!rootState.PrivateCardsByPlayer.TryGetValue(traversalPlayerId, out var heroCards))
+            throw new InvalidOperationException($"Missing private cards for traversal player {traversalPlayerId} at decision root.");
+
+        var hero = rootState.Players.FirstOrDefault(player => player.PlayerId == traversalPlayerId)
+            ?? throw new InvalidOperationException($"Traversal player {traversalPlayerId} not found at decision root.");
+
+        var evaluationContext = new PreflopLeafEvaluationContext(
+            rootState,
+            leafState,
+            traversalPlayerId,
+            hero.Position,
+            heroCards,
+            ResolveEffectiveStackBb(rootState, traversalPlayerId),
+            rootAction,
+            solverKey);
+
+        return _leafEvaluator.Evaluate(evaluationContext);
+    }
+
+    private static double EvaluateDirectTerminalUtility(SolverHandState leafState, PlayerId traversalPlayerId)
+    {
+        var activePlayers = leafState.Players
+            .Where(player => player.IsActive)
+            .ToArray();
+
+        if (activePlayers.Length == 1)
+        {
+            var contributed = leafState.Players.Select(player => (decimal)player.TotalContribution.Value).ToArray();
+            var folded = leafState.Players.Select(player => player.IsFolded).ToArray();
+            var utilities = TerminalUtilities.ComputeEveryoneFoldsUtility(contributed, folded, rake: 0m);
+            var index = leafState.Players.ToList().FindIndex(player => player.PlayerId == traversalPlayerId);
+            return index >= 0 ? (double)utilities[index] : 0d;
+        }
+
+        if (SolverTraversalGuards.IsTerminalLikeState(leafState) && leafState.BoardCards.Count == 5)
+        {
+            var contributed = leafState.Players.Select(player => (decimal)player.TotalContribution.Value).ToArray();
+            var folded = leafState.Players.Select(player => player.IsFolded).ToArray();
+            var holeCards = leafState.Players
+                .Select(player => leafState.PrivateCardsByPlayer.TryGetValue(player.PlayerId, out var cards) ? cards : (Domain.Cards.HoleCards?)null)
+                .ToArray();
+            var utilities = TerminalUtilities.ComputeAllInRunoutUtility(contributed, folded, holeCards, leafState.BoardCards, rake: 0m);
+            var index = leafState.Players.ToList().FindIndex(player => player.PlayerId == traversalPlayerId);
+            return index >= 0 ? (double)utilities[index] : 0d;
+        }
+
+        return 0d;
+    }
+
+    private static double ComputeNodeValue(
+        IReadOnlyList<LegalAction> legalActions,
+        IReadOnlyDictionary<LegalAction, double> policy,
+        IReadOnlyDictionary<LegalAction, double> actionValues)
+    {
+        var nodeValue = 0d;
+        foreach (var action in legalActions)
+            nodeValue += GetPolicyProbability(policy, action) * actionValues[action];
+
+        return nodeValue;
+    }
+
+    private static double GetPolicyProbability(IReadOnlyDictionary<LegalAction, double> policy, LegalAction action)
+        => policy.TryGetValue(action, out var probability) ? probability : 0d;
+
+    private static double ScaleBySampleReach(double value, double samplingReach)
+    {
+        if (value == 0d)
+            return 0d;
+
+        if (samplingReach <= 0d || double.IsNaN(samplingReach) || double.IsInfinity(samplingReach))
+            throw new InvalidOperationException($"Sampling reach must be positive and finite for MCCFR updates, but was {samplingReach}.");
+
+        return value / samplingReach;
+    }
+
+    private readonly record struct ExternalSamplingTraversalContext(
+        PlayerId TraversalPlayerId,
+        double TraverserReach,
+        double OpponentReach,
+        double SamplingReach);
+
+    private readonly record struct LeafEvaluationSeed(
+        SolverHandState RootState,
+        LegalAction RootAction,
+        string? SolverKey);
 
     private static double ResolveEffectiveStackBb(SolverHandState state, PlayerId heroPlayerId)
     {

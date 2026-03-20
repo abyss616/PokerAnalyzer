@@ -281,6 +281,9 @@ public sealed class PreflopTrajectoryTraverserTests
         public bool IsChanceNode(SolverHandState state) => true;
 
         public SolverHandState Sample(SolverHandState state, Random rng) => state;
+
+        public ChanceSampleResult SampleWithProbability(SolverHandState state, Random rng)
+            => new(state, 1d);
     }
 
     private sealed class CapturingActionSampler : IActionSampler

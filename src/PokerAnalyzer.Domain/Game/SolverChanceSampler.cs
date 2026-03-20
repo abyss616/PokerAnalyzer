@@ -19,6 +19,9 @@ public sealed class SolverChanceSampler : IChanceSampler
     }
 
     public SolverHandState Sample(SolverHandState state, Random rng)
+        => SampleWithProbability(state, rng).NextState;
+
+    public ChanceSampleResult SampleWithProbability(SolverHandState state, Random rng)
     {
         if (state is null)
             throw new ArgumentNullException(nameof(state));
@@ -27,49 +30,63 @@ public sealed class SolverChanceSampler : IChanceSampler
             throw new ArgumentNullException(nameof(rng));
 
         if (!IsChanceNode(state))
-            return state;
+            return new ChanceSampleResult(state, 1d);
 
         var availableDeck = BuildDeckExcludingKnown(state);
+        var samplingProbability = 1d;
 
         var privateCardsByPlayer = new Dictionary<PlayerId, HoleCards>(state.PrivateCardsByPlayer);
-        DealMissingPrivateCards(state, privateCardsByPlayer, availableDeck, rng);
+        samplingProbability *= DealMissingPrivateCards(state, privateCardsByPlayer, availableDeck, rng);
 
         var boardCards = state.BoardCards.ToList();
         var cardsToDeal = GetBoardCardsToDeal(state);
         if (cardsToDeal > 0)
-            DealBoardCards(boardCards, availableDeck, cardsToDeal, rng);
+            samplingProbability *= DealBoardCards(boardCards, availableDeck, cardsToDeal, rng);
 
-        return state.With(
+        var nextState = state.With(
             boardCards: boardCards,
             privateCardsByPlayer: privateCardsByPlayer,
             street: AdvanceStreetForBoardCount(state.Street, cardsToDeal));
+
+        return new ChanceSampleResult(nextState, samplingProbability);
     }
 
-    private static void DealMissingPrivateCards(
+    private static double DealMissingPrivateCards(
         SolverHandState state,
         IDictionary<PlayerId, HoleCards> privateCardsByPlayer,
         IList<Card> availableDeck,
         Random rng)
     {
         var missingPlayers = GetPlayersMissingPrivateCards(state);
+        var probability = 1d;
+
         foreach (var player in missingPlayers)
         {
             if (availableDeck.Count < 2)
                 throw new InvalidOperationException("Not enough cards left in deck to deal private cards.");
 
-            var first = DrawRandomCard(availableDeck, rng);
-            var second = DrawRandomCard(availableDeck, rng);
+            var first = DrawRandomCard(availableDeck, rng, out var firstProbability);
+            var second = DrawRandomCard(availableDeck, rng, out var secondProbability);
+            probability *= firstProbability * secondProbability;
             privateCardsByPlayer[player.PlayerId] = new HoleCards(first, second);
         }
+
+        return probability;
     }
 
-    private static void DealBoardCards(ICollection<Card> boardCards, IList<Card> availableDeck, int cardsToDeal, Random rng)
+    private static double DealBoardCards(ICollection<Card> boardCards, IList<Card> availableDeck, int cardsToDeal, Random rng)
     {
         if (availableDeck.Count < cardsToDeal)
             throw new InvalidOperationException("Not enough cards left in deck to deal board cards.");
 
+        var probability = 1d;
         for (var i = 0; i < cardsToDeal; i++)
-            boardCards.Add(DrawRandomCard(availableDeck, rng));
+        {
+            boardCards.Add(DrawRandomCard(availableDeck, rng, out var cardProbability));
+            probability *= cardProbability;
+        }
+
+        return probability;
     }
 
     private static List<SolverPlayerState> GetPlayersMissingPrivateCards(SolverHandState state)
@@ -171,11 +188,13 @@ public sealed class SolverChanceSampler : IChanceSampler
         };
     }
 
-    private static Card DrawRandomCard(IList<Card> availableDeck, Random rng)
+    private static Card DrawRandomCard(IList<Card> availableDeck, Random rng, out double samplingProbability)
     {
-        var idx = rng.Next(availableDeck.Count);
+        var countBeforeDraw = availableDeck.Count;
+        var idx = rng.Next(countBeforeDraw);
         var card = availableDeck[idx];
         availableDeck.RemoveAt(idx);
+        samplingProbability = countBeforeDraw > 0 ? 1d / countBeforeDraw : 0d;
         return card;
     }
 
