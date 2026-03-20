@@ -57,7 +57,7 @@ public sealed class PreflopLeafDetailsSerializationTests
       "nodeFamily": "FacingRaise",
       "heroPosition": "BTN",
       "villainPosition": "BB",
-      "isHeadsUp": true,
+      "isHeadsUp": false,
       "rangeDescription": "FacingRaise",
       "rangeDetail": "table-range percentile=0.18 source=table-default",
       "foldProbability": 0.51,
@@ -74,7 +74,10 @@ public sealed class PreflopLeafDetailsSerializationTests
       "blockerSummary": "A/K blockers",
       "rationaleSummary": "summary",
       "fallbackReason": null,
-      "displaySummary": "Level-2 equity leaf"
+      "displaySummary": "Level-2 equity leaf",
+      "rootEvaluatorMode": "Multiway",
+      "rootActiveOpponentCount": 2,
+      "leafActiveOpponentCount": 2
     }
   },
   "trace": {
@@ -101,6 +104,10 @@ public sealed class PreflopLeafDetailsSerializationTests
         Assert.NotNull(result);
         Assert.NotNull(result!.SolveMetadata.LeafEvaluationDetails);
         Assert.Equal("AbstractedHeadsUp", result.SolveMetadata.LeafEvaluationDetails!.EvaluatorType);
+        Assert.False(result.SolveMetadata.LeafEvaluationDetails.IsHeadsUp);
+        Assert.Equal("Multiway", result.SolveMetadata.LeafEvaluationDetails.RootEvaluatorMode);
+        Assert.Equal(2, result.SolveMetadata.LeafEvaluationDetails.RootActiveOpponentCount);
+        Assert.Equal(2, result.SolveMetadata.LeafEvaluationDetails.LeafActiveOpponentCount);
         Assert.Equal("Raise", result.SolveMetadata.LeafEvaluationDetails.RootActionType);
         Assert.Equal(0.765, result.SolveMetadata.LeafEvaluationDetails.ImmediateWinComponent);
         Assert.Equal(0.571, result.SolveMetadata.LeafEvaluationDetails.HeroEquity);

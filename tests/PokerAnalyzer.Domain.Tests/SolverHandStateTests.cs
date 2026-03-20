@@ -29,6 +29,30 @@ public class SolverHandStateTests
 
 
     [Fact]
+    public void Validate_MultiwayPreflopState_WithBlindPostsOnly_ReturnsValidResult()
+    {
+        var btn = new SolverPlayerState(PlayerId.New(), 0, Position.BTN, new ChipAmount(100), ChipAmount.Zero, ChipAmount.Zero, false, false);
+        var sb = new SolverPlayerState(PlayerId.New(), 1, Position.SB, new ChipAmount(95), new ChipAmount(5), new ChipAmount(5), false, false);
+        var bb = new SolverPlayerState(PlayerId.New(), 2, Position.BB, new ChipAmount(90), new ChipAmount(10), new ChipAmount(10), false, false);
+
+        var state = CreateState(
+            actingPlayerId: btn.PlayerId,
+            players: [btn, sb, bb],
+            pot: new ChipAmount(15),
+            currentBetSize: new ChipAmount(10),
+            actionHistory:
+            [
+                new SolverActionEntry(sb.PlayerId, ActionType.PostSmallBlind, new ChipAmount(5)),
+                new SolverActionEntry(bb.PlayerId, ActionType.PostBigBlind, new ChipAmount(10))
+            ]);
+
+        var result = state.Validate();
+
+        Assert.True(result.IsValid);
+        Assert.Empty(result.Issues);
+    }
+
+    [Fact]
     public void Validate_ValidState_ReturnsValidResult()
     {
         var p1 = new SolverPlayerState(PlayerId.New(), 0, Position.SB, new ChipAmount(95), new ChipAmount(5), new ChipAmount(5), false, false);

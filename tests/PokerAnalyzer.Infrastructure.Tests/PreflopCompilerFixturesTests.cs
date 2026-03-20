@@ -292,6 +292,29 @@ public sealed class PreflopCompilerFixturesTests
     }
 
     [Fact]
+    public void Validation_MultiwayVsOpen_WithCallerAndPlayersBehind_IsSupported()
+    {
+        var key = new PreflopInfoSetKey(Position.CO, Position.UTG, "VS_OPEN", 1, 2.5m, 100m, 2.5m, null, null, null, null, 18m, "k", ActiveOpponentCount: 5, CallerCount: 1, PlayersBehindCount: 3);
+        var ctx = new PreflopSpotContext(PlayerId.New(), Position.CO, PlayerId.New(), Position.UTG, 1, 2.5m, 2.5m, 0m, 6.5m, 100m, ActiveOpponentCount: 5, CallerCount: 1, PlayersBehindCount: 3);
+
+        var result = PreflopKeyValidator.Validate(key, ctx);
+
+        Assert.True(result.IsValid);
+    }
+
+    [Fact]
+    public void Validation_MismatchedMultiwayTopology_IsUnsupported()
+    {
+        var key = new PreflopInfoSetKey(Position.CO, Position.UTG, "VS_OPEN", 1, 2.5m, 100m, 2.5m, null, null, null, null, 18m, "k", ActiveOpponentCount: 5, CallerCount: 1, PlayersBehindCount: 3);
+        var ctx = new PreflopSpotContext(PlayerId.New(), Position.CO, PlayerId.New(), Position.UTG, 1, 2.5m, 2.5m, 0m, 6.5m, 100m, ActiveOpponentCount: 4, CallerCount: 1, PlayersBehindCount: 2);
+
+        var result = PreflopKeyValidator.Validate(key, ctx);
+
+        Assert.False(result.IsValid);
+        Assert.Contains("active opponent count mismatch", result.Reason, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public void Validation_LimpOption_With_Zero_ToCall_IsSupported()
     {
         var key = new PreflopInfoSetKey(Position.BB, Position.BB, "LIMP_OPTION", 0, 0m, 100m, null, null, null, null, null, 18m, "k");
