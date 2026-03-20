@@ -100,7 +100,7 @@ public sealed class LivePreflopSolveService : IPreflopStrategyProvider
             bestActionLeafDetails,
             explanations,
             diagnostics,
-            $"Average frequencies come from {(request.UsePersistentTrainingState ? "cumulative average strategy" : $"mean frequencies across {FreshSolveRunCount} x {FreshSolveIterationsPerRun} independent stochastic fresh-run iterations")} ; current-policy frequencies come from {(request.UsePersistentTrainingState ? "regret matching on cumulative persistent CFR+ regrets" : $"mean regret-matching policies across {FreshSolveRunCount} x {FreshSolveIterationsPerRun} fresh-run regrets")} and action-value-based stochastic fallback when all regrets are non-positive; regrets are {(request.UsePersistentTrainingState ? "cumulative counterfactual regrets" : $"mean cumulative counterfactual CFR+ regrets across {FreshSolveRunCount} x {FreshSolveIterationsPerRun} fresh-run iterations")}. Profile={profileProvider.ActiveProfileName}.",
+            $"Average frequencies come from {(request.UsePersistentTrainingState ? "cumulative average strategy" : $"mean frequencies across {FreshSolveRunCount} x {FreshSolveIterationsPerRun} independent stochastic fresh-run iterations")} ; current recommendation-policy frequencies come from {(request.UsePersistentTrainingState ? "regret matching on cumulative persistent CFR+ regrets" : $"mean regret-matching recommendation policies across {FreshSolveRunCount} x {FreshSolveIterationsPerRun} fresh-run regrets")} and action-value-based stochastic fallback when all regrets are non-positive. Solver training itself uses positive-regret matching with uniform fallback when all regrets are non-positive; regrets are {(request.UsePersistentTrainingState ? "cumulative counterfactual regrets" : $"mean cumulative counterfactual CFR+ regrets across {FreshSolveRunCount} x {FreshSolveIterationsPerRun} fresh-run iterations")}. Profile={profileProvider.ActiveProfileName}.",
             bestMargin,
             separation));
     }
@@ -117,7 +117,7 @@ public sealed class LivePreflopSolveService : IPreflopStrategyProvider
 
         var trainingResult = trainer.RunTraining(PersistentTrainingOptions, ct);
         var averagePolicy = _averageStrategyStore.GetAveragePolicy(request.SolverKey, request.LegalActions);
-        _ = new RegretMatchingPolicyProvider(_regretStore, _actionValueStore).TryGetPolicy(request.SolverKey, request.LegalActions, out var currentPolicy);
+        _ = new RecommendationRegretMatchingPolicyProvider(_regretStore, _actionValueStore).TryGetPolicy(request.SolverKey, request.LegalActions, out var currentPolicy);
         currentPolicy ??= UniformPolicyBuilder.Build(request.LegalActions);
 
         var regrets = request.LegalActions.ToDictionary(action => action, action => _regretStore.Get(request.SolverKey, action));
@@ -260,7 +260,7 @@ public sealed class LivePreflopSolveService : IPreflopStrategyProvider
 
         var trainingResult = trainer.RunTraining(FreshSolveTrainingOptions, ct, randomSeed: randomSeed);
         var averagePolicy = runAverageStore.GetAveragePolicy(request.SolverKey, request.LegalActions);
-        _ = new RegretMatchingPolicyProvider(runRegretStore, runActionValueStore).TryGetPolicy(request.SolverKey, request.LegalActions, out var currentPolicy);
+        _ = new RecommendationRegretMatchingPolicyProvider(runRegretStore, runActionValueStore).TryGetPolicy(request.SolverKey, request.LegalActions, out var currentPolicy);
         currentPolicy ??= UniformPolicyBuilder.Build(request.LegalActions);
 
         var regrets = request.LegalActions.ToDictionary(action => action, action => runRegretStore.Get(request.SolverKey, action));
