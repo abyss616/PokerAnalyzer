@@ -135,7 +135,7 @@ public sealed class PreflopHandAnalysisService : IPreflopHandAnalysisService
                 snapshotNode.LegalActions,
                 snapshotNode.CanonicalKey,
                 snapshotNode.SolverKey,
-                BuildActualHeroActionKey(heroAction, blindInfo.Value.BigBlind, snapshotNode.ToCallBb));
+                BuildActualHeroActionKey(heroAction, blindInfo.Value.BigBlind, snapshotNode.ToCallBb, snapshotNode.LegalActions));
 
             snapshots.Add(new DecisionSnapshotContext(i + 1, request, snapshot));
             previousHeroDecisionIndex = decisionActionIndex;
@@ -912,10 +912,10 @@ public sealed class PreflopHandAnalysisService : IPreflopHandAnalysisService
         return extractor.Select(a => new PreflopNodeActionDto(a.PlayerId.Value, a.Type, a.AmountBb)).ToList();
     }
 
-    private static string BuildActualHeroActionKey(HandAction action, decimal bb, decimal toCallBb)
+    private static string BuildActualHeroActionKey(HandAction action, decimal bb, decimal toCallBb, IReadOnlyList<PreflopNodeLegalActionDto> legalActions)
     {
         var amountBb = bb > 0 ? decimal.Round((action.ToAmount ?? action.Amount ?? 0m) / bb, 2) : 0m;
-        return action.Type switch
+        var rawActionKey = action.Type switch
         {
             ActionType.Fold => "Fold",
             ActionType.Check => "Check",
@@ -925,6 +925,35 @@ public sealed class PreflopHandAnalysisService : IPreflopHandAnalysisService
             ActionType.AllIn => $"Raise:{amountBb:0.##}",
             _ => action.Type.ToString()
         };
+
+        return CanonicalizeActionKey(rawActionKey, legalActions);
+    }
+
+    private static string CanonicalizeActionKey(string actionKey, IReadOnlyList<PreflopNodeLegalActionDto> legalActions)
+    {
+        if (legalActions.Any(action => string.Equals(action.ActionKey, actionKey, StringComparison.Ordinal)))
+            return actionKey;
+
+        if (!actionKey.StartsWith("Raise:", StringComparison.Ordinal)
+            || !decimal.TryParse(actionKey["Raise:".Length..], NumberStyles.Number, CultureInfo.InvariantCulture, out var actualRaiseBb))
+        {
+            return actionKey;
+        }
+
+        var raiseBuckets = legalActions
+            .Where(action => action.ActionType == ActionType.Raise && action.SizeBb.HasValue)
+            .OrderBy(action => action.SizeBb)
+            .ToArray();
+
+        if (raiseBuckets.Length == 0)
+            return actionKey;
+
+        var nearestBucket = raiseBuckets
+            .OrderBy(action => Math.Abs((action.SizeBb ?? 0m) - actualRaiseBb))
+            .ThenByDescending(action => action.SizeBb)
+            .First();
+
+        return nearestBucket.ActionKey;
     }
 
     private static bool HasValidPreflopBlindOrdering(IReadOnlyList<HandAction> orderedActions)

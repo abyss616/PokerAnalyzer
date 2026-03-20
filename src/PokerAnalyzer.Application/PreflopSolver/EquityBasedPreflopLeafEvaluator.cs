@@ -51,6 +51,15 @@ public sealed class EquityBasedPreflopLeafEvaluator : IPreflopLeafEvaluator
         Multiway = 2
     }
 
+    private enum FacingRaiseHandTier : byte
+    {
+        Marginal = 0,
+        FlatContinue = 1,
+        Bluff3Bet = 2,
+        StrongContinue = 3,
+        Premium = 4
+    }
+
     public EquityBasedPreflopLeafEvaluator(
         IOpponentRangeProvider rangeProvider,
         IPreflopLeafEvaluator fallbackEvaluator,
@@ -167,6 +176,7 @@ public sealed class EquityBasedPreflopLeafEvaluator : IPreflopLeafEvaluator
             continueBranchUtility = 0d;
 
         var handClass = baseEval.Details?.HandClass ?? ClassifyHand(context.HeroCards);
+        var handTier = ClassifyFacingRaiseHandTier(context.HeroCards);
 
         var bigBlind = Math.Max(1d, context.RootState.Config.BigBlind.Value);
         var potBb = context.RootState.Pot.Value / bigBlind;
@@ -198,7 +208,8 @@ public sealed class EquityBasedPreflopLeafEvaluator : IPreflopLeafEvaluator
             var squeezeRiskPenalty = GetFacingRaiseSqueezeRiskPenalty(facingContext);
             var positionalPenalty = facingContext.IsInPositionVsOpener ? 0d : 0.01d;
             var marginalCallPenalty = GetFacingRaiseMarginalCallPenalty(context.HeroCards, handClass, facingContext, activeProfile);
-            heroUtility = continueBranchUtility - squeezeRiskPenalty - positionalPenalty - marginalCallPenalty;
+            var passivePenalty = GetFacingRaisePassiveContinuePenalty(handTier, context.HeroCards, facingContext);
+            heroUtility = continueBranchUtility - squeezeRiskPenalty - positionalPenalty - marginalCallPenalty - passivePenalty;
             continueComponent = heroUtility;
         }
         else if (actionType == ActionType.Raise || actionType == ActionType.AllIn)
@@ -210,8 +221,9 @@ public sealed class EquityBasedPreflopLeafEvaluator : IPreflopLeafEvaluator
             var leveragePenalty = isJamAction ? 0.12d + (0.02d * facingContext.PlayersLeftBehindHero) : 0.05d + (0.01d * facingContext.PlayersLeftBehindHero);
             var realizationPenalty = continueProbability * GetFacingRaiseRealizationPenalty(context.HeroCards, handClass, facingContext, activeProfile);
             var weakAceRaiseSurcharge = GetFacingRaiseWeakOffsuitAceRaiseSurcharge(context.HeroCards, facingContext, isJamAction);
-            var premiumAggressionAdjustment = GetFacingRaisePremiumAggressionAdjustment(context.HeroCards, facingContext, isJamAction);
-            heroUtility = immediateComponent + continueComponent - riskPenalty - leveragePenalty - realizationPenalty - weakAceRaiseSurcharge + premiumAggressionAdjustment;
+            var aggressionAdjustment = GetFacingRaiseAggressionAdjustment(handTier, context.HeroCards, facingContext, actionSizeBb, isJamAction);
+            var sizePressureAdjustment = GetFacingRaiseSizePressureAdjustment(handTier, facingContext, actionSizeBb, isJamAction);
+            heroUtility = immediateComponent + continueComponent - riskPenalty - leveragePenalty - realizationPenalty - weakAceRaiseSurcharge + aggressionAdjustment + sizePressureAdjustment;
         }
 
         var utility = baseEval.UtilityByPlayer.ToDictionary(kvp => kvp.Key, kvp => kvp.Value);
@@ -234,7 +246,7 @@ public sealed class EquityBasedPreflopLeafEvaluator : IPreflopLeafEvaluator
                 DisplaySummary = $"{baseEval.Details!.DisplaySummary} Action={actionLabel}, EV={heroUtility:0.000}, fold={allFold:0.000}, continue={continueProbability:0.000}, class={facingContext.StructuralClass}, profile={_populationProfileProvider.ActiveProfileName}.",
                 ActivePopulationProfile = _populationProfileProvider.ActiveProfileName,
                 VillainPosition = opener.Position.ToString(),
-                RationaleSummary = $"Facing-raise generalized evaluator ({facingContext.StructuralClass}) models hero={facingContext.HeroPosition}, opener={facingContext.OpenerPosition}, IP={facingContext.IsInPositionVsOpener}, behind={facingContext.PlayersLeftBehindHero}, eff={facingContext.EffectiveStackBb:0.##}bb under {_populationProfileProvider.ActiveProfileName}."
+                RationaleSummary = $"Facing-raise generalized evaluator ({facingContext.StructuralClass}) models hero={facingContext.HeroPosition}, opener={facingContext.OpenerPosition}, IP={facingContext.IsInPositionVsOpener}, behind={facingContext.PlayersLeftBehindHero}, eff={facingContext.EffectiveStackBb:0.##}bb under {_populationProfileProvider.ActiveProfileName}; non-jam raise sizes get distinct denial/efficiency credit and SB/BB passive continues are penalized more realistically."
             }
         };
 
@@ -1013,6 +1025,25 @@ public sealed class EquityBasedPreflopLeafEvaluator : IPreflopLeafEvaluator
         return suited ? "Suited connector/gapper" : "Offsuit connector/gapper";
     }
 
+    private static FacingRaiseHandTier ClassifyFacingRaiseHandTier(HoleCards cards)
+    {
+        var handLabel = ToHandLabel(cards);
+        return handLabel switch
+        {
+            "AA" or "KK" or "QQ" or "AKs" => FacingRaiseHandTier.Premium,
+            "JJ" or "TT" or "AQs" or "AJs" or "KQs" => FacingRaiseHandTier.StrongContinue,
+            "A5s" or "A4s" or "K5s" or "K4s" or "Q5s" or "Q4s" => FacingRaiseHandTier.Bluff3Bet,
+            "99" or "88" or "77" or "66" or "55" or "44" or "33" or "22"
+                or "ATs" or "KJs" or "QJs" or "JTs" or "T9s" or "98s" or "87s" or "76s" or "65s" or "54s"
+                or "AQo" or "KQo" => FacingRaiseHandTier.FlatContinue,
+            _ => string.Equals(ClassifyHand(cards), "Suited broadway", StringComparison.Ordinal)
+                || string.Equals(ClassifyHand(cards), "Suited connector/gapper", StringComparison.Ordinal)
+                || string.Equals(ClassifyHand(cards), "Pair", StringComparison.Ordinal)
+                    ? FacingRaiseHandTier.FlatContinue
+                    : FacingRaiseHandTier.Marginal
+        };
+    }
+
 
     private static double GetBtnUnopenedRealizationPenalty(string handClass, PreflopPopulationProfile profile)
     {
@@ -1061,7 +1092,8 @@ public sealed class EquityBasedPreflopLeafEvaluator : IPreflopLeafEvaluator
             isHeadsUpVsOpener,
             isInPosition,
             (decimal)context.RootEffectiveStackBb,
-            structuralClass);
+            structuralClass,
+            UseLargerSizingReference: !isInPosition || (context.HeroPosition is Position.SB or Position.BB && openerPosition is Position.CO or Position.BTN));
     }
 
     private SolverPlayerState? ResolveFacingRaiseOpener(PreflopLeafEvaluationContext context)
@@ -1245,28 +1277,53 @@ public sealed class EquityBasedPreflopLeafEvaluator : IPreflopLeafEvaluator
         return baseSurcharge;
     }
 
-    private static double GetFacingRaisePremiumAggressionAdjustment(HoleCards heroCards, FacingRaiseStructuralContext context, bool isJamAction)
+    // VS_OPEN evaluator summary:
+    // - 9bb/11bb or 8bb/10bb raises are no longer cosmetic labels.
+    // - larger non-jam sizes receive extra denial / isolation credit, especially OOP blind defense.
+    // - smaller non-jam sizes retain some efficiency through lower risk cost, but concede pressure.
+    // - premium/strong hands get more initiative/value credit, while SB flats OOP pay a larger realism penalty.
+    private static double GetFacingRaiseAggressionAdjustment(FacingRaiseHandTier handTier, HoleCards heroCards, FacingRaiseStructuralContext context, double actionSizeBb, bool isJamAction)
     {
-        var ranks = new[] { heroCards.First.Rank, heroCards.Second.Rank }.OrderByDescending(ToRankValue).ToArray();
-        var high = ToRankValue(ranks[0]);
-        var low = ToRankValue(ranks[1]);
-        var suited = heroCards.First.Suit == heroCards.Second.Suit;
+        var baseBoost = handTier switch
+        {
+            FacingRaiseHandTier.Premium => 0.22d,
+            FacingRaiseHandTier.StrongContinue => 0.09d,
+            FacingRaiseHandTier.Bluff3Bet => 0.04d,
+            FacingRaiseHandTier.FlatContinue => -0.01d,
+            _ => HasAceOrKingBlocker(heroCards) ? 0.01d : -0.03d
+        };
 
-        var baseBoost = 0d;
-        if (high == low && high is >= 13)
-            baseBoost = 0.23d; // AA/KK
-        else if ((high == low && high == 12) || (high == 14 && low == 13))
-            baseBoost = 0.16d; // QQ/AK
-        else if ((high == low && high == 11) || (high == 14 && low == 12 && suited) || (high == 14 && low == 11 && suited))
-            baseBoost = 0.08d; // JJ/AQs/AJs
+        var positionScale = context.IsInPositionVsOpener ? 1d : 1.08d;
+        var behindScale = Math.Max(0.82d, 1d - (0.05d * context.PlayersLeftBehindHero));
+        var jamScale = isJamAction ? 0.20d : 1d;
+        var sizeReference = context.UseLargerSizingReference ? 9d : 8d;
+        var sizeLift = isJamAction ? 0d : 0.008d * Math.Max(0d, actionSizeBb - sizeReference);
+        return (baseBoost * positionScale * behindScale * jamScale) + sizeLift;
+    }
 
-        if (baseBoost <= 0d)
+    private static double GetFacingRaiseSizePressureAdjustment(FacingRaiseHandTier handTier, FacingRaiseStructuralContext context, double actionSizeBb, bool isJamAction)
+    {
+        if (isJamAction)
+            return handTier == FacingRaiseHandTier.Premium ? 0.015d : 0d;
+
+        var sizeReference = context.UseLargerSizingReference ? 9d : 8d;
+        var pressureBb = Math.Max(0d, actionSizeBb - sizeReference);
+        if (pressureBb <= 0d)
             return 0d;
 
-        var positionScale = context.IsInPositionVsOpener ? 1d : 0.90d;
-        var behindScale = Math.Max(0.85d, 1d - (0.05d * context.PlayersLeftBehindHero));
-        var jamScale = isJamAction ? 0.15d : 1d;
-        return baseBoost * positionScale * behindScale * jamScale;
+        var tierFactor = handTier switch
+        {
+            FacingRaiseHandTier.Premium => 0.030d,
+            FacingRaiseHandTier.StrongContinue => 0.020d,
+            FacingRaiseHandTier.Bluff3Bet => 0.018d,
+            FacingRaiseHandTier.FlatContinue => 0.008d,
+            _ => 0.004d
+        };
+
+        var oopBonus = context.IsInPositionVsOpener ? 0d : 0.012d;
+        var lateOpenBonus = context.StructuralClass == "BlindDefenseVsLateOpen" ? 0.010d : 0d;
+        var crowdControlBonus = 0.004d * Math.Min(2, context.PlayersLeftBehindHero);
+        return pressureBb * (tierFactor + oopBonus + lateOpenBonus + crowdControlBonus);
     }
 
     private static double GetFacingRaiseRealizationPenalty(HoleCards heroCards, string handClass, FacingRaiseStructuralContext context, PreflopPopulationProfile profile)
@@ -1316,6 +1373,31 @@ public sealed class EquityBasedPreflopLeafEvaluator : IPreflopLeafEvaluator
         var low = ToRankValue(ranks[1]);
         var suited = heroCards.First.Suit == heroCards.Second.Suit;
         return !suited && high <= 10 && low <= 6;
+    }
+
+    private static double GetFacingRaisePassiveContinuePenalty(FacingRaiseHandTier handTier, HoleCards heroCards, FacingRaiseStructuralContext context)
+    {
+        var blindFlatPenalty = context.HeroPosition switch
+        {
+            Position.SB => context.IsInPositionVsOpener ? 0.012d : 0.050d,
+            Position.BB => context.IsInPositionVsOpener ? 0.006d : 0.026d,
+            _ => context.IsInPositionVsOpener ? 0d : 0.012d
+        };
+
+        var tierPenalty = handTier switch
+        {
+            FacingRaiseHandTier.Premium => 0.040d,
+            FacingRaiseHandTier.StrongContinue => 0.018d,
+            FacingRaiseHandTier.Bluff3Bet => 0.010d,
+            FacingRaiseHandTier.FlatContinue => 0.004d,
+            _ => HasAceOrKingBlocker(heroCards) ? 0.006d : 0.010d
+        };
+
+        var lateOpenOopPenalty = !context.IsInPositionVsOpener && context.StructuralClass == "BlindDefenseVsLateOpen"
+            ? 0.012d
+            : 0d;
+
+        return blindFlatPenalty + tierPenalty + lateOpenOopPenalty;
     }
 
     private static double GetFacingRaiseMarginalCallPenalty(HoleCards heroCards, string handClass, FacingRaiseStructuralContext context, PreflopPopulationProfile profile)
@@ -1550,7 +1632,8 @@ public sealed class EquityBasedPreflopLeafEvaluator : IPreflopLeafEvaluator
         bool IsHeadsUpVsOpener,
         bool IsInPositionVsOpener,
         decimal EffectiveStackBb,
-        string StructuralClass);
+        string StructuralClass,
+        bool UseLargerSizingReference);
 
     private static bool IsLimper(SolverPlayerState player)
         => player.Position is not Position.SB and not Position.BB;

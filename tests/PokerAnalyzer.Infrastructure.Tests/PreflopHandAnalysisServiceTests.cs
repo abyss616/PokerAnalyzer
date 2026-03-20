@@ -63,18 +63,18 @@ public sealed class PreflopHandAnalysisServiceTests
         var strategyProvider = new TestStrategyProvider(new Dictionary<string, decimal>
         {
             ["Fold"] = 0.10m,
-            ["Call:1.5"] = 0.20m,
-            ["Raise:4"] = 0.30m,
-            ["Raise:9"] = 0.40m
+            ["Call:2.5"] = 0.20m,
+            ["Raise:8"] = 0.30m,
+            ["Raise:10"] = 0.40m
         });
 
         var result = await BuildService(hand, strategyProvider).QueryPreflopNodeByHandNumberAsync(1, CancellationToken.None);
 
         Assert.NotNull(result);
-        Assert.Contains(result!.LegalActions, x => x.ActionKey == "Raise:4");
-        Assert.Contains(result.LegalActions, x => x.ActionKey == "Raise:9");
-        Assert.Contains(result.Strategy, x => x.ActionKey == "Raise:4");
-        Assert.Contains(result.Strategy, x => x.ActionKey == "Raise:9");
+        Assert.Contains(result!.LegalActions, x => x.ActionKey == "Raise:8");
+        Assert.Contains(result.LegalActions, x => x.ActionKey == "Raise:10");
+        Assert.Contains(result.Strategy, x => x.ActionKey == "Raise:8");
+        Assert.Contains(result.Strategy, x => x.ActionKey == "Raise:10");
     }
 
     [Fact]
@@ -83,10 +83,11 @@ public sealed class PreflopHandAnalysisServiceTests
         var hand = BuildStandardHeroFacingOpenHand();
         var strategyProvider = new TestStrategyProvider(new Dictionary<string, decimal>
         {
-            ["Fold"] = 0.25m,
-            ["Call:2.5"] = 0.25m,
-            ["Raise:9"] = 0.25m,
-            ["Raise:100"] = 0.25m
+            ["Fold"] = 0.20m,
+            ["Call:2.5"] = 0.20m,
+            ["Raise:8"] = 0.25m,
+            ["Raise:10"] = 0.20m,
+            ["Raise:100"] = 0.15m
         });
 
         var result = await BuildService(hand, strategyProvider).QueryPreflopNodeByHandNumberAsync(1, CancellationToken.None);
@@ -96,12 +97,52 @@ public sealed class PreflopHandAnalysisServiceTests
         Assert.Equal("VS_OPEN", result.HistorySignature);
 
         var actionKeys = result.LegalActions.Select(x => x.ActionKey).ToArray();
-        Assert.Equal(new[] { "Fold", "Call:2.5", "Raise:9", "Raise:100" }, actionKeys);
+        Assert.Equal(new[] { "Fold", "Call:2.5", "Raise:8", "Raise:10", "Raise:100" }, actionKeys);
 
         Assert.Contains(result.Strategy, x => x.ActionKey == "Call:2.5");
-        Assert.Contains(result.Strategy, x => x.ActionKey == "Raise:9");
+        Assert.Contains(result.Strategy, x => x.ActionKey == "Raise:8");
+        Assert.Contains(result.Strategy, x => x.ActionKey == "Raise:10");
         Assert.Contains(result.Strategy, x => x.ActionKey == "Raise:100");
         Assert.DoesNotContain(result.LegalActions, x => x.ActionKey == "Raise:4");
+    }
+
+    [Fact]
+    public async Task QueryPreflopNodeByHandNumberAsync_CanonicalizesActualVsOpenRaiseToNearestSupportedBucket()
+    {
+        var hand = BuildStandardHeroFacingOpenHand();
+        hand.Actions =
+        [
+            new HandAction { SequenceNumber = 0, Street = Street.Preflop, Player = "SB", Type = ActionType.PostSmallBlind, Amount = 0.5m },
+            new HandAction { SequenceNumber = 1, Street = Street.Preflop, Player = "BB", Type = ActionType.PostBigBlind, Amount = 1m },
+            new HandAction { SequenceNumber = 2, Street = Street.Preflop, Player = "Villain", Type = ActionType.Raise, Amount = 2.5m },
+            new HandAction { SequenceNumber = 3, Street = Street.Preflop, Player = "Hero", Type = ActionType.Raise, ToAmount = 10m }
+        ];
+
+        var result = await BuildService(hand).QueryPreflopNodeByHandNumberAsync(1, CancellationToken.None);
+
+        Assert.NotNull(result);
+        var snapshot = Assert.Single(result!.DecisionSnapshots!);
+        Assert.Equal("Raise:10", snapshot.ActualHeroAction);
+    }
+
+    [Fact]
+    public async Task QueryPreflopNodeByHandNumberAsync_CanonicalizesMidpointVsOpenRaiseUpwardForStableBucketResolution()
+    {
+        var hand = BuildSbFacingCoOpenHand();
+        hand.Actions =
+        [
+            new HandAction { SequenceNumber = 0, Street = Street.Preflop, Player = "SB", Type = ActionType.PostSmallBlind, Amount = 0.5m },
+            new HandAction { SequenceNumber = 1, Street = Street.Preflop, Player = "BB", Type = ActionType.PostBigBlind, Amount = 1m },
+            new HandAction { SequenceNumber = 2, Street = Street.Preflop, Player = "CO", Type = ActionType.Raise, Amount = 3m },
+            new HandAction { SequenceNumber = 3, Street = Street.Preflop, Player = "Hero", Type = ActionType.Raise, ToAmount = 10m }
+        ];
+
+        var result = await BuildService(hand).QueryPreflopNodeByHandNumberAsync(1, CancellationToken.None);
+
+        Assert.NotNull(result);
+        var snapshot = Assert.Single(result!.DecisionSnapshots!);
+        Assert.Equal(new[] { "Fold", "Call:2.5", "Raise:9", "Raise:11", "Raise:100" }, snapshot.LegalActions.Select(x => x.ActionKey).ToArray());
+        Assert.Equal("Raise:11", snapshot.ActualHeroAction);
     }
 
     [Fact]
@@ -296,14 +337,14 @@ public sealed class PreflopHandAnalysisServiceTests
             new Dictionary<string, decimal>
             {
                 ["Fold"] = 0.70m,
-                ["Call:1.5"] = 0.20m,
-                ["Raise:4"] = 0.10m
+                ["Call:2.5"] = 0.20m,
+                ["Raise:8"] = 0.10m
             },
             foldDetails,
             [
                 new PreflopActionExplanationDto("Fold", foldDetails),
-                new PreflopActionExplanationDto("Call:1.5", callDetails),
-                new PreflopActionExplanationDto("Raise:4", callDetails with { RootActionType = "Raise" })
+                new PreflopActionExplanationDto("Call:2.5", callDetails),
+                new PreflopActionExplanationDto("Raise:8", callDetails with { RootActionType = "Raise" })
             ]);
 
         var result = await BuildService(hand, strategyProvider).QueryPreflopNodeByHandNumberAsync(1, CancellationToken.None);
@@ -382,6 +423,29 @@ public sealed class PreflopHandAnalysisServiceTests
                 new HandAction { Street = Street.Preflop, Player = "SB", Type = ActionType.PostSmallBlind, Amount = 0.5m },
                 new HandAction { Street = Street.Preflop, Player = "BB", Type = ActionType.PostBigBlind, Amount = 1m },
                 new HandAction { Street = Street.Preflop, Player = "Villain", Type = ActionType.Raise, Amount = 2.5m },
+                new HandAction { Street = Street.Preflop, Player = "Hero", Type = ActionType.Call, Amount = 2.5m }
+            ]
+        });
+    }
+
+    private static Hand BuildSbFacingCoOpenHand()
+    {
+        return WithSequenceNumbers(new Hand
+        {
+            GameCode = 9012,
+            Players =
+            [
+                new HandPlayer { Id = Guid.NewGuid(), Name = "CO", Seat = 4, StackStart = 100m, IsHero = false },
+                new HandPlayer { Id = Guid.NewGuid(), Name = "BTN", Seat = 5, StackStart = 100m, IsHero = false },
+                new HandPlayer { Id = Guid.NewGuid(), Name = "Hero", Seat = 6, StackStart = 100m, IsHero = true },
+                new HandPlayer { Id = Guid.NewGuid(), Name = "BB", Seat = 7, StackStart = 100m, IsHero = false }
+            ],
+            Actions =
+            [
+                new HandAction { Street = Street.Preflop, Player = "Hero", Type = ActionType.PostSmallBlind, Amount = 0.5m },
+                new HandAction { Street = Street.Preflop, Player = "BB", Type = ActionType.PostBigBlind, Amount = 1m },
+                new HandAction { Street = Street.Preflop, Player = "CO", Type = ActionType.Raise, Amount = 2.5m },
+                new HandAction { Street = Street.Preflop, Player = "BTN", Type = ActionType.Fold, Amount = 0m },
                 new HandAction { Street = Street.Preflop, Player = "Hero", Type = ActionType.Call, Amount = 2.5m }
             ]
         });

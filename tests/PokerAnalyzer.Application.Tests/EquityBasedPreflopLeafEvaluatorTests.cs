@@ -683,6 +683,43 @@ public sealed class EquityBasedPreflopLeafEvaluatorTests
     }
 
     [Fact]
+    public void Evaluate_FacingRaise_MicroStakes_SbVsCo_NewRaiseSizesProduceDistinctEvs()
+    {
+        var microEvaluator = new EquityBasedPreflopLeafEvaluator(
+            new TableDrivenOpponentRangeProvider(),
+            new HeuristicPreflopLeafEvaluator(),
+            samplesPerMatchup: 120,
+            populationProfileProvider: new NamedPreflopPopulationProfileProvider(PreflopPopulationProfiles.MicroStakesLoosePassiveName));
+
+        var raiseNine = microEvaluator.Evaluate(CreateFacingRaiseProfileContext(Position.SB, Position.CO, HoleCards.Parse("AsKs"), ActionType.Raise, new ChipAmount(900)));
+        var raiseEleven = microEvaluator.Evaluate(CreateFacingRaiseProfileContext(Position.SB, Position.CO, HoleCards.Parse("AsKs"), ActionType.Raise, new ChipAmount(1100)));
+
+        Assert.NotNull(raiseNine.Details);
+        Assert.NotNull(raiseEleven.Details);
+        Assert.NotEqual(raiseNine.Details!.HeroUtility, raiseEleven.Details!.HeroUtility);
+        Assert.True(raiseEleven.Details.FoldProbability > raiseNine.Details.FoldProbability);
+        Assert.True(raiseEleven.Details.ImmediateWinComponent > raiseNine.Details.ImmediateWinComponent);
+    }
+
+    [Fact]
+    public void Evaluate_FacingRaise_MicroStakes_BtnVsCo_IpRaiseBucketsRemainDistinct()
+    {
+        var microEvaluator = new EquityBasedPreflopLeafEvaluator(
+            new TableDrivenOpponentRangeProvider(),
+            new HeuristicPreflopLeafEvaluator(),
+            samplesPerMatchup: 120,
+            populationProfileProvider: new NamedPreflopPopulationProfileProvider(PreflopPopulationProfiles.MicroStakesLoosePassiveName));
+
+        var raiseEight = microEvaluator.Evaluate(CreateFacingRaiseProfileContext(Position.BTN, Position.CO, HoleCards.Parse("A5s"), ActionType.Raise, new ChipAmount(800)));
+        var raiseTen = microEvaluator.Evaluate(CreateFacingRaiseProfileContext(Position.BTN, Position.CO, HoleCards.Parse("A5s"), ActionType.Raise, new ChipAmount(1000)));
+
+        Assert.NotNull(raiseEight.Details);
+        Assert.NotNull(raiseTen.Details);
+        Assert.NotEqual(raiseEight.Details!.HeroUtility, raiseTen.Details!.HeroUtility);
+        Assert.True(raiseTen.Details.FoldProbability > raiseEight.Details.FoldProbability);
+    }
+
+    [Fact]
     public void Evaluate_FacingRaise_MicroStakes_SbVsCo_Kk_GetsClearThreeBetIncentive()
     {
         var microEvaluator = new EquityBasedPreflopLeafEvaluator(
@@ -700,6 +737,49 @@ public sealed class EquityBasedPreflopLeafEvaluatorTests
         Assert.NotNull(jam.Details);
         Assert.True(raise.Details!.HeroUtility > call.Details!.HeroUtility);
         Assert.True(raise.Details.HeroUtility > jam.Details!.HeroUtility);
+    }
+
+    [Fact]
+    public void Evaluate_FacingRaise_MicroStakes_SbVsCo_PremiumsSeparateFromMediumFlatContinues()
+    {
+        var microEvaluator = new EquityBasedPreflopLeafEvaluator(
+            new TableDrivenOpponentRangeProvider(),
+            new HeuristicPreflopLeafEvaluator(),
+            samplesPerMatchup: 120,
+            populationProfileProvider: new NamedPreflopPopulationProfileProvider(PreflopPopulationProfiles.MicroStakesLoosePassiveName));
+
+        var kkCall = microEvaluator.Evaluate(CreateFacingRaiseProfileContext(Position.SB, Position.CO, HoleCards.Parse("KcKd"), ActionType.Call));
+        var kkRaiseEleven = microEvaluator.Evaluate(CreateFacingRaiseProfileContext(Position.SB, Position.CO, HoleCards.Parse("KcKd"), ActionType.Raise, new ChipAmount(1100)));
+        var kjsCall = microEvaluator.Evaluate(CreateFacingRaiseProfileContext(Position.SB, Position.CO, HoleCards.Parse("KsJs"), ActionType.Call));
+        var kjsRaiseEleven = microEvaluator.Evaluate(CreateFacingRaiseProfileContext(Position.SB, Position.CO, HoleCards.Parse("KsJs"), ActionType.Raise, new ChipAmount(1100)));
+
+        Assert.NotNull(kkCall.Details);
+        Assert.NotNull(kkRaiseEleven.Details);
+        Assert.NotNull(kjsCall.Details);
+        Assert.NotNull(kjsRaiseEleven.Details);
+        Assert.True(kkRaiseEleven.Details!.HeroUtility > kkCall.Details!.HeroUtility);
+        Assert.True(kjsRaiseEleven.Details!.HeroUtility <= kjsCall.Details!.HeroUtility);
+        Assert.True((kkRaiseEleven.Details.HeroUtility - kkCall.Details.HeroUtility) > (kjsRaiseEleven.Details.HeroUtility - kjsCall.Details.HeroUtility));
+    }
+
+    [Fact]
+    public void Evaluate_FacingRaise_MicroStakes_SbVsCo_Kk_AtEightyBb_HasMaterialThreeBetEdge()
+    {
+        var microEvaluator = new EquityBasedPreflopLeafEvaluator(
+            new TableDrivenOpponentRangeProvider(),
+            new HeuristicPreflopLeafEvaluator(),
+            samplesPerMatchup: 120,
+            populationProfileProvider: new NamedPreflopPopulationProfileProvider(PreflopPopulationProfiles.MicroStakesLoosePassiveName));
+
+        var call = microEvaluator.Evaluate(CreateFacingRaiseProfileContext(Position.SB, Position.CO, HoleCards.Parse("KcKd"), ActionType.Call, effectiveStackBb: 80m));
+        var raiseNine = microEvaluator.Evaluate(CreateFacingRaiseProfileContext(Position.SB, Position.CO, HoleCards.Parse("KcKd"), ActionType.Raise, new ChipAmount(900), effectiveStackBb: 80m));
+        var raiseEleven = microEvaluator.Evaluate(CreateFacingRaiseProfileContext(Position.SB, Position.CO, HoleCards.Parse("KcKd"), ActionType.Raise, new ChipAmount(1100), effectiveStackBb: 80m));
+
+        Assert.NotNull(call.Details);
+        Assert.NotNull(raiseNine.Details);
+        Assert.NotNull(raiseEleven.Details);
+        Assert.True(raiseNine.Details!.HeroUtility > call.Details!.HeroUtility + 0.03d);
+        Assert.True(raiseEleven.Details!.HeroUtility > call.Details!.HeroUtility + 0.03d);
     }
 
     [Fact]
@@ -1146,20 +1226,24 @@ public sealed class EquityBasedPreflopLeafEvaluatorTests
             solverKey);
     }
 
-    private static PreflopLeafEvaluationContext CreateFacingRaiseProfileContext(Position heroPosition, Position openerPosition, HoleCards heroCards, ActionType rootAction, ChipAmount? raiseAmount = null)
+    private static PreflopLeafEvaluationContext CreateFacingRaiseProfileContext(Position heroPosition, Position openerPosition, HoleCards heroCards, ActionType rootAction, ChipAmount? raiseAmount = null, decimal effectiveStackBb = 100m)
     {
         var heroId = new PlayerId(Guid.NewGuid());
         var openerId = new PlayerId(Guid.NewGuid());
         var sbId = new PlayerId(Guid.NewGuid());
         var bbId = new PlayerId(Guid.NewGuid());
 
-        var config = new GameConfig(6, new ChipAmount(50), new ChipAmount(100), ChipAmount.Zero, new ChipAmount(10000));
+        var stackChips = new ChipAmount((long)(effectiveStackBb * 100m));
+        var heroPostedBlind = 100L;
+        var heroStack = new ChipAmount(Math.Max(0L, stackChips.Value - heroPostedBlind));
+        var openerStack = new ChipAmount(Math.Max(0L, stackChips.Value - 300L));
+        var config = new GameConfig(6, new ChipAmount(50), new ChipAmount(100), ChipAmount.Zero, stackChips);
         var allPlayers = new[]
         {
-            new SolverPlayerState(openerId, 0, openerPosition, new ChipAmount(9700), new ChipAmount(300), new ChipAmount(300), false, false),
-            new SolverPlayerState(heroId, 1, heroPosition, new ChipAmount(9900), new ChipAmount(100), new ChipAmount(100), false, false),
-            new SolverPlayerState(sbId, 2, Position.SB, new ChipAmount(9950), new ChipAmount(50), new ChipAmount(50), false, false),
-            new SolverPlayerState(bbId, 3, Position.BB, new ChipAmount(9900), new ChipAmount(100), new ChipAmount(100), false, false)
+            new SolverPlayerState(openerId, 0, openerPosition, openerStack, new ChipAmount(300), new ChipAmount(300), false, false),
+            new SolverPlayerState(heroId, 1, heroPosition, heroStack, new ChipAmount(heroPostedBlind), new ChipAmount(heroPostedBlind), false, false),
+            new SolverPlayerState(sbId, 2, Position.SB, new ChipAmount(Math.Max(0L, stackChips.Value - 50L)), new ChipAmount(50), new ChipAmount(50), false, false),
+            new SolverPlayerState(bbId, 3, Position.BB, new ChipAmount(Math.Max(0L, stackChips.Value - 100L)), new ChipAmount(100), new ChipAmount(100), false, false)
         };
 
         var players = allPlayers
@@ -1202,9 +1286,9 @@ public sealed class EquityBasedPreflopLeafEvaluatorTests
             heroId,
             heroPosition,
             heroCards,
-            100,
+            (double)effectiveStackBb,
             new LegalAction(rootAction, amount),
-            $"v2/VS_OPEN/{heroPosition}/eff=100/open=3");
+            $"v2/VS_OPEN/{heroPosition}/eff={effectiveStackBb:0.##}/open=3");
     }
 
     private static PreflopLeafEvaluationContext CreateFacing3BetProfileContext(Position heroPosition, Position threeBettorPosition, HoleCards heroCards, ActionType rootAction, ChipAmount? raiseAmount = null)
