@@ -1,5 +1,6 @@
 using PokerAnalyzer.Application.PreflopAnalysis;
 using PokerAnalyzer.Application.PreflopSolver;
+using PokerAnalyzer.Domain.Cards;
 using PokerAnalyzer.Domain.Game;
 using PokerAnalyzer.Infrastructure.PreflopAnalysis;
 using Xunit;
@@ -207,6 +208,34 @@ public sealed class LivePreflopSolveServiceTests
     }
 
     [Fact]
+    public async Task GetStrategyResultAsync_FacingOpenSbVsCo_ExposesExpandedRaiseBucketsInFreshSolve()
+    {
+        var sut = new LivePreflopSolveService(
+            new InMemoryRegretStore(),
+            new InMemoryAverageStrategyStore(),
+            new InMemoryPreflopTrainingProgressStore(),
+            new PreflopInfoSetMapper(),
+            new NamedPreflopPopulationProfileProvider(PreflopPopulationProfiles.MicroStakesLoosePassiveName),
+            new InMemoryActionValueStore());
+
+        var rootState = CreateSbVsCoFacingOpenRootState(HoleCards.Parse("KcKd"), 80m);
+        var legalActions = rootState.GenerateLegalActions();
+        var request = new PreflopStrategyRequestDto(
+            "v2/VS_OPEN/SB/eff=80/open=3",
+            rootState,
+            legalActions,
+            PopulationProfileName: PreflopPopulationProfiles.MicroStakesLoosePassiveName);
+
+        var result = await sut.GetStrategyResultAsync(request, CancellationToken.None);
+
+        Assert.NotNull(result);
+        Assert.Contains("Raise:9", result!.AverageStrategy.Keys);
+        Assert.Contains("Raise:11", result.AverageStrategy.Keys);
+        Assert.Contains("Raise:80", result.AverageStrategy.Keys);
+        Assert.True(result.AverageStrategy["Raise:9"] + result.AverageStrategy["Raise:11"] >= result.AverageStrategy["Call:3"]);
+    }
+
+    [Fact]
     public async Task GetStrategyResultAsync_ExplanationIsStableAcrossRepeatedRuns()
     {
         var sut = new LivePreflopSolveService(new InMemoryRegretStore(), new InMemoryAverageStrategyStore(), new InMemoryPreflopTrainingProgressStore(), new PreflopInfoSetMapper(), new NamedPreflopPopulationProfileProvider(PreflopPopulationProfiles.GtoLikeName), new InMemoryActionValueStore());
@@ -314,6 +343,46 @@ public sealed class LivePreflopSolveServiceTests
                 new SolverActionEntry(sbId, ActionType.PostSmallBlind, new ChipAmount(50)),
                 new SolverActionEntry(bbId, ActionType.PostBigBlind, new ChipAmount(100))
             ]);
+    }
+
+    private static SolverHandState CreateSbVsCoFacingOpenRootState(HoleCards heroCards, decimal effectiveStackBb)
+    {
+        var heroId = new PlayerId(Guid.NewGuid());
+        var coId = new PlayerId(Guid.NewGuid());
+        var btnId = new PlayerId(Guid.NewGuid());
+        var bbId = new PlayerId(Guid.NewGuid());
+        var stackChips = new ChipAmount((long)(effectiveStackBb * 100m));
+
+        return new SolverHandState(
+            new GameConfig(4, new ChipAmount(50), new ChipAmount(100), ChipAmount.Zero, stackChips),
+            Street.Preflop,
+            buttonSeatIndex: 1,
+            actingPlayerId: heroId,
+            pot: new ChipAmount(450),
+            currentBetSize: new ChipAmount(300),
+            lastRaiseSize: new ChipAmount(200),
+            raisesThisStreet: 1,
+            players:
+            [
+                new SolverPlayerState(coId, 0, Position.CO, new ChipAmount(stackChips.Value - 300), new ChipAmount(300), new ChipAmount(300), false, false),
+                new SolverPlayerState(btnId, 1, Position.BTN, stackChips, ChipAmount.Zero, ChipAmount.Zero, true, false),
+                new SolverPlayerState(heroId, 2, Position.SB, new ChipAmount(stackChips.Value - 50), new ChipAmount(50), new ChipAmount(50), false, false),
+                new SolverPlayerState(bbId, 3, Position.BB, new ChipAmount(stackChips.Value - 100), new ChipAmount(100), new ChipAmount(100), false, false)
+            ],
+            actionHistory:
+            [
+                new SolverActionEntry(heroId, ActionType.PostSmallBlind, new ChipAmount(50)),
+                new SolverActionEntry(bbId, ActionType.PostBigBlind, new ChipAmount(100)),
+                new SolverActionEntry(coId, ActionType.Raise, new ChipAmount(300)),
+                new SolverActionEntry(btnId, ActionType.Fold, ChipAmount.Zero)
+            ],
+            boardCards: Array.Empty<Card>(),
+            deadCards: Array.Empty<Card>(),
+            privateCardsByPlayer: new Dictionary<PlayerId, HoleCards>
+            {
+                [heroId] = heroCards,
+                [coId] = HoleCards.Parse("QdJd")
+            });
     }
 
 

@@ -8,8 +8,14 @@ public static class SolverLegalActionGenerator
     private const long FacingLimpRaiseFivePointFiveBbDenominator = 2;
     private const long FacingLimpRaiseNineBbNumerator = 9;
     private const long FacingLimpRaiseNineBbDenominator = 1;
+    private const long FacingRaiseThreeBetEightBbNumerator = 8;
+    private const long FacingRaiseThreeBetEightBbDenominator = 1;
     private const long FacingRaiseThreeBetNineBbNumerator = 9;
     private const long FacingRaiseThreeBetNineBbDenominator = 1;
+    private const long FacingRaiseThreeBetTenBbNumerator = 10;
+    private const long FacingRaiseThreeBetTenBbDenominator = 1;
+    private const long FacingRaiseThreeBetElevenBbNumerator = 11;
+    private const long FacingRaiseThreeBetElevenBbDenominator = 1;
     private const long FacingThreeBetFourBetTwentyTwoBbNumerator = 22;
     private const long FacingThreeBetFourBetTwentyTwoBbDenominator = 1;
 
@@ -184,9 +190,9 @@ public static class SolverLegalActionGenerator
         if (preflopSnapshot.IsFacingRaise)
         {
             var minTotalBetFacingRaise = state.CurrentBetSize + state.LastRaiseSize;
-            var raiseTarget = ResolveFacingRaiseThreeBetNineBb(state.Config.BigBlind);
+            foreach (var raiseTarget in ResolveFacingRaiseThreeBetTargets(state.Config.BigBlind, preflopSnapshot))
+                TryAddRaiseTarget(actions, raiseTarget, minTotalBetFacingRaise, maxTotalBet);
 
-            TryAddRaiseTarget(actions, raiseTarget, minTotalBetFacingRaise, maxTotalBet);
             TryAddRaiseTarget(actions, maxTotalBet, minTotalBetFacingRaise, maxTotalBet);
 
             return actions.AsReadOnly();
@@ -262,7 +268,10 @@ public static class SolverLegalActionGenerator
         bool IsFacingLimp,
         bool IsBigBlindOptionVsLimp,
         bool IsFacingRaise,
-        bool IsFacingThreeBet)
+        bool IsFacingThreeBet,
+        Position ActingPosition,
+        Position? AggressorPosition,
+        bool UseLargerFacingRaiseBuckets)
     {
         public static PreflopSpotSnapshot Create(SolverHandState state, SolverPlayerState acting)
         {
@@ -284,14 +293,43 @@ public static class SolverLegalActionGenerator
                 && playersYetToAct == 0;
             var facingRaise = state.ToCall.Value > 0 && aggressiveActionCount == 1;
             var facingThreeBet = state.ToCall.Value > 0 && aggressiveActionCount == 2;
+            var aggressorPosition = ResolveLatestAggressorPosition(state);
+            var useLargerFacingRaiseBuckets = ShouldUseLargerFacingRaiseBuckets(acting.Position, aggressorPosition);
 
             return new PreflopSpotSnapshot(
                 IsUnopened: unopened && livePlayers.Length > 1,
                 IsFacingLimp: facingLimp,
                 IsBigBlindOptionVsLimp: bigBlindOptionVsLimp,
                 IsFacingRaise: facingRaise,
-                IsFacingThreeBet: facingThreeBet);
+                IsFacingThreeBet: facingThreeBet,
+                ActingPosition: acting.Position,
+                AggressorPosition: aggressorPosition,
+                UseLargerFacingRaiseBuckets: useLargerFacingRaiseBuckets);
         }
+    }
+
+    // VS_OPEN summary:
+    // - keep Fold / Call / Jam.
+    // - use exactly two non-jam 3bet buckets before stack/min-raise filtering.
+    // - choose 9bb + 11bb for blind/OOP defense, especially SB/BB vs CO/BTN opens.
+    // - choose 8bb + 10bb for more IP / non-blind continue spots.
+    // - min-raise/max-stack validation and duplicate removal happen locally via TryAddRaiseTarget.
+    private static IReadOnlyList<ChipAmount> ResolveFacingRaiseThreeBetTargets(ChipAmount bigBlind, PreflopSpotSnapshot snapshot)
+    {
+        if (snapshot.UseLargerFacingRaiseBuckets)
+        {
+            return
+            [
+                ResolveFacingRaiseThreeBetNineBb(bigBlind),
+                ResolveFacingRaiseThreeBetElevenBb(bigBlind)
+            ];
+        }
+
+        return
+        [
+            ResolveFacingRaiseThreeBetEightBb(bigBlind),
+            ResolveFacingRaiseThreeBetTenBb(bigBlind)
+        ];
     }
 
     private static int CountPlayersYetToAct(SolverHandState state, SolverPlayerState acting, IReadOnlyList<SolverPlayerState> livePlayers)
@@ -353,6 +391,56 @@ public static class SolverLegalActionGenerator
             "9bb");
     }
 
+    private static Position? ResolveLatestAggressorPosition(SolverHandState state)
+    {
+        var lastAggressorId = state.ActionHistory
+            .Where(IsAggressivePreflopAction)
+            .Select(action => action.PlayerId)
+            .LastOrDefault();
+
+        if (lastAggressorId == default)
+            return null;
+
+        return state.Players.FirstOrDefault(player => player.PlayerId == lastAggressorId)?.Position;
+    }
+
+    private static bool ShouldUseLargerFacingRaiseBuckets(Position actingPosition, Position? aggressorPosition)
+    {
+        if (actingPosition is Position.SB or Position.BB)
+        {
+            if (aggressorPosition is Position.CO or Position.BTN)
+                return true;
+
+            return aggressorPosition.HasValue && !HasPostflopPositionAdvantage(actingPosition, aggressorPosition.Value);
+        }
+
+        return aggressorPosition.HasValue && !HasPostflopPositionAdvantage(actingPosition, aggressorPosition.Value);
+    }
+
+    private static bool HasPostflopPositionAdvantage(Position actingPosition, Position aggressorPosition)
+        => GetPostflopPositionOrder(actingPosition) > GetPostflopPositionOrder(aggressorPosition);
+
+    private static int GetPostflopPositionOrder(Position position)
+        => position switch
+        {
+            Position.SB => 0,
+            Position.BB => 1,
+            Position.UTG => 2,
+            Position.HJ => 3,
+            Position.CO => 4,
+            Position.BTN => 5,
+            _ => 0
+        };
+
+    private static ChipAmount ResolveFacingRaiseThreeBetEightBb(ChipAmount bigBlind)
+    {
+        return ResolveFixedBbTarget(
+            bigBlind,
+            FacingRaiseThreeBetEightBbNumerator,
+            FacingRaiseThreeBetEightBbDenominator,
+            "8bb");
+    }
+
     private static ChipAmount ResolveFacingRaiseThreeBetNineBb(ChipAmount bigBlind)
     {
         return ResolveFixedBbTarget(
@@ -360,6 +448,24 @@ public static class SolverLegalActionGenerator
             FacingRaiseThreeBetNineBbNumerator,
             FacingRaiseThreeBetNineBbDenominator,
             "9bb");
+    }
+
+    private static ChipAmount ResolveFacingRaiseThreeBetTenBb(ChipAmount bigBlind)
+    {
+        return ResolveFixedBbTarget(
+            bigBlind,
+            FacingRaiseThreeBetTenBbNumerator,
+            FacingRaiseThreeBetTenBbDenominator,
+            "10bb");
+    }
+
+    private static ChipAmount ResolveFacingRaiseThreeBetElevenBb(ChipAmount bigBlind)
+    {
+        return ResolveFixedBbTarget(
+            bigBlind,
+            FacingRaiseThreeBetElevenBbNumerator,
+            FacingRaiseThreeBetElevenBbDenominator,
+            "11bb");
     }
 
     private static ChipAmount ResolveFacingThreeBetFourBetTwentyTwoBb(ChipAmount bigBlind)
