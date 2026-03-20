@@ -11,12 +11,12 @@ Training now runs a recursive External Sampling MCCFR traversal from the current
    - update cumulative regret with `(opponentReach / samplingReach) * (actionValue - nodeValue)`
    - update cumulative average strategy with `(traverserReach / samplingReach) * policy(action)`
 
-The trainer passes explicit traversal context through recursion:
+The trainer now threads an explicit immutable `MccfrTraversalContext` through recursion. Its fields are intentionally named by what they accumulate:
 
-- traverser id
-- traverser reach
-- opponent reach
-- sampling reach
+- `TraverserPlayerId`: the player whose counterfactual value is being updated
+- `TraverserPolicyReach`: product of the traverser's own policy probabilities on the current path
+- `OpponentPolicyReach`: product of the opponents' sampled policy probabilities on the current path
+- `ExternalSamplingReach`: probability of the realized sampled chance/opponent prefix
 
 ## Old training path that is no longer used by the solver
 
