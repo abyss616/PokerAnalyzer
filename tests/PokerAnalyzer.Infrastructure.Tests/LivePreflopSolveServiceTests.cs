@@ -145,6 +145,10 @@ public sealed class LivePreflopSolveServiceTests
         Assert.NotNull(result);
         Assert.NotNull(result!.LeafEvaluationDetails);
         Assert.Equal("AbstractedHeadsUp", result.LeafEvaluationDetails!.EvaluatorType);
+        Assert.False(result.LeafEvaluationDetails.IsHeadsUp);
+        Assert.Equal("Multiway", result.LeafEvaluationDetails.RootEvaluatorMode);
+        Assert.Equal(2, result.LeafEvaluationDetails.RootActiveOpponentCount);
+        Assert.Equal(2, result.LeafEvaluationDetails.LeafActiveOpponentCount);
         Assert.Equal("WeightedBlindsBTNUnopened", result.LeafEvaluationDetails.AbstractionSource);
         Assert.Equal(2, result.LeafEvaluationDetails.ActualActiveOpponentCount);
     }

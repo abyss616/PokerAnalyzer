@@ -394,6 +394,50 @@ public class SolverLegalActionGeneratorTests
     }
 
     [Fact]
+    public void GenerateLegalActions_FacingOpenAfterFoldsReduceToTrueHeadsUp_UsesStandardFacingRaiseMenu()
+    {
+        var utg = new SolverPlayerState(PlayerId.New(), 0, Position.UTG, new ChipAmount(9750), new ChipAmount(250), new ChipAmount(250), false, false);
+        var heroCo = new SolverPlayerState(PlayerId.New(), 1, Position.CO, new ChipAmount(10000), ChipAmount.Zero, ChipAmount.Zero, false, false);
+        var btn = new SolverPlayerState(PlayerId.New(), 2, Position.BTN, new ChipAmount(10000), ChipAmount.Zero, ChipAmount.Zero, true, false);
+        var sb = new SolverPlayerState(PlayerId.New(), 3, Position.SB, new ChipAmount(9950), new ChipAmount(50), new ChipAmount(50), true, false);
+        var bb = new SolverPlayerState(PlayerId.New(), 4, Position.BB, new ChipAmount(9900), new ChipAmount(100), new ChipAmount(100), true, false);
+
+        var state = new SolverHandState(
+            config: new GameConfig(5, new ChipAmount(50), new ChipAmount(100), ChipAmount.Zero, new ChipAmount(10000)),
+            street: Street.Preflop,
+            buttonSeatIndex: 2,
+            actingPlayerId: heroCo.PlayerId,
+            pot: new ChipAmount(400),
+            currentBetSize: new ChipAmount(250),
+            lastRaiseSize: new ChipAmount(150),
+            raisesThisStreet: 1,
+            players: [utg, heroCo, btn, sb, bb],
+            actionHistory:
+            [
+                new SolverActionEntry(sb.PlayerId, ActionType.PostSmallBlind, new ChipAmount(50)),
+                new SolverActionEntry(bb.PlayerId, ActionType.PostBigBlind, new ChipAmount(100)),
+                new SolverActionEntry(utg.PlayerId, ActionType.Raise, new ChipAmount(250)),
+                new SolverActionEntry(btn.PlayerId, ActionType.Fold, ChipAmount.Zero),
+                new SolverActionEntry(sb.PlayerId, ActionType.Fold, ChipAmount.Zero),
+                new SolverActionEntry(bb.PlayerId, ActionType.Fold, ChipAmount.Zero)
+            ],
+            boardCards: Array.Empty<Card>(),
+            deadCards: Array.Empty<Card>(),
+            privateCardsByPlayer: null);
+
+        var actions = state.GenerateLegalActions();
+
+        Assert.Equal(
+            [
+                new LegalAction(ActionType.Fold),
+                new LegalAction(ActionType.Call, new ChipAmount(250)),
+                new LegalAction(ActionType.Raise, new ChipAmount(900)),
+                new LegalAction(ActionType.Raise, new ChipAmount(10000))
+            ],
+            actions);
+    }
+
+    [Fact]
     public void GenerateLegalActions_FacingOpenWithColdCaller_UsesStandardFacingRaiseMenu()
     {
         var utg = new SolverPlayerState(PlayerId.New(), 0, Position.UTG, new ChipAmount(9750), new ChipAmount(250), new ChipAmount(250), false, false);

@@ -6,6 +6,10 @@ public static class PreflopKeyValidator
 {
     public static PreflopValidationResult Validate(PreflopInfoSetKey key, PreflopSpotContext ctx)
     {
+        var topologyValidation = ValidateTopology(key, ctx);
+        if (!topologyValidation.IsValid)
+            return topologyValidation;
+
         if (!IsKnownHistorySignature(key.HistorySignature))
             return PreflopValidationResult.Invalid($"Invalid key: unknown history signature '{key.HistorySignature}'.");
 
@@ -44,6 +48,35 @@ public static class PreflopKeyValidator
 
         if (key.HistorySignature.StartsWith("VS_", StringComparison.Ordinal) && (!ctx.FacingPlayerId.HasValue || !ctx.FacingPosition.HasValue || ctx.FacingPosition == Position.Unknown))
             return PreflopValidationResult.Invalid("Invalid key: VS_* requires facing/last aggressor position.");
+
+        return PreflopValidationResult.Valid();
+    }
+
+    private static PreflopValidationResult ValidateTopology(PreflopInfoSetKey key, PreflopSpotContext ctx)
+    {
+        if (key.ActiveOpponentCount < 1 || ctx.ActiveOpponentCount < 1)
+            return PreflopValidationResult.Invalid("Invalid key: active opponent count must be at least 1.");
+
+        if (key.CallerCount < 0 || ctx.CallerCount < 0)
+            return PreflopValidationResult.Invalid("Invalid key: caller count cannot be negative.");
+
+        if (key.PlayersBehindCount < 0 || ctx.PlayersBehindCount < 0)
+            return PreflopValidationResult.Invalid("Invalid key: players-behind count cannot be negative.");
+
+        if (key.CallerCount > key.ActiveOpponentCount || ctx.CallerCount > ctx.ActiveOpponentCount)
+            return PreflopValidationResult.Invalid("Invalid key: caller count cannot exceed active opponent count.");
+
+        if (key.PlayersBehindCount > key.ActiveOpponentCount || ctx.PlayersBehindCount > ctx.ActiveOpponentCount)
+            return PreflopValidationResult.Invalid("Invalid key: players behind cannot exceed active opponent count.");
+
+        if (key.ActiveOpponentCount != ctx.ActiveOpponentCount)
+            return PreflopValidationResult.Invalid($"Invalid key: active opponent count mismatch (key={key.ActiveOpponentCount}, ctx={ctx.ActiveOpponentCount}).");
+
+        if (key.CallerCount != ctx.CallerCount)
+            return PreflopValidationResult.Invalid($"Invalid key: caller count mismatch (key={key.CallerCount}, ctx={ctx.CallerCount}).");
+
+        if (key.PlayersBehindCount != ctx.PlayersBehindCount)
+            return PreflopValidationResult.Invalid($"Invalid key: players-behind count mismatch (key={key.PlayersBehindCount}, ctx={ctx.PlayersBehindCount}).");
 
         return PreflopValidationResult.Valid();
     }
