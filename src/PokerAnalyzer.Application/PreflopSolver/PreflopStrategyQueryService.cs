@@ -82,7 +82,7 @@ public sealed class PreflopStrategyQueryService : IPreflopStrategyQueryService
             null,
             null,
             diagnostics,
-            "Average frequencies come from cumulative average strategy; current-policy frequencies come from regret matching on positive cumulative regret and action-value-based stochastic fallback when all regrets are non-positive; regrets are cumulative counterfactual regrets.",
+            "Average frequencies come from cumulative average strategy; current-policy frequencies come from regret matching on positive cumulative regret and action-value-based stochastic fallback when all regrets are non-positive; regrets are cumulative counterfactual regrets with CFR+ clipping at zero after merged deltas are applied.",
             bestMargin,
             separation);
     }

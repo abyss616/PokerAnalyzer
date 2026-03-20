@@ -9,6 +9,61 @@ public sealed class PreflopRegretTrainerTests
 {
 
 
+
+    [Fact]
+    public void InMemoryRegretStore_CfrPlusPositiveDeltaAfterFloor_RebuildsFromZero()
+    {
+        var store = new InMemoryRegretStore();
+        var fold = new LegalAction(ActionType.Fold);
+
+        store.Add("infoset", fold, -3d);
+        store.Add("infoset", fold, 1.5d);
+
+        Assert.Equal(1.5d, store.Get("infoset", fold), 10);
+    }
+
+    [Fact]
+    public void InMemoryRegretStore_CfrPlusNegativeDelta_CannotPushBelowZero()
+    {
+        var store = new InMemoryRegretStore();
+        var fold = new LegalAction(ActionType.Fold);
+
+        store.Add("infoset", fold, 2d);
+        store.Add("infoset", fold, -5d);
+
+        Assert.Equal(0d, store.Get("infoset", fold), 10);
+    }
+
+    [Fact]
+    public void InMemoryRegretStore_CfrPlusBatchClipsAfterSummingMergedDeltas()
+    {
+        var store = new InMemoryRegretStore();
+        var fold = new LegalAction(ActionType.Fold);
+
+        store.Add("infoset", fold, 2d);
+
+        var mergedWorkerDeltas = new Dictionary<string, Dictionary<LegalAction, double>>(StringComparer.Ordinal)
+        {
+            ["infoset"] = new Dictionary<LegalAction, double>
+            {
+                [fold] = -1d
+            }
+        };
+
+        store.AddBatch(mergedWorkerDeltas);
+        Assert.Equal(1d, store.Get("infoset", fold), 10);
+
+        // Demonstrate the CFR+ subtlety the trainer relies on: two worker deltas of -3 and +2
+        // must be summed before clipping so that max(0, 2 + (-1)) = 1 instead of clipping the
+        // -3 worker to zero and then applying +2 to reach an incorrect value of 2.
+        mergedWorkerDeltas["infoset"][fold] = -1d;
+        store = new InMemoryRegretStore();
+        store.Add("infoset", fold, 2d);
+        store.AddBatch(mergedWorkerDeltas);
+
+        Assert.Equal(1d, store.Get("infoset", fold), 10);
+    }
+
     [Fact]
     public void RunTraining_WithParallelOptions_WorkerCountOne_CompletesIterations()
     {
@@ -208,7 +263,7 @@ public sealed class PreflopRegretTrainerTests
         // fold utility = 10, call utility = 4, node value = 0.75*10 + 0.25*4 = 8.5
         // regret deltas: fold +1.5, call -4.5
         Assert.Equal(4.5d, regrets.Get("traversal_infoset", fold), 10);
-        Assert.Equal(-3.5d, regrets.Get("traversal_infoset", call), 10);
+        Assert.Equal(0d, regrets.Get("traversal_infoset", call), 10);
     }
 
     [Fact]

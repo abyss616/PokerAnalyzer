@@ -93,7 +93,7 @@ public sealed class ExternalSamplingMccfrTrainerTests
         trainer.RunIteration(new Random(7));
 
         Assert.Equal(4.5d, regrets.Get("traversal_infoset", fold), 10);
-        Assert.Equal(-3.5d, regrets.Get("traversal_infoset", call), 10);
+        Assert.Equal(0d, regrets.Get("traversal_infoset", call), 10);
         Assert.Equal(0.75d, averages.Get("traversal_infoset", fold), 10);
         Assert.Equal(0.25d, averages.Get("traversal_infoset", call), 10);
         Assert.Equal(new[] { "traversal_infoset", "traversal_infoset" }, leafEvaluator.CapturedSolverKeys);
@@ -133,7 +133,7 @@ public sealed class ExternalSamplingMccfrTrainerTests
         Assert.Equal(1d, regrets.Get("opponent_infoset", fold), 10);
         Assert.Equal(3d, regrets.Get("opponent_infoset", call), 10);
         Assert.Equal(4.5d, regrets.Get("traversal_infoset", fold), 10);
-        Assert.Equal(-3.5d, regrets.Get("traversal_infoset", call), 10);
+        Assert.Equal(0d, regrets.Get("traversal_infoset", call), 10);
     }
 
     [Fact]
@@ -204,7 +204,7 @@ public sealed class ExternalSamplingMccfrTrainerTests
         Assert.Equal(3.75d, averages.Get("traversal_infoset", fold), 10);
         Assert.Equal(1.25d, averages.Get("traversal_infoset", call), 10);
         Assert.Equal(10.5d, regrets.Get("traversal_infoset", fold), 10);
-        Assert.Equal(-21.5d, regrets.Get("traversal_infoset", call), 10);
+        Assert.Equal(0d, regrets.Get("traversal_infoset", call), 10);
     }
 
 

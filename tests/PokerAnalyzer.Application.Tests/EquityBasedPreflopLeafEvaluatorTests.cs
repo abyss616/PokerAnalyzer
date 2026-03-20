@@ -1150,6 +1150,7 @@ public sealed class EquityBasedPreflopLeafEvaluatorTests
     {
         var heroId = new PlayerId(Guid.NewGuid());
         var openerId = new PlayerId(Guid.NewGuid());
+        var sbId = new PlayerId(Guid.NewGuid());
         var bbId = new PlayerId(Guid.NewGuid());
 
         var config = new GameConfig(6, new ChipAmount(50), new ChipAmount(100), ChipAmount.Zero, new ChipAmount(10000));
@@ -1210,6 +1211,7 @@ public sealed class EquityBasedPreflopLeafEvaluatorTests
     {
         var heroId = new PlayerId(Guid.NewGuid());
         var threeBettorId = new PlayerId(Guid.NewGuid());
+        var sbId = new PlayerId(Guid.NewGuid());
         var bbId = new PlayerId(Guid.NewGuid());
 
         var config = new GameConfig(6, new ChipAmount(50), new ChipAmount(100), ChipAmount.Zero, new ChipAmount(10000));
@@ -1271,6 +1273,7 @@ public sealed class EquityBasedPreflopLeafEvaluatorTests
     {
         var heroId = new PlayerId(Guid.NewGuid());
         var threeBettorId = new PlayerId(Guid.NewGuid());
+        var sbId = new PlayerId(Guid.NewGuid());
         var bbId = new PlayerId(Guid.NewGuid());
 
         var config = new GameConfig(6, new ChipAmount(50), new ChipAmount(100), ChipAmount.Zero, new ChipAmount(10000));

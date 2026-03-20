@@ -7,6 +7,7 @@ namespace PokerAnalyzer.Application.PreflopSolver;
 public interface IRegretStore
 {
     void Add(string infoSetKey, LegalAction action, double regretDelta);
+    void AddBatch(IReadOnlyDictionary<string, Dictionary<LegalAction, double>> regretDeltas);
     double Get(string infoSetKey, LegalAction action);
 }
 
@@ -31,13 +32,34 @@ public sealed class InMemoryRegretStore : IRegretStore
     {
         ArgumentNullException.ThrowIfNull(infoSetKey);
 
+        ApplyCfrPlusDelta(infoSetKey, action, regretDelta);
+    }
+
+    public void AddBatch(IReadOnlyDictionary<string, Dictionary<LegalAction, double>> regretDeltas)
+    {
+        ArgumentNullException.ThrowIfNull(regretDeltas);
+
+        // The batch contract matters for CFR+: callers are expected to pre-sum all raw
+        // worker deltas for an infoset/action before this store floors at zero. Applying
+        // max(0, R + Δ1) and then max(0, · + Δ2) is not equivalent to max(0, R + Δ1 + Δ2).
+
+        foreach (var (infoSetKey, byAction) in regretDeltas)
+        {
+            foreach (var (action, delta) in byAction)
+                ApplyCfrPlusDelta(infoSetKey, action, delta);
+        }
+    }
+
+    private void ApplyCfrPlusDelta(string infoSetKey, LegalAction action, double regretDelta)
+    {
         if (!_values.TryGetValue(infoSetKey, out var byAction))
         {
             byAction = new Dictionary<LegalAction, double>();
             _values[infoSetKey] = byAction;
         }
 
-        byAction[action] = Get(infoSetKey, action) + regretDelta;
+        var updated = Get(infoSetKey, action) + regretDelta;
+        byAction[action] = Math.Max(0d, updated);
     }
 
     public double Get(string infoSetKey, LegalAction action)
@@ -865,17 +887,27 @@ public sealed class PreflopRegretTrainer
             {
             }
 
+            var mergedRegretDeltas = new Dictionary<string, Dictionary<LegalAction, double>>(StringComparer.Ordinal);
+
             for (var workerId = 0; workerId < options.WorkerCount; workerId++)
             {
                 var accumulator = workerAccumulators[workerId];
                 if (accumulator is null)
                     continue;
 
-                MergeWorkerAccumulator(accumulator);
+                // CFR+ requires regret clipping after all raw deltas targeting the same
+                // cumulative-regret entry have been summed. If we clipped per worker first,
+                // one worker could floor a negative partial sum to zero before another worker
+                // adds a positive offset, producing a different result than max(0, R + ΣΔ).
+                WorkerAccumulator.MergeInto(mergedRegretDeltas, accumulator.RegretDeltas);
+
+                MergeWorkerAccumulator(accumulator, includeRegrets: false);
                 _latestLeafEvaluationDetails = accumulator.LastLeafEvaluationDetails ?? _latestLeafEvaluationDetails;
                 iterationsCompleted += accumulator.IterationsCompleted;
                 _trainingProgressStore.IncrementIterations(accumulator.IterationsCompleted);
             }
+
+            _regretStore.AddBatch(mergedRegretDeltas);
 
             epoch++;
         }
@@ -918,13 +950,10 @@ public sealed class PreflopRegretTrainer
         return new Random(seed);
     }
 
-    private void MergeWorkerAccumulator(WorkerAccumulator local)
+    private void MergeWorkerAccumulator(WorkerAccumulator local, bool includeRegrets = true)
     {
-        foreach (var (infoSetKey, byAction) in local.RegretDeltas)
-        {
-            foreach (var (action, delta) in byAction)
-                _regretStore.Add(infoSetKey, action, delta);
-        }
+        if (includeRegrets)
+            _regretStore.AddBatch(local.RegretDeltas);
 
         foreach (var (infoSetKey, byAction) in local.AverageStrategyDeltas)
         {
@@ -942,9 +971,9 @@ public sealed class PreflopRegretTrainer
     private sealed class WorkerAccumulator
     {
         public int IterationsCompleted { get; set; }
-        public Dictionary<string, Dictionary<LegalAction, double>> RegretDeltas { get; } = new(StringComparer.Ordinal);
-        public Dictionary<string, Dictionary<LegalAction, double>> AverageStrategyDeltas { get; } = new(StringComparer.Ordinal);
-        public Dictionary<string, Dictionary<LegalAction, (double TotalUtility, int Samples)>> ActionValueAggregates { get; } = new(StringComparer.Ordinal);
+        public Dictionary<string, Dictionary<LegalAction, double>> RegretDeltas { get; init; } = new(StringComparer.Ordinal);
+        public Dictionary<string, Dictionary<LegalAction, double>> AverageStrategyDeltas { get; init; } = new(StringComparer.Ordinal);
+        public Dictionary<string, Dictionary<LegalAction, (double TotalUtility, int Samples)>> ActionValueAggregates { get; init; } = new(StringComparer.Ordinal);
         public PreflopLeafEvaluationDetails? LastLeafEvaluationDetails { get; set; }
 
         public void AddRegret(string infoSetKey, LegalAction action, double regretDelta)
@@ -966,6 +995,17 @@ public sealed class PreflopRegretTrainer
                 : (0d, 0);
 
             byAction[action] = (aggregate.Item1 + utility, aggregate.Item2 + 1);
+        }
+
+        public static void MergeInto(
+            Dictionary<string, Dictionary<LegalAction, double>> destination,
+            IReadOnlyDictionary<string, Dictionary<LegalAction, double>> source)
+        {
+            foreach (var (infoSetKey, byAction) in source)
+            {
+                foreach (var (action, delta) in byAction)
+                    Add(destination, infoSetKey, action, delta);
+            }
         }
 
         private static void Add(Dictionary<string, Dictionary<LegalAction, double>> destination, string infoSetKey, LegalAction action, double delta)
