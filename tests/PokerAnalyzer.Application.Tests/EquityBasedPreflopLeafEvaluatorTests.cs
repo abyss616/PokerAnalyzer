@@ -47,15 +47,6 @@ public sealed class EquityBasedPreflopLeafEvaluatorTests
         Assert.Equal("static-test", result.Details.RangeDetail);
     }
 
-
-
-
-
-
-
-
-
-
     [Fact]
     public void Evaluate_UnopenedBtnRaise_IncludesFoldEquityComponents()
     {
@@ -71,8 +62,6 @@ public sealed class EquityBasedPreflopLeafEvaluatorTests
         Assert.NotNull(result.Details.ContinueComponent);
         Assert.Contains("Action=Raise", result.Details.DisplaySummary);
     }
-
-
 
     [Fact]
     public void Evaluate_UnopenedBtn_FoldProbabilityChangesByProfile()
@@ -102,40 +91,6 @@ public sealed class EquityBasedPreflopLeafEvaluatorTests
         Assert.Contains("sbPct=0.52", micro.Details.RangeDetail);
         Assert.Contains("bbPct=0.62", micro.Details.RangeDetail);
     }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
     [Fact]
     public void Evaluate_Facing3Bet_ProducesDistinctUtilitiesForCallFourBetAndJam()
