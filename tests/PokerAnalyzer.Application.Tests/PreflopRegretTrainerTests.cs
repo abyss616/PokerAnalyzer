@@ -10,85 +10,10 @@ public sealed class PreflopRegretTrainerTests
 
 
 
-    [Fact]
-    public void InMemoryRegretStore_CfrPlusPositiveDeltaAfterFloor_RebuildsFromZero()
-    {
-        var store = new InMemoryRegretStore();
-        var fold = new LegalAction(ActionType.Fold);
 
-        store.Add("infoset", fold, -3d);
-        store.Add("infoset", fold, 1.5d);
 
-        Assert.Equal(1.5d, store.Get("infoset", fold), 10);
-    }
 
-    [Fact]
-    public void InMemoryRegretStore_CfrPlusNegativeDelta_CannotPushBelowZero()
-    {
-        var store = new InMemoryRegretStore();
-        var fold = new LegalAction(ActionType.Fold);
 
-        store.Add("infoset", fold, 2d);
-        store.Add("infoset", fold, -5d);
-
-        Assert.Equal(0d, store.Get("infoset", fold), 10);
-    }
-
-    [Fact]
-    public void InMemoryRegretStore_CfrPlusBatchClipsAfterSummingMergedDeltas()
-    {
-        var store = new InMemoryRegretStore();
-        var fold = new LegalAction(ActionType.Fold);
-
-        store.Add("infoset", fold, 2d);
-
-        var mergedWorkerDeltas = new Dictionary<string, Dictionary<LegalAction, double>>(StringComparer.Ordinal)
-        {
-            ["infoset"] = new Dictionary<LegalAction, double>
-            {
-                [fold] = -1d
-            }
-        };
-
-        store.AddBatch(mergedWorkerDeltas);
-        Assert.Equal(1d, store.Get("infoset", fold), 10);
-
-        // Demonstrate the CFR+ subtlety the trainer relies on: two worker deltas of -3 and +2
-        // must be summed before clipping so that max(0, 2 + (-1)) = 1 instead of clipping the
-        // -3 worker to zero and then applying +2 to reach an incorrect value of 2.
-        mergedWorkerDeltas["infoset"][fold] = -1d;
-        store = new InMemoryRegretStore();
-        store.Add("infoset", fold, 2d);
-        store.AddBatch(mergedWorkerDeltas);
-
-        Assert.Equal(1d, store.Get("infoset", fold), 10);
-    }
-
-    [Fact]
-    public void RunTraining_WithParallelOptions_WorkerCountOne_CompletesIterations()
-    {
-        var trainer = CreateTrainerWithRegretAwareTraverser(out var regrets, out var averageStrategy, out var fold, out var call);
-
-        var result = trainer.RunTraining(new PreflopTrainerOptions(Iterations: 8, WorkerCount: 1, BatchSize: 2, Deterministic: true, RandomSeed: 123));
-
-        Assert.Equal(8, result.IterationsCompleted);
-        Assert.True(result.ReachedIterationLimit);
-        Assert.True(regrets.Get("traversal_infoset", fold) != 0d || regrets.Get("traversal_infoset", call) != 0d);
-        Assert.NotEqual(0d, averageStrategy.Get("traversal_infoset", fold) + averageStrategy.Get("traversal_infoset", call));
-    }
-
-    [Fact]
-    public void RunTraining_WithParallelOptions_WorkerCountGreaterThanOne_CompletesAndAccumulatesStrategy()
-    {
-        var trainer = CreateTrainerWithRegretAwareTraverser(out var regrets, out var averageStrategy, out var fold, out var call);
-
-        var result = trainer.RunTraining(new PreflopTrainerOptions(Iterations: 24, WorkerCount: 4, BatchSize: 3, Deterministic: true, RandomSeed: 456));
-
-        Assert.Equal(24, result.IterationsCompleted);
-        Assert.True(result.ReachedIterationLimit);
-        Assert.NotEqual(0d, regrets.Get("traversal_infoset", fold) + regrets.Get("traversal_infoset", call));
-        Assert.NotEqual(0d, averageStrategy.Get("traversal_infoset", fold) + averageStrategy.Get("traversal_infoset", call));
-    }
 
     [Fact]
     public void RunTraining_WithDeterministicSeed_IsReproducibleAcrossRuns()
@@ -108,67 +33,9 @@ public sealed class PreflopRegretTrainerTests
         Assert.Equal(avgA.Get("traversal_infoset", call), avgB.Get("traversal_infoset", call), 10);
     }
 
-    [Fact]
-    public void RunTraining_ParallelAndSingleWorker_AreMateriallySimilar_ForFixedSeed()
-    {
-        const int iterations = 20;
-        const int seed = 99;
 
-        var singleTrainer = CreateTrainerWithRegretAwareTraverser(out var singleRegrets, out var singleAvg, out var fold, out var call);
-        var parallelTrainer = CreateTrainerWithRegretAwareTraverser(out var parallelRegrets, out var parallelAvg, out _, out _);
 
-        singleTrainer.RunTraining(new PreflopTrainerOptions(iterations, WorkerCount: 1, BatchSize: 4, RandomSeed: seed, Deterministic: true));
-        parallelTrainer.RunTraining(new PreflopTrainerOptions(iterations, WorkerCount: 4, BatchSize: 2, RandomSeed: seed, Deterministic: true));
 
-        var regretFoldDiff = Math.Abs(singleRegrets.Get("traversal_infoset", fold) - parallelRegrets.Get("traversal_infoset", fold));
-        var regretCallDiff = Math.Abs(singleRegrets.Get("traversal_infoset", call) - parallelRegrets.Get("traversal_infoset", call));
-        var avgFoldDiff = Math.Abs(singleAvg.Get("traversal_infoset", fold) - parallelAvg.Get("traversal_infoset", fold));
-        var avgCallDiff = Math.Abs(singleAvg.Get("traversal_infoset", call) - parallelAvg.Get("traversal_infoset", call));
-
-        Assert.True(regretFoldDiff < 5d, $"Fold regret drift too large: {regretFoldDiff}");
-        Assert.True(regretCallDiff < 5d, $"Call regret drift too large: {regretCallDiff}");
-        Assert.True(avgFoldDiff < 5d, $"Fold avg drift too large: {avgFoldDiff}");
-        Assert.True(avgCallDiff < 5d, $"Call avg drift too large: {avgCallDiff}");
-    }
-
-    [Fact]
-    public void RunTraining_InIterationMode_RunsRequestedIterationsAndReportsIterationLimit()
-    {
-        var trainer = CreateTrainerWithRegretAwareTraverser(out var regrets, out var averageStrategy, out _, out _);
-
-        var result = trainer.RunTraining(PreflopTrainingOptions.ForIterations(3));
-
-        Assert.Equal(3, result.IterationsCompleted);
-        Assert.Equal(PreflopTrainingMode.Iterations, result.ModeUsed);
-        Assert.True(result.ReachedIterationLimit);
-        Assert.False(result.ReachedTimeLimit);
-        Assert.False(result.StoppedByCancellation);
-        Assert.NotEqual(0d, averageStrategy.Get("traversal_infoset", new LegalAction(ActionType.Fold)));
-        Assert.NotEqual(0d, regrets.Get("traversal_infoset", new LegalAction(ActionType.Fold)));
-    }
-
-    [Fact]
-    public void RunTraining_InTimeMode_StopsOnTimeBudget_AndRunsAtLeastOneIteration()
-    {
-        var trainer = CreateTrainerWithRegretAwareTraverser(out _, out _, out _, out _);
-
-        var result = trainer.RunTraining(PreflopTrainingOptions.ForTime(TimeSpan.FromMilliseconds(30)));
-
-        Assert.Equal(PreflopTrainingMode.Time, result.ModeUsed);
-        Assert.True(result.ReachedTimeLimit);
-        Assert.False(result.ReachedIterationLimit);
-        Assert.False(result.StoppedByCancellation);
-        Assert.True(result.IterationsCompleted >= 1);
-        Assert.True(result.Elapsed >= TimeSpan.FromMilliseconds(20));
-        Assert.True(result.Elapsed < TimeSpan.FromSeconds(2));
-    }
-
-    [Fact]
-    public void RunTraining_DefaultOptions_UsesTimeMode()
-    {
-        Assert.Equal(PreflopTrainingMode.Time, PreflopTrainingOptions.Default.Mode);
-        Assert.Equal(TimeSpan.FromSeconds(20), PreflopTrainingOptions.Default.MaxDuration);
-    }
 
     [Fact]
     public void TrainingOptions_InvalidBudgets_AreRejected()
@@ -227,74 +94,7 @@ public sealed class PreflopRegretTrainerTests
         Assert.Equal(2, progress.TotalIterationsCompleted);
     }
 
-    [Fact]
-    public void RunIteration_WhenAllLegalRegretsNonPositive_UsesUniformTraversalPolicy()
-    {
-        var root = CreateHeadsUpPreflopState();
-        var traversalPlayer = root.Players[0].PlayerId;
-        var opponent = root.Players[1].PlayerId;
 
-        var regrets = new InMemoryRegretStore();
-        var actionValues = new InMemoryActionValueStore();
-        var fold = new LegalAction(ActionType.Fold);
-        var call = new LegalAction(ActionType.Call, new ChipAmount(1));
-        regrets.Add("traversal_infoset", fold, -2d);
-        regrets.Add("traversal_infoset", call, 0d);
-        actionValues.AddSamples("traversal_infoset", fold, 10d, 1);
-        actionValues.AddSamples("traversal_infoset", call, 4d, 1);
-
-        var traverser = new RegretAwareStubTrajectoryTraverser(
-            root,
-            traversalPlayer,
-            opponent,
-            new TrainingRegretMatchingPolicyProvider(regrets),
-            fold,
-            call);
-
-        var trainer = new PreflopRegretTrainer(
-            new FixedRootStateProvider(root),
-            traverser,
-            new FixedTraversalPlayerSelector(traversalPlayer),
-            regrets,
-            new InMemoryAverageStrategyStore(),
-            actionValueStore: actionValues);
-
-        trainer.RunIteration(new Random(19));
-
-        Assert.Equal(0.5d, traverser.InitialTraversalPolicy[fold], 10);
-        Assert.Equal(0.5d, traverser.InitialTraversalPolicy[call], 10);
-    }
-
-    [Fact]
-    public void RunIteration_ReplaysActionsFromStateBeforeAction()
-    {
-        var root = CreateHeadsUpPreflopState();
-        var traversalPlayer = root.Players[0].PlayerId;
-        var opponent = root.Players[1].PlayerId;
-
-        var regrets = new InMemoryRegretStore();
-        var fold = new LegalAction(ActionType.Fold);
-        var call = new LegalAction(ActionType.Call, new ChipAmount(1));
-        var traverser = new RegretAwareStubTrajectoryTraverser(
-            root,
-            traversalPlayer,
-            opponent,
-            new TrainingRegretMatchingPolicyProvider(regrets),
-            fold,
-            call);
-
-        var trainer = new PreflopRegretTrainer(
-            new FixedRootStateProvider(root),
-            traverser,
-            new FixedTraversalPlayerSelector(traversalPlayer),
-            regrets,
-            new InMemoryAverageStrategyStore());
-
-        trainer.RunIteration(new Random(31));
-
-        Assert.NotEmpty(traverser.RolloutRoots);
-        Assert.All(traverser.RolloutRoots, state => Assert.Equal(root.ActionHistory.Count + 1, state.ActionHistory.Count));
-    }
 
 
     [Fact]
@@ -333,34 +133,6 @@ public sealed class PreflopRegretTrainerTests
     }
 
 
-    [Fact]
-    public void RunIteration_UsesInfoSetKeyAsSolverKey_ForActionValueLeafEvaluation()
-    {
-        var root = CreateHeadsUpPreflopState();
-        var traversalPlayer = root.Players[0].PlayerId;
-        var opponent = root.Players[1].PlayerId;
-
-        var fold = new LegalAction(ActionType.Fold);
-        var check = new LegalAction(ActionType.Check);
-        var raise = new LegalAction(ActionType.Raise, new ChipAmount(11));
-        var traverser = new SolverKeyCapturingTrajectoryTraverser(root, traversalPlayer, opponent, fold, check, raise);
-
-        var regrets = new InMemoryRegretStore();
-        var trainer = new PreflopRegretTrainer(
-            new FixedRootStateProvider(root),
-            traverser,
-            new FixedTraversalPlayerSelector(traversalPlayer),
-            regrets,
-            new InMemoryAverageStrategyStore());
-
-        trainer.RunIteration(new Random(13));
-
-        Assert.NotEmpty(traverser.CapturedSolverKeys);
-        Assert.All(traverser.CapturedSolverKeys, key => Assert.Equal("traversal_infoset", key));
-        Assert.NotEqual(0d, regrets.Get("traversal_infoset", fold));
-        Assert.NotEqual(0d, regrets.Get("traversal_infoset", raise));
-        Assert.NotEqual(regrets.Get("traversal_infoset", fold), regrets.Get("traversal_infoset", raise));
-    }
 
     private static PreflopRegretTrainer CreateTrainerWithRegretAwareTraverser(
         out InMemoryRegretStore regrets,

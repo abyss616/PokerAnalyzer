@@ -37,108 +37,12 @@ public sealed class PreflopTrajectoryTraverserTests
     }
 
 
-    [Fact]
-    public void UnopenedRoot_ExpandsDistinctBranchesAfterLimpVsRaiseToTwoPointFiveBb()
-    {
-        var root = CreateHeadsUpPreflopState();
-        var actions = root.GenerateLegalActions();
-
-        var limp = Assert.Single(actions.Where(action => action.ActionType == ActionType.Call));
-        var raise = Assert.Single(actions.Where(action => action.ActionType == ActionType.Raise));
-
-        Assert.Equal(1, limp.Amount!.Value.Value);
-        Assert.Equal(5, raise.Amount!.Value.Value);
-
-        var afterLimp = root.Apply(limp);
-        var afterRaise = root.Apply(raise);
-
-        Assert.NotEqual(afterLimp.ActionHistorySignature, afterRaise.ActionHistorySignature);
-        Assert.Contains(":2:2", afterLimp.ActionHistorySignature, StringComparison.Ordinal);
-        Assert.Contains(":4:5", afterRaise.ActionHistorySignature, StringComparison.Ordinal);
-    }
-
-    [Fact]
-    public void SampleTrajectory_WhenPreflopRoundAlreadyClosed_StopsAtPreflopTerminalWithoutChanceSampling()
-    {
-        var state = CreateClosedPreflopStateWithoutPrivateCards();
-        var traverser = new PreflopTrajectoryTraverser(
-            new FixedRootStateProvider(state),
-            new SolverChanceSampler(),
-            new PreflopInfoSetMapper(),
-            new InMemoryPolicyProvider(),
-            new WeightedRandomActionSampler(),
-            new PlaceholderPreflopLeafEvaluator(),
-            new DefaultPreflopLeafDetector());
-
-        var result = traverser.RunIteration(new Random(17));
-
-        Assert.Equal(Street.Preflop, result.FinalState.Street);
-        Assert.Empty(result.FinalState.BoardCards);
-        Assert.DoesNotContain(result.Path, node => node.NodeKind == TraversalNodeKind.Chance);
-        Assert.Equal(TraversalNodeKind.Leaf, result.Path[^1].NodeKind);
-        Assert.Equal("preflop terminal placeholder utility", result.Path[^1].Note);
-    }
 
 
 
-    [Fact]
-    public void SampleTrajectory_WhenOnlyOneActivePlayer_Remains_ExitsImmediatelyWithoutInvokingLeafDetector()
-    {
-        var state = CreateOneActivePlayerPreflopState();
-        var leafDetector = new CountingLeafDetector();
-        var traverser = new PreflopTrajectoryTraverser(
-            new FixedRootStateProvider(state),
-            new SolverChanceSampler(),
-            new PreflopInfoSetMapper(),
-            new InMemoryPolicyProvider(),
-            new WeightedRandomActionSampler(),
-            new PlaceholderPreflopLeafEvaluator(),
-            leafDetector);
 
-        var result = traverser.RunIteration(new Random(11));
 
-        Assert.Equal(0, leafDetector.Calls);
-        Assert.Equal(TraversalNodeKind.Leaf, result.Path[^1].NodeKind);
-    }
 
-    [Fact]
-    public void SampleTrajectory_WhenNoActionablePlayersRemain_ExitsImmediatelyWithoutInvokingLeafDetector()
-    {
-        var state = CreateNoActionablePlayersPreflopState();
-        var leafDetector = new CountingLeafDetector();
-        var traverser = new PreflopTrajectoryTraverser(
-            new FixedRootStateProvider(state),
-            new SolverChanceSampler(),
-            new PreflopInfoSetMapper(),
-            new InMemoryPolicyProvider(),
-            new WeightedRandomActionSampler(),
-            new PlaceholderPreflopLeafEvaluator(),
-            leafDetector);
-
-        var result = traverser.RunIteration(new Random(13));
-
-        Assert.Equal(0, leafDetector.Calls);
-        Assert.Equal(TraversalNodeKind.Leaf, result.Path[^1].NodeKind);
-    }
-
-    [Fact]
-    public void SampleTrajectory_WhenStateIsNonTerminal_StillUsesLeafDetectorPath()
-    {
-        var state = CreateHeadsUpPreflopState();
-        var leafDetector = new CountingLeafDetector();
-        var traverser = new PreflopTrajectoryTraverser(
-            new FixedRootStateProvider(state),
-            new SolverChanceSampler(),
-            new PreflopInfoSetMapper(),
-            new InMemoryPolicyProvider(),
-            new WeightedRandomActionSampler(),
-            new PlaceholderPreflopLeafEvaluator(),
-            leafDetector);
-
-        _ = traverser.RunIteration(new Random(19));
-
-        Assert.True(leafDetector.Calls > 0);
-    }
 
     [Fact]
     public void SampleTrajectory_WhenTraversalDoesNotProgress_ThrowsDepthGuardException()

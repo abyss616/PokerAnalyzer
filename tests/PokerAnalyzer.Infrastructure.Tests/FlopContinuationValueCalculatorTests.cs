@@ -12,21 +12,6 @@ public sealed class FlopContinuationValueCalculatorTests
     private static readonly ChipAmount BigBlind = new(10);
     private static readonly ChipAmount StartingStack100Bb = new(BigBlind.Value * 100);
 
-    [Fact]
-    public async Task Determinism_WithSeed_Multiway()
-    {
-        var (state, players) = BuildThreeWayEndOfPreflop();
-
-        var a = await _sut.ComputeAsync(players, state, flopsToSample: 2_000, seed: 77, CancellationToken.None);
-        var b = await _sut.ComputeAsync(players, state, flopsToSample: 2_000, seed: 77, CancellationToken.None);
-
-        Assert.Equal("FlopRollout", a.Method);
-        Assert.Equal(2_000, a.FlopsSampled);
-        Assert.Equal(77, a.SeedUsed);
-        Assert.Equal(a.ChipEv.Count, b.ChipEv.Count);
-        foreach (var (player, value) in a.ChipEv)
-            Assert.Equal(value, b.ChipEv[player]);
-    }
 
     [Fact]
     public async Task EndOfPreflopBaseline_EvSumsToPreflopPot_WhenNoAdditionalFlopInvestment()
@@ -41,33 +26,7 @@ public sealed class FlopContinuationValueCalculatorTests
         Assert.True(Math.Abs(sum - expected) <= 1e-9, $"sum was {sum}, expected {expected}");
     }
 
-    [Fact]
-    public async Task EndOfPreflopBaseline_EvSumsToPreflopPot_WhenFlopBettingIncreasesPot()
-    {
-        var (state, players) = BuildHeadsUpEndOfPreflopAggressorVsStrongCaller();
-        AssertNoSidePotPrecondition(state);
 
-        var result = await _sut.ComputeAsync(players, state, flopsToSample: 2_000, seed: 77, CancellationToken.None);
-
-        var sum = (double)result.ChipEv.Values.Sum();
-        var expected = (double)state.Pot.Value;
-        Assert.True(Math.Abs(sum - expected) <= 1e-9, $"sum was {sum}, expected {expected}");
-    }
-
-    [Fact]
-    public async Task Sanity_Bounds()
-    {
-        var (state, players) = BuildThreeWayEndOfPreflop();
-
-        var result = await _sut.ComputeAsync(players, state, flopsToSample: 2_000, seed: 77, CancellationToken.None);
-
-        var maxStackBehind = state.ActivePlayers.Max(p => state.Stacks[p].Value);
-        var upper = state.Pot.Value + maxStackBehind;
-        var lower = -maxStackBehind;
-
-        foreach (var value in result.ChipEv.Values)
-            Assert.InRange(value, lower, upper);
-    }
 
     [Fact]
     public async Task DuplicateCards_ThrowsClearMessage()

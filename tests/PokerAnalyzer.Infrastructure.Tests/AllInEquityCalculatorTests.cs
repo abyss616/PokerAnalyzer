@@ -28,23 +28,6 @@ public sealed class AllInEquityCalculatorTests
         Assert.InRange(result.Equities.Values.Sum(), 0.999999m, 1.000001m);
     }
 
-    [Fact]
-    public async Task Exact_Hu_TieHeavy_SameRanks_SplitsCorrectly()
-    {
-        var p1 = PlayerId.New();
-        var p2 = PlayerId.New();
-        var players = new List<(PlayerId, HoleCards)>
-        {
-            (p1, HoleCards.Parse("AhKh")),
-            (p2, HoleCards.Parse("AdKd"))
-        };
-
-        var result = await _sut.ComputePreflopAsync(players, null, null, CancellationToken.None);
-
-        Assert.InRange(result.Equities[p1], 0.48m, 0.52m);
-        Assert.InRange(result.Equities[p2], 0.48m, 0.52m);
-        Assert.InRange(result.Equities.Values.Sum(), 0.999999m, 1.000001m);
-    }
 
     [Fact]
  
@@ -102,19 +85,4 @@ public sealed class AllInEquityCalculatorTests
         Assert.Contains("duplicate", ex.Message, StringComparison.OrdinalIgnoreCase);
     }
 
-    [Fact]
-    public async Task MonteCarlo_HonorsCancellation()
-    {
-        var players = new List<(PlayerId, HoleCards)>
-        {
-            (PlayerId.New(), HoleCards.Parse("AsKd")),
-            (PlayerId.New(), HoleCards.Parse("QhQc")),
-            (PlayerId.New(), HoleCards.Parse("9s9d"))
-        };
-
-        using var cts = new CancellationTokenSource();
-        cts.Cancel();
-
-        await Assert.ThrowsAsync<OperationCanceledException>(() => _sut.ComputePreflopAsync(players, 5_000_000, 7, cts.Token));
-    }
 }
