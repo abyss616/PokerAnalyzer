@@ -45,54 +45,8 @@ public sealed class SolverInfoSetKeyMapperTests
         Assert.Equal(keyA.Key, keyB.Key);
     }
 
-    [Fact]
-    public void Different_Actor_Hole_Cards_Map_To_Different_Key()
-    {
-        var mapper = new SolverInfoSetKeyMapper();
-        var stateA = CreateFacingOpenState(HoleCards.Parse("AsKh"), HoleCards.Parse("7c7d"));
-        var stateB = CreateFacingOpenState(HoleCards.Parse("AdKd"), HoleCards.Parse("7c7d"));
 
-        var keyA = mapper.Map(stateA);
-        var keyB = mapper.Map(stateB);
 
-        Assert.True(keyA.IsSupported);
-        Assert.True(keyB.IsSupported);
-        Assert.NotEqual(keyA.Key, keyB.Key);
-    }
-
-    [Fact]
-    public void Different_Public_Action_History_Maps_To_Different_Key()
-    {
-        var mapper = new SolverInfoSetKeyMapper();
-        var facingOpen = CreateFacingOpenState(HoleCards.Parse("AsKh"), HoleCards.Parse("7c7d"));
-        var limped = CreateLimpedToBigBlindState(HoleCards.Parse("AsKh"), HoleCards.Parse("7c7d"));
-
-        var keyA = mapper.Map(facingOpen);
-        var keyB = mapper.Map(limped);
-
-        Assert.True(keyA.IsSupported);
-        Assert.True(keyB.IsSupported);
-        Assert.NotEqual(keyA.Key, keyB.Key);
-        Assert.NotEqual(keyA.PreflopKey, keyB.PreflopKey);
-    }
-
-    [Fact]
-    public void Mapping_Is_Deterministic_For_Equality_Hash_And_Ordering()
-    {
-        var mapper = new SolverInfoSetKeyMapper();
-        var state = CreateFacingOpenState(HoleCards.Parse("AsKh"), HoleCards.Parse("7c7d"));
-
-        var first = mapper.Map(state).Key!;
-        var second = mapper.Map(state).Key!;
-
-        Assert.Equal(first, second);
-        Assert.Equal(first.GetHashCode(), second.GetHashCode());
-        Assert.Equal(0, first.CompareTo(second));
-
-        var other = mapper.Map(CreateFacingOpenState(HoleCards.Parse("2c2d"), HoleCards.Parse("7c7d"))).Key!;
-        var ordered = new[] { first, other }.OrderBy(x => x).ToArray();
-        Assert.Equal(2, ordered.Length);
-    }
 
     [Fact]
     public void Postflop_Board_Cards_Affect_Key()

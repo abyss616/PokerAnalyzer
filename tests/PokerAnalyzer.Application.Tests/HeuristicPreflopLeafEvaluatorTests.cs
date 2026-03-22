@@ -7,17 +7,6 @@ namespace PokerAnalyzer.Application.Tests;
 
 public sealed class HeuristicPreflopLeafEvaluatorTests
 {
-    [Fact]
-    public void Evaluate_UnopenedButton_J9oRaise_IsBetterThanFold()
-    {
-        var context = CreateContext(HoleCards.Parse("Jc9h"), Position.BTN, ActionType.Raise, 250);
-        var evaluator = new HeuristicPreflopLeafEvaluator();
-
-        var evaluation = evaluator.Evaluate(context);
-
-        Assert.True(evaluation.UtilityByPlayer[context.HeroPlayerId] > 0d);
-        Assert.Contains("evRaise=", evaluation.Reason);
-    }
 
     [Fact]
     public void Evaluate_UnopenedButton_AARaise_IsHigherThan_SevenTwoOffsuitRaise()

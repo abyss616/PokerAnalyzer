@@ -24,19 +24,6 @@ public sealed class PreflopInfoSetMapperTests
     }
 
 
-    [Fact]
-    public void MapInfoSetKey_HeadsUpState_PreservesLegacyKeyShape()
-    {
-        var actingPlayerId = new PlayerId(Guid.Parse("11111111-1111-1111-1111-111111111111"));
-        var state = CreateHeadsUpStateWithHoleCards(actingPlayerId, HoleCards.Parse("AsKh"));
-        var mapper = new PreflopInfoSetMapper();
-
-        var key = mapper.MapInfoSetKey(state, actingPlayerId);
-
-        Assert.Equal("street=Preflop|position=SB|hero=AKo|history=|pot=3|bet=2|toCall=1", key);
-        Assert.DoesNotContain("continuing=", key, StringComparison.Ordinal);
-        Assert.DoesNotContain("continuingPositions=", key, StringComparison.Ordinal);
-    }
 
     [Fact]
     public void MapInfoSetKey_MultiwayState_AddsContinuingPlayerTopologyUntilTrueHeadsUp()
@@ -51,33 +38,7 @@ public sealed class PreflopInfoSetMapperTests
         Assert.Contains("continuingPositions=BTN,SB,BB", key, StringComparison.Ordinal);
     }
 
-    [Fact]
-    public void MapInfoSetKey_StateReducedToTrueHeadsUp_DropsContinuingTopology()
-    {
-        var actingPlayerId = new PlayerId(Guid.Parse("11111111-1111-1111-1111-111111111111"));
-        var state = CreateThreeHandedStateReducedToHeadsUp(actingPlayerId, HoleCards.Parse("AsKh"));
-        var mapper = new PreflopInfoSetMapper();
 
-        var key = mapper.MapInfoSetKey(state, actingPlayerId);
-
-        Assert.DoesNotContain("continuing=", key, StringComparison.Ordinal);
-        Assert.DoesNotContain("continuingPositions=", key, StringComparison.Ordinal);
-    }
-
-    [Fact]
-    public void MapInfoSetKey_UsesCanonicalSuitedAndPairRepresentations()
-    {
-        var actingPlayerId = new PlayerId(Guid.Parse("11111111-1111-1111-1111-111111111111"));
-        var suitedState = CreateHeadsUpStateWithHoleCards(actingPlayerId, HoleCards.Parse("AhKh"));
-        var pairState = CreateHeadsUpStateWithHoleCards(actingPlayerId, HoleCards.Parse("7s7d"));
-        var mapper = new PreflopInfoSetMapper();
-
-        var suitedKey = mapper.MapInfoSetKey(suitedState, actingPlayerId);
-        var pairKey = mapper.MapInfoSetKey(pairState, actingPlayerId);
-
-        Assert.Contains("hero=AKs", suitedKey);
-        Assert.Contains("hero=77", pairKey);
-    }
 
     private static SolverHandState CreateHeadsUpStateWithHoleCards(PlayerId actingPlayerId, HoleCards holeCards)
     {

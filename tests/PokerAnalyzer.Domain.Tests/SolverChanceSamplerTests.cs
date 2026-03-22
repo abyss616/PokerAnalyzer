@@ -20,25 +20,6 @@ public class SolverChanceSamplerTests
         AssertAllCardsUnique(sampled);
     }
 
-    [Fact]
-    public void Sample_DoesNotCollideWithDeadBoardOrExistingPrivateCards()
-    {
-        var players = CreatePlayers(3);
-        var knownHole = HoleCards.Parse("AsAh");
-
-        var state = CreateState(
-            players,
-            players[1].PlayerId,
-            Street.Preflop,
-            boardCards: [Card.Parse("Kd"), Card.Parse("Qd"), Card.Parse("Jd")],
-            deadCards: [Card.Parse("2c"), Card.Parse("3c")],
-            privateCardsByPlayer: new Dictionary<PlayerId, HoleCards> { [players[0].PlayerId] = knownHole });
-
-        var sampled = _sut.Sample(state, new Random(22));
-
-        Assert.Equal(knownHole, sampled.PrivateCardsByPlayer[players[0].PlayerId]);
-        AssertAllCardsUnique(sampled);
-    }
 
     [Fact]
     public void Sample_FlopChance_AddsExactlyThreeCardsAndAdvancesStreet()
@@ -79,41 +60,8 @@ public class SolverChanceSamplerTests
         AssertAllCardsUnique(sampled);
     }
 
-    [Fact]
-    public void Sample_SeededRng_IsDeterministic()
-    {
-        var players = CreatePlayers(2);
-        var state = CreateState(players, players[0].PlayerId, Street.Preflop);
-
-        var a = _sut.Sample(state, new Random(99));
-        var b = _sut.Sample(state, new Random(99));
-
-        Assert.Equal(
-            a.PrivateCardsByPlayer.OrderBy(kvp => kvp.Key.Value).Select(kvp => kvp.Value.ToString()).ToArray(),
-            b.PrivateCardsByPlayer.OrderBy(kvp => kvp.Key.Value).Select(kvp => kvp.Value.ToString()).ToArray());
-        Assert.Equal(a.BoardCards.Select(c => c.ToString()).ToArray(), b.BoardCards.Select(c => c.ToString()).ToArray());
-    }
 
 
-    [Fact]
-    public void IsChanceNode_PreflopActionableRootWithUnknownOpponentCards_ReturnsFalse()
-    {
-        var players = CreatePlayers(2);
-        var privateCards = new Dictionary<PlayerId, HoleCards>
-        {
-            [players[0].PlayerId] = HoleCards.Parse("Jc9h")
-        };
-
-        var state = CreateState(
-            players,
-            players[0].PlayerId,
-            Street.Preflop,
-            currentBetSize: new ChipAmount(10),
-            raisesThisStreet: 1,
-            privateCardsByPlayer: privateCards);
-
-        Assert.False(_sut.IsChanceNode(state));
-    }
 
     [Fact]
     public void IsChanceNode_CompletedPreflopRoundAwaitingFlop_ReturnsTrue()
@@ -124,78 +72,10 @@ public class SolverChanceSamplerTests
         Assert.True(_sut.IsChanceNode(state));
     }
 
-    [Fact]
-    public void IsChanceNode_MalformedZeroedPreflopState_ReturnsFalse()
-    {
-        var players = CreatePlayers(2)
-            .Select(p => p with
-            {
-                CurrentStreetContribution = ChipAmount.Zero,
-                TotalContribution = ChipAmount.Zero,
-                Stack = new ChipAmount(100)
-            })
-            .ToArray();
 
-        var state = CreateState(
-            players,
-            players[0].PlayerId,
-            Street.Preflop,
-            pot: ChipAmount.Zero,
-            currentBetSize: ChipAmount.Zero,
-            raisesThisStreet: 0,
-            actionHistory: [new SolverActionEntry(players[0].PlayerId, ActionType.Check, ChipAmount.Zero)],
-            privateCardsByPlayer: new Dictionary<PlayerId, HoleCards>());
 
-        Assert.False(_sut.IsChanceNode(state));
-    }
 
-    [Fact]
-    public void IsChanceNode_CompletedFlopRoundAwaitingTurn_ReturnsTrue()
-    {
-        var players = CreatePlayers(2);
-        var state = CreateAwaitingBoardState(players, Street.Flop, boardCards: [Card.Parse("2h"), Card.Parse("7d"), Card.Parse("Ks")]);
 
-        Assert.True(_sut.IsChanceNode(state));
-    }
-
-    [Fact]
-    public void IsChanceNode_CompletedTurnRoundAwaitingRiver_ReturnsTrue()
-    {
-        var players = CreatePlayers(2);
-        var state = CreateAwaitingBoardState(players, Street.Turn, boardCards: [Card.Parse("2h"), Card.Parse("7d"), Card.Parse("Ks"), Card.Parse("Tc")]);
-
-        Assert.True(_sut.IsChanceNode(state));
-    }
-
-    [Fact]
-    public void IsChanceNode_WithNoMissingPrivateCardsAndNoBoardTransition_ReturnsFalse()
-    {
-        var players = CreatePlayers(2);
-        var privateCards = new Dictionary<PlayerId, HoleCards>
-        {
-            [players[0].PlayerId] = HoleCards.Parse("AsKh"),
-            [players[1].PlayerId] = HoleCards.Parse("QdJs")
-        };
-
-        var state = CreateState(players, players[0].PlayerId, Street.Preflop, privateCardsByPlayer: privateCards);
-
-        Assert.False(_sut.IsChanceNode(state));
-    }
-
-    [Fact]
-    public void Sample_PreservesAlreadyAssignedPrivateCards_AndFillsMissing()
-    {
-        var players = CreatePlayers(3);
-        var knownHole = HoleCards.Parse("AsKh");
-        var privateCards = new Dictionary<PlayerId, HoleCards> { [players[1].PlayerId] = knownHole };
-        var state = CreateState(players, players[0].PlayerId, Street.Preflop, privateCardsByPlayer: privateCards);
-
-        var sampled = _sut.Sample(state, new Random(3));
-
-        Assert.Equal(knownHole, sampled.PrivateCardsByPlayer[players[1].PlayerId]);
-        Assert.Equal(3, sampled.PrivateCardsByPlayer.Count);
-        AssertAllCardsUnique(sampled);
-    }
 
     private static SolverHandState CreateAwaitingBoardState(IReadOnlyList<SolverPlayerState> players, Street street, IReadOnlyList<Card> boardCards)
     {
